@@ -113,10 +113,12 @@ export function StashesPane(props: Props) {
     <>
       <SourceControlToolbar
         kind="stash"
-        disabled={props.disabled || !items.length}
+        disabled={props.disabled}
+        hasStashes={items.length > 0}
         canApplyStash={canApplyStash}
         groupByDirectory={props.groupByDirectory}
         onGroupingChange={props.onGroupingChange}
+        onRefresh={() => props.bridge.send({ kind: 'refresh' })}
         onApplyStash={() => {
           if (props.disabled || !canApplyStash || !selectedStash) return;
           if (selection?.kind === 'stash')

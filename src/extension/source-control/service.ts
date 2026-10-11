@@ -26,6 +26,7 @@ import {
   workingChangeUris,
 } from '../native/source-control-diffs';
 import { discardWorking } from './discard';
+import { chooseMessage, toggleAmend } from './message-tools';
 import { SourceControlModel } from './model';
 import { SourceControlNotifications } from './notifications';
 import { rollbackChanges } from './rollback';
@@ -268,6 +269,24 @@ export class SourceControlService implements vscode.Disposable {
           return;
         case 'generate':
           await this.generate(request.repositoryId);
+
+          return;
+        case 'amend':
+        case 'message-history':
+          await this.write(
+            request.repositoryId,
+            'Loading commit message…',
+            async (runtime) => {
+              if (request.kind === 'amend')
+                await toggleAmend(
+                  runtime,
+                  this.model,
+                  request.repositoryId,
+                  request.enabled,
+                );
+              else await chooseMessage(this.model, request.repositoryId);
+            },
+          );
 
           return;
         case 'commit':

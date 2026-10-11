@@ -229,7 +229,7 @@ describe('Source Control appearance', () => {
         exact: true,
       });
       const customSection = page.getByRole('button', {
-        name: 'Git UI Section',
+        name: 'Git UI Changes Section',
         exact: true,
       });
 

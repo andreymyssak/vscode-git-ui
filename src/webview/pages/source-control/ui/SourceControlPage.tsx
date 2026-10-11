@@ -5,7 +5,6 @@ import type {
   SourceControlState,
   SourceControlTab,
 } from '@contracts/source-control';
-import { ActionButton } from '@webview/shared/ui';
 
 import { folderKey, readView } from '../model/view-state';
 import { CommitPane } from './CommitPane';
@@ -156,15 +155,6 @@ export function SourceControlPage({ bridge }: { bridge: SourceControlBridge }) {
             </button>
           ))}
         </div>
-        {tab === 'stash' && (
-          <ActionButton
-            label="Refresh"
-            icon="sync"
-            className={styles.iconButton}
-            disabled={!state || state.busy || state.generating}
-            onClick={() => bridge.send({ kind: 'refresh' })}
-          />
-        )}
       </header>
       {!!state && state.repositories.length > 1 && (
         <label className={styles.repository}>

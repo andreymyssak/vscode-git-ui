@@ -53,6 +53,8 @@ const state: SourceControlState = {
       checked: [],
       draft: '',
       draftEditId: null,
+      commitMode: { kind: 'new' },
+      hasMessageHistory: false,
       changes: {
         kind: 'ready',
         items: [

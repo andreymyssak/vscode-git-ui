@@ -28,6 +28,7 @@ export interface StashFile {
 }
 
 export type SourceControlTab = 'commit' | 'stash';
+export type CommitMode = { kind: 'new' } | { kind: 'amend'; headSha: string };
 export type Loaded<T> =
   | { kind: 'loading' }
   | { kind: 'error'; message: string }
@@ -45,6 +46,8 @@ export interface SourceControlRepository {
   checked: string[];
   draft: string;
   draftEditId: string | null;
+  commitMode: CommitMode;
+  hasMessageHistory: boolean;
 }
 
 export interface SourceControlState {
@@ -69,6 +72,8 @@ export type SourceControlRequest =
   | { kind: 'repository'; repositoryId: string }
   | { kind: 'check'; repositoryId: string; paths: string[]; checked: boolean }
   | { kind: 'message'; repositoryId: string; message: string; editId: string }
+  | { kind: 'amend'; repositoryId: string; enabled: boolean }
+  | { kind: 'message-history'; repositoryId: string }
   | {
       kind:
         'commit' | 'stash' | 'stash-silently' | 'generate' | 'reveal-working';

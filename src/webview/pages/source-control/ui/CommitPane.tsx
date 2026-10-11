@@ -11,6 +11,7 @@ import { fileDecoration } from '../model/file-status';
 import { buildChangeTree, type ChangeNode } from '../model/file-tree';
 import { folderKey } from '../model/view-state';
 import { ChangeTree } from './ChangeTree';
+import { CommitMessageToolbar } from './CommitMessageToolbar';
 import styles from './SourceControlPage.module.css';
 import { SourceControlToolbar } from './SourceControlToolbar';
 
@@ -86,9 +87,10 @@ export function CommitPane({
   const disabled = busy || generating;
   const canWrite =
     !!repository &&
+    repository.changes.kind === 'ready' &&
     !disabled &&
     draft.pending === null &&
-    count > 0 &&
+    (count > 0 || repository.commitMode.kind === 'amend') &&
     !!draft.value.trim();
   const canGenerate =
     !!repository && !disabled && draft.pending === null && count > 0;
@@ -248,6 +250,13 @@ export function CommitPane({
         </>
       )}
       <div className={styles.messageArea}>
+        <CommitMessageToolbar
+          repository={repository}
+          disabled={disabled || draft.pending !== null}
+          generating={generating}
+          canGenerate={canGenerate}
+          bridge={bridge}
+        />
         <textarea
           aria-label="Commit message"
           placeholder="Commit message"
@@ -289,31 +298,10 @@ export function CommitPane({
             }}
           >
             <Icon name="check" />
-            Commit
+            {repository?.commitMode.kind === 'amend'
+              ? 'Amend Commit'
+              : 'Commit'}
           </button>
-          {generating ? (
-            <ActionButton
-              label="Cancel Generation"
-              icon="close"
-              className={styles.iconButton}
-              onClick={() => bridge.send({ kind: 'cancel-generation' })}
-            />
-          ) : (
-            <ActionButton
-              label="Generate Commit Message"
-              icon="sparkle"
-              tooltip="Generate a message for checked files"
-              className={styles.iconButton}
-              disabled={!canGenerate}
-              onClick={() => {
-                if (canGenerate)
-                  bridge.send({
-                    kind: 'generate',
-                    repositoryId: repository.info.id,
-                  });
-              }}
-            />
-          )}
         </div>
         {generating && (
           <p role="status" className={styles.progress}>

@@ -53,6 +53,8 @@ const repository = {
   checked: ['src/b.ts'],
   draft: '',
   draftEditId: null,
+  commitMode: { kind: 'new' as const },
+  hasMessageHistory: false,
 };
 
 function initialState(): SourceControlState {
@@ -255,6 +257,93 @@ test('the Changes root toggles all files and the toolbar expands, collapses and 
     screen.getByRole('treeitem', { name: 'src/nested/a.ts' }),
   ).toHaveAttribute('aria-level', '2');
   expect(app.saved()).toMatchObject({ groupByDirectory: false });
+});
+
+test('an empty Changes root has no inclusion checkbox or selection action', async () => {
+  const user = userEvent.setup();
+  const app = session({
+    ...initialState(),
+    repositories: [
+      { ...repository, changes: { kind: 'ready', items: [] }, checked: [] },
+    ],
+  });
+  const root = screen.getByRole('treeitem', { name: 'Changes' });
+
+  expect(within(root).queryByRole('checkbox')).toBeNull();
+  expect(root).not.toHaveAttribute('aria-checked');
+  await user.click(root);
+  await user.keyboard(' ');
+  expect(app.requests.filter((request) => request.kind === 'check')).toEqual(
+    [],
+  );
+});
+
+test('commit message tools group Amend, history and generation above the editor', async () => {
+  const user = userEvent.setup();
+  const app = session();
+  const toolbar = screen.getByRole('toolbar', {
+    name: 'Commit message actions',
+  });
+
+  expect(
+    within(toolbar).getByRole('checkbox', { name: 'Amend last commit' }),
+  ).not.toBeChecked();
+  expect(
+    within(toolbar).getByRole('button', { name: 'Generate Commit Message' }),
+  ).toBeEnabled();
+  expect(
+    within(toolbar).getByRole('button', { name: 'Commit Message History' }),
+  ).toBeDisabled();
+  await user.click(
+    within(toolbar).getByRole('checkbox', { name: 'Amend last commit' }),
+  );
+  expect(app.requests.at(-1)).toEqual({
+    kind: 'amend',
+    repositoryId: 'root',
+    enabled: true,
+  });
+});
+
+test.each(['loading', 'error'] as const)(
+  'Amend stays disabled while Changes is %s so hidden checks cannot be committed',
+  (kind) => {
+    session({
+      ...initialState(),
+      repositories: [
+        {
+          ...repository,
+          draft: 'Amended message',
+          commitMode: { kind: 'amend', headSha: repository.info.headSha! },
+          changes:
+            kind === 'loading' ? { kind } : { kind, message: 'Unavailable' },
+        },
+      ],
+    });
+    expect(screen.getByRole('button', { name: 'Amend Commit' })).toBeDisabled();
+  },
+);
+
+test('an active Amend can be turned off after HEAD becomes unavailable', async () => {
+  const user = userEvent.setup();
+  const app = session({
+    ...initialState(),
+    repositories: [
+      {
+        ...repository,
+        info: { ...repository.info, headSha: null },
+        commitMode: { kind: 'amend', headSha: repository.info.headSha! },
+      },
+    ],
+  });
+  const amend = screen.getByRole('checkbox', { name: 'Amend last commit' });
+
+  expect(amend).toBeEnabled();
+  await user.click(amend);
+  expect(app.requests.at(-1)).toEqual({
+    kind: 'amend',
+    repositoryId: 'root',
+    enabled: false,
+  });
 });
 
 test('a saved flat list can enable directory grouping without changing checked files', async () => {
@@ -654,6 +743,9 @@ test('Stash toolbar expands all stashes, groups directories and keeps restoratio
     ],
   });
   const toolbar = screen.getByRole('toolbar', { name: 'Stashes actions' });
+
+  await user.click(within(toolbar).getByRole('button', { name: 'Refresh' }));
+  expect(app.requests.at(-1)).toEqual({ kind: 'refresh' });
   const firstStash = within(
     screen.getByRole('region', { name: 'First stash' }),
   );
@@ -726,6 +818,17 @@ test('Stash toolbar expands all stashes, groups directories and keeps restoratio
     ],
   });
   expect(applyStash).toBeDisabled();
+  app.emit({ ...app.state(), repositories: [repository] });
+  const refresh = within(toolbar).getByRole('button', { name: 'Refresh' });
+
+  expect(refresh).toBeEnabled();
+  expect(
+    within(toolbar).getByRole('button', { name: 'Expand All' }),
+  ).toBeDisabled();
+  await user.click(refresh);
+  expect(app.requests.at(-1)).toEqual({ kind: 'refresh' });
+  app.emit({ ...app.state(), busy: true });
+  expect(refresh).toBeDisabled();
 });
 
 test('keyboard folder and file selection persist collapse while tab arrows select the next view', async () => {

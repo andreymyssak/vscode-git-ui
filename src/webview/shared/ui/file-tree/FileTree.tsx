@@ -332,7 +332,7 @@ export function FileTree<T>(props: Props<T>) {
           : folderDecoration?.description;
     const disabled = props.selection?.disabled ?? false;
     const check = () => {
-      if (!disabled) props.selection?.onChange(files, !checked);
+      if (!disabled && files.length) props.selection?.onChange(files, !checked);
     };
 
     const activate = (preview: boolean) => {
@@ -345,7 +345,9 @@ export function FileTree<T>(props: Props<T>) {
       <>
         <span
           className={styles.chevron}
-          data-tree-disclosure={node.kind === 'folder' ? true : undefined}
+          data-tree-disclosure={
+            node.kind === 'folder' && files.length ? true : undefined
+          }
           onClick={(event) => {
             if (node.kind !== 'folder') return;
             event.preventDefault();
@@ -353,11 +355,11 @@ export function FileTree<T>(props: Props<T>) {
             toggle(node.path);
           }}
         >
-          {node.kind === 'folder' && (
+          {node.kind === 'folder' && files.length > 0 && (
             <Icon name={open ? 'chevron-down' : 'chevron-right'} />
           )}
         </span>
-        {props.selection && (
+        {props.selection && files.length > 0 && (
           <FileTreeCheckbox
             label={root ? 'Include all changes' : `Include ${node.path}`}
             checked={checked}
@@ -453,12 +455,14 @@ export function FileTree<T>(props: Props<T>) {
       'aria-description':
         decoration?.description ?? folderDecoration?.description,
       'aria-level': depth + 1,
-      'aria-expanded': node.kind === 'folder' ? open : undefined,
-      'aria-checked': props.selection
-        ? mixed
-          ? ('mixed' as const)
-          : checked
-        : undefined,
+      'aria-expanded':
+        node.kind === 'folder' && files.length ? open : undefined,
+      'aria-checked':
+        props.selection && files.length
+          ? mixed
+            ? ('mixed' as const)
+            : checked
+          : undefined,
       'aria-disabled': props.selection ? disabled : undefined,
       'data-file': node.kind === 'file' ? props.fileKey(node.file) : undefined,
       'data-tree-path': node.path,

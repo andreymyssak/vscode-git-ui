@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { lstat, readFile, readlink, unlink } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 
+import type { CommitMode } from '../../shared/source-control';
 import type { GitCli } from './cli';
 import { withCheckedCommitHooks } from './commit-hooks';
 import { readWorkingChanges, type WorkingFile } from './working-changes';
@@ -109,6 +110,7 @@ export async function captureSelection(
   cli: GitCli,
   id: string,
   files: readonly WorkingFile[],
+  mode: CommitMode = { kind: 'new' },
 ): Promise<SelectionSnapshot> {
   await requireReady(cli, id);
   const current = await readWorkingChanges(cli, id);
@@ -128,9 +130,10 @@ export async function captureSelection(
     }
   }
 
-  const paths = checkedPaths(
-    files.flatMap((file) => [file.path, file.originalPath]),
-  );
+  const paths =
+    !files.length && mode.kind === 'amend'
+      ? []
+      : checkedPaths(files.flatMap((file) => [file.path, file.originalPath]));
 
   if (
     current.some(
@@ -150,6 +153,11 @@ export async function captureSelection(
 
   const head = await headOf(cli, id);
 
+  if (mode.kind === 'amend' && head !== mode.headSha)
+    throw new Error(
+      'The last commit changed. Turn Amend off and review the current commit before amending again.',
+    );
+
   return { head, paths, fingerprint: await fingerprint(cli, id, head, paths) };
 }
 
@@ -158,7 +166,8 @@ export async function validateSelection(
   id: string,
   snapshot: SelectionSnapshot,
 ): Promise<void> {
-  checkedPaths(snapshot.paths);
+  if (snapshot.paths.length) checkedPaths(snapshot.paths);
+  else if (!snapshot.head) throw new Error('There is no last commit to amend.');
   await requireReady(cli, id);
   const head = await headOf(cli, id);
 
@@ -188,6 +197,7 @@ async function reconcile(
     );
   }
 
+  if (!paths.length) return;
   await cli.runWithInput(
     id,
     ['reset', '--quiet', sha, '--pathspec-from-file=-', '--pathspec-file-nul'],
@@ -200,9 +210,19 @@ export async function commitSelected(
   id: string,
   snapshot: SelectionSnapshot,
   message: string,
+  mode: CommitMode = { kind: 'new' },
 ): Promise<{ sha: string }> {
   if (!message.trim()) throw new Error('Enter a commit message.');
+  if (mode.kind === 'new') checkedPaths(snapshot.paths);
+  else if (snapshot.head !== mode.headSha)
+    throw new Error(
+      'The last commit changed. Review it before amending again.',
+    );
   await validateSelection(cli, id, snapshot);
+  const expectedParents =
+    mode.kind === 'amend'
+      ? (await cli.run(id, ['show', '-s', '--format=%P', mode.headSha])).trim()
+      : (snapshot.head ?? '');
 
   return cli.withTemporaryIndex(id, async (index) => {
     await index.run(
@@ -210,13 +230,15 @@ export async function commitSelected(
     );
     const baseTree = (await index.run(['write-tree'])).trim();
 
-    await index.run(
-      ['add', '--all', '--pathspec-from-file=-', '--pathspec-file-nul'],
-      pathspec(snapshot.paths),
-    );
+    if (snapshot.paths.length)
+      await index.run(
+        ['add', '--all', '--pathspec-from-file=-', '--pathspec-file-nul'],
+        pathspec(snapshot.paths),
+      );
     const tree = (await index.run(['write-tree'])).trim();
 
     if (
+      mode.kind === 'new' &&
       snapshot.head &&
       tree ===
         (await cli.run(id, ['rev-parse', `${snapshot.head}^{tree}`])).trim()
@@ -247,6 +269,7 @@ export async function commitSelected(
           '-c',
           `core.hooksPath=${hooksPath}`,
           'commit',
+          ...(mode.kind === 'amend' ? ['--amend', '--allow-empty'] : []),
           '-m',
           message,
         ]),
@@ -260,7 +283,7 @@ export async function commitSelected(
         .run(id, ['symbolic-ref', '--quiet', 'HEAD'])
         .catch(() => '');
 
-      if (parents !== (snapshot.head ?? '') || currentBranch !== branch)
+      if (parents !== expectedParents || currentBranch !== branch)
         throw new Error('HEAD or its branch changed during the commit.');
       await reconcile(cli, id, snapshot.paths, sha, previousIndex);
     } catch (error) {
@@ -281,6 +304,7 @@ export async function stashSelected(
   message: string,
 ): Promise<{ sha: string }> {
   if (!message.trim()) throw new Error('Enter a stash description.');
+  checkedPaths(snapshot.paths);
   await validateSelection(cli, id, snapshot);
   const head = snapshot.head;
 

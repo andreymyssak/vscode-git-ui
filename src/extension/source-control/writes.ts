@@ -64,14 +64,25 @@ export async function writeChanges(options: {
 }): Promise<void> {
   const { runtime, model, id, kind } = options;
   const repo = requireLiveRepository(runtime, model, id);
+  const mode = repo.commitMode;
+  const amending = kind === 'commit' && mode.kind === 'amend';
   const currentFiles = () =>
     options.selection.kind === 'checked'
-      ? model.selectedFiles(id)
+      ? amending
+        ? model.workingFiles(
+            id,
+            model
+              .requireRepository(id)
+              .checked.selected()
+              .map((file) => file.path),
+          )
+        : model.selectedFiles(id)
       : model.workingFiles(id, options.selection.paths);
   const label = options.selection.kind;
   const files = currentFiles();
 
-  if (!files.length) throw new Error('Select at least one changed file.');
+  if (!files.length && !amending)
+    throw new Error('Select at least one changed file.');
   const selection = JSON.stringify(files);
   const root = runtime.access.repository(id).rootUri;
 
@@ -81,7 +92,33 @@ export async function writeChanges(options: {
     throw new Error(
       `The ${label} files changed. Review them before continuing.`,
     );
-  const snapshot = await captureSelection(runtime.cli, id, files);
+  const snapshot = await captureSelection(
+    runtime.cli,
+    id,
+    files,
+    amending ? mode : { kind: 'new' },
+  );
+
+  if (
+    amending &&
+    snapshot.head &&
+    (
+      await runtime.cli.run(id, [
+        'for-each-ref',
+        `--contains=${snapshot.head}`,
+        '--format=%(refname)',
+        'refs/remotes',
+      ])
+    ).trim()
+  ) {
+    const choice = await vscode.window.showWarningMessage(
+      'The last commit is in known remote history. Amending changes its identity.',
+      { modal: true },
+      'Amend Commit',
+    );
+
+    if (choice !== 'Amend Commit') return;
+  }
 
   requireLiveRepository(runtime, model, id);
   let message = model.draft(id);
@@ -118,18 +155,20 @@ export async function writeChanges(options: {
         `The ${label} files or message changed. Review them before continuing.`,
       );
     requireSaved(root, files);
-    const result = await (kind === 'commit' ? commitSelected : stashSelected)(
-      runtime.cli,
-      id,
-      snapshot,
-      message,
-    );
+    if (kind === 'commit') model.rememberMessage(id, message);
+    const result =
+      kind === 'commit'
+        ? await commitSelected(runtime.cli, id, snapshot, message, mode)
+        : await stashSelected(runtime.cli, id, snapshot, message);
 
     repo.checked.clear(files.map((file) => file.path));
-    model.setDraft(id, '');
+    if (kind === 'commit') model.committed(id, message);
+    else model.setDraft(id, '');
     showOperationInfo(
       kind === 'commit'
-        ? `Committed ${files.length} ${label} files in ${repo.info.label}, ${result.sha.slice(0, 8)}.`
+        ? amending
+          ? `Amended the last commit in ${repo.info.label}, ${result.sha.slice(0, 8)}.`
+          : `Committed ${files.length} ${label} files in ${repo.info.label}, ${result.sha.slice(0, 8)}.`
         : `Stashed ${files.length} ${label} files in ${repo.info.label}.`,
     );
   });

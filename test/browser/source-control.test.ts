@@ -1,5 +1,43 @@
 import { expect, test } from '@playwright/test';
 
+test('commit message tools stay above the message and fit a narrow sidebar', async ({
+  page,
+}) => {
+  await page.goto('/source-control.html');
+  const toolbar = page.getByRole('toolbar', { name: 'Commit message actions' });
+  const message = page.getByRole('textbox', { name: 'Commit message' });
+
+  await expect(
+    toolbar.getByRole('checkbox', { name: 'Amend last commit' }),
+  ).toBeVisible();
+  await expect(
+    toolbar.getByRole('button', { name: 'Commit Message History' }),
+  ).toBeVisible();
+  await expect(
+    toolbar.getByRole('button', { name: 'Generate Commit Message' }),
+  ).toBeVisible();
+  for (const width of [320, 220]) {
+    await page.setViewportSize({ width, height: 620 });
+    const tools = (await toolbar.boundingBox())!;
+    const field = (await message.boundingBox())!;
+
+    expect(tools.y + tools.height).toBeLessThanOrEqual(field.y);
+    expect(
+      await toolbar.evaluate(
+        (element) => element.scrollWidth <= element.clientWidth,
+      ),
+    ).toBe(true);
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(width);
+  }
+
+  await page.setViewportSize({ width: 320, height: 620 });
+  await page.screenshot({
+    path: '.artifacts/commit-message-toolbar-browser.png',
+  });
+});
+
 test('folder counts stay beside their names with a muted status dot at the right', async ({
   page,
 }) => {
@@ -477,6 +515,11 @@ test('Stash toolbar groups and expands saved files and restores only an explicit
 
   await root.getByRole('tab', { name: 'Stashes', exact: true }).click();
   const toolbar = root.getByRole('toolbar', { name: 'Stashes actions' });
+
+  await toolbar.getByRole('button', { name: 'Refresh', exact: true }).click();
+  expect(
+    await page.evaluate(() => Reflect.get(window, 'sourceControlRequests')),
+  ).toEqual(expect.arrayContaining([{ kind: 'refresh' }]));
   const applyStash = toolbar.getByRole('button', { name: 'Apply Stash' });
   const expand = toolbar.getByRole('button', { name: 'Expand All' });
   const file = root.getByRole('treeitem', {

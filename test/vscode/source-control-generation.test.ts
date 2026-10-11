@@ -280,6 +280,47 @@ function transitionRequest(
 }
 
 describe('native Source Control generation lifecycle', () => {
+  it('refuses Amend when the change list is unavailable and preserves hidden checks and Git state', async () => {
+    const generator = heldGenerator();
+    const context = await setup(generator.generate);
+
+    try {
+      await context.service.handle({
+        kind: 'amend',
+        repositoryId: context.id,
+        enabled: true,
+      });
+      const before = await gitState(context.first);
+
+      context.service.model.updateChanges(context.id, {
+        kind: 'error',
+        message: 'Changes unavailable',
+      });
+      await context.service.handle({
+        kind: 'commit',
+        repositoryId: context.id,
+      });
+      assert.match(
+        context.service.model.error ?? '',
+        /Wait for changes to load/,
+      );
+      assert.deepEqual(await gitState(context.first), before);
+      assert.equal(
+        context.service.model.requireRepository(context.id).commitMode.kind,
+        'amend',
+      );
+      assert.deepEqual(
+        context.service.model
+          .requireRepository(context.id)
+          .checked.selected()
+          .map((file) => file.path),
+        ['sample.txt'],
+      );
+    } finally {
+      await context.dispose();
+    }
+  }).timeout(60000);
+
   it('publishes an editable generated draft for checked files without committing, staging, stashing or restoring', async () => {
     const generator = heldGenerator();
     const context = await setup(generator.generate);

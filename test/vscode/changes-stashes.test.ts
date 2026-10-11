@@ -107,6 +107,100 @@ async function contextAction(
 }
 
 describe('combined Commit and Stash view', () => {
+  it('amends only the message on a clean repository and reuses full messages through native history', async () => {
+    const fixture = await createFixture({ prefix: 'git-ui amend ' });
+    let frame: Frame | undefined;
+
+    try {
+      const previous = await fixture.runGit(['rev-parse', 'HEAD']);
+      const tree = await fixture.runGit(['rev-parse', 'HEAD^{tree}']);
+      const index = await fixture.runGit(['ls-files', '--stage', '-z']);
+
+      frame = await open(fixture);
+      await expect(
+        frame
+          .page()
+          .getByRole('button', { name: 'Git UI Changes Section', exact: true }),
+      ).toBeVisible();
+      const root = frame.getByRole('treeitem', {
+        name: 'Changes',
+        exact: true,
+      });
+      const toolbar = frame.getByRole('toolbar', {
+        name: 'Commit message actions',
+      });
+      const amend = toolbar.getByRole('checkbox', {
+        name: 'Amend last commit',
+      });
+      const history = toolbar.getByRole('button', {
+        name: 'Commit Message History',
+      });
+      const message = frame.getByRole('textbox', { name: 'Commit message' });
+
+      await expect(root.getByRole('checkbox')).toHaveCount(0);
+      await expect(history).toBeDisabled();
+      await message.fill('New draft');
+      await expect(amend).toBeEnabled();
+      await amend.press('Space');
+      await mutation(message).toHaveValue('Initial');
+      await expect(
+        frame.getByRole('button', { name: 'Amend Commit', exact: true }),
+      ).toBeEnabled();
+      await amend.press('Space');
+      await mutation(message).toHaveValue('New draft');
+      await expect(amend).toBeEnabled();
+      await amend.press('Space');
+      await mutation(message).toHaveValue('Initial');
+      const revised = 'Revised subject\n\nFull body';
+
+      await message.fill(revised);
+      await activate(frame, 'Amend Commit');
+      await mutation
+        .poll(() => fixture.runGit(['show', '-s', '--format=%B', 'HEAD']))
+        .toBe(`${revised}\n\n`);
+      await settled(frame);
+      assert.notEqual(await fixture.runGit(['rev-parse', 'HEAD']), previous);
+      assert.equal(await fixture.runGit(['rev-parse', 'HEAD^{tree}']), tree);
+      assert.equal(
+        await fixture.runGit(['show', '-s', '--format=%P', 'HEAD']),
+        '\n',
+      );
+      assert.equal(await fixture.runGit(['ls-files', '--stage', '-z']), index);
+      await expect(amend).not.toBeChecked();
+      await message.fill('Next draft');
+      await expect(history).toBeEnabled();
+      await history.press('Enter');
+      const picker = frame.page().locator('.quick-input-widget:visible');
+      const input = picker.locator('input').first();
+
+      await expect(picker).toContainText('Commit Message History');
+      await input.fill('Revised subject');
+      await input.press('Enter');
+      await mutation(message).toHaveValue(revised);
+      await settled(frame);
+      const head = await fixture.runGit(['rev-parse', 'HEAD']);
+
+      await message.fill('Keep this draft');
+      await expect(history).toBeEnabled();
+      await history.press('Enter');
+      await expect(picker).toBeVisible();
+      await input.press('Escape');
+      await settled(frame);
+      await expect(message).toHaveValue('Keep this draft');
+      assert.equal(await fixture.runGit(['rev-parse', 'HEAD']), head);
+      await frame.page().mouse.move(0, 0);
+      await message.focus();
+      await frame.locator('[data-source-control]').screenshot({
+        path: join(
+          process.env.GIT_UI_TEST_ARTIFACTS ?? fixture.root,
+          'commit-message-toolbar-native.png',
+        ),
+      });
+    } finally {
+      await finish(frame?.page(), [fixture]);
+    }
+  }).timeout(90000);
+
   it('reveals the opened file without checking it and silently stashes checked files with an empty message', async () => {
     const fixture = await createFixture({ prefix: 'git-ui toolbar ' });
     let frame: Frame | undefined;

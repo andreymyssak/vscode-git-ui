@@ -61,6 +61,21 @@
   flex-shrink: 0;
   padding: 8px;
 }
+.messageToolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  min-height: 25px;
+  margin-bottom: 6px;
+}
+.amend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+}
 .message {
   display: block;
   width: 100%;

@@ -1,5 +1,6 @@
 import type { RepositoryInfo } from '../../shared/model';
 import type {
+  CommitMode,
   Loaded,
   SourceControlRepository,
   SourceControlState,
@@ -23,9 +24,12 @@ export interface RepositorySession {
   changes: Loaded<WorkingFile>;
   stashes: Loaded<StashEntry>;
   checked: CheckedFiles<WorkingFile>;
+  commitMode: CommitMode;
 }
 
 const DRAFT_KEY = 'gitUI.sourceControlDrafts';
+const HISTORY_KEY = 'gitUI.commitMessageHistory';
+const HISTORY_LIMIT = 25;
 
 type ModelState = Omit<SourceControlState, 'hoverDelay' | 'repositories'> & {
   repositories: Omit<SourceControlRepository, 'pathLabel'>[];
@@ -36,6 +40,12 @@ export class SourceControlModel {
   readonly repositories = new Map<string, RepositorySession>();
   private readonly drafts = new Map<string, string>();
   private readonly draftEditIds = new Map<string, string>();
+  private readonly beforeAmend = new Map<
+    string,
+    { draft: string; loaded: string }
+  >();
+
+  private readonly history = new Map<string, string[]>();
   repositoryId: string | null = null;
   tab: SourceControlTab = 'commit';
   busy = false;
@@ -54,6 +64,26 @@ export class SourceControlModel {
           typeof entry.message === 'string'
         )
           this.drafts.set(entry.repositoryId, entry.message);
+    const history = storage.get(HISTORY_KEY);
+
+    if (Array.isArray(history))
+      for (const entry of history)
+        if (
+          isRecord(entry) &&
+          typeof entry.repositoryId === 'string' &&
+          Array.isArray(entry.messages)
+        )
+          this.history.set(
+            entry.repositoryId,
+            entry.messages
+              .filter(
+                (message): message is string =>
+                  typeof message === 'string' &&
+                  message.length <= 65536 &&
+                  !!message.trim(),
+              )
+              .slice(0, HISTORY_LIMIT),
+          );
   }
 
   state(): ModelState {
@@ -65,6 +95,8 @@ export class SourceControlModel {
         checked: repo.checked.selected().map((file) => file.path),
         draft: this.draft(repo.info.id),
         draftEditId: this.draftEditIds.get(repo.info.id) ?? null,
+        commitMode: repo.commitMode,
+        hasMessageHistory: this.messageHistory(repo.info.id).length > 0,
       })),
       repositoryId: this.repositoryId,
       tab: this.tab,
@@ -89,6 +121,7 @@ export class SourceControlModel {
           changes: { kind: 'loading' },
           stashes: { kind: 'loading' },
           checked: new CheckedFiles<WorkingFile>(),
+          commitMode: { kind: 'new' },
         });
     }
 
@@ -206,6 +239,67 @@ export class SourceControlModel {
     return this.drafts.get(id) ?? '';
   }
 
+  setAmend(
+    id: string,
+    commit: { headSha: string; message: string } | null,
+  ): void {
+    const repo = this.requireRepository(id);
+
+    if (commit) {
+      if (repo.commitMode.kind === 'new') {
+        const draft = this.draft(id);
+
+        this.beforeAmend.set(id, { draft, loaded: commit.message });
+        if (draft !== commit.message) this.rememberMessage(id, draft);
+      }
+
+      repo.commitMode = { kind: 'amend', headSha: commit.headSha };
+      this.setDraft(id, commit.message);
+    } else {
+      const previous = this.beforeAmend.get(id);
+
+      if (
+        repo.commitMode.kind === 'amend' &&
+        previous &&
+        this.draft(id) === previous.loaded
+      )
+        this.setDraft(id, previous.draft);
+      repo.commitMode = { kind: 'new' };
+      this.beforeAmend.delete(id);
+    }
+  }
+
+  messageHistory(id: string): readonly string[] {
+    return this.history.get(id) ?? [];
+  }
+
+  rememberMessage(id: string, message: string): void {
+    if (!message.trim() || message.length > 65536) return;
+    this.history.set(
+      id,
+      [
+        message,
+        ...this.messageHistory(id).filter((entry) => entry !== message),
+      ].slice(0, HISTORY_LIMIT),
+    );
+    void Promise.resolve(
+      this.storage.update(
+        HISTORY_KEY,
+        [...this.history].map(([repositoryId, messages]) => ({
+          repositoryId,
+          messages,
+        })),
+      ),
+    ).catch(() => undefined);
+  }
+
+  committed(id: string, message: string): void {
+    this.rememberMessage(id, message);
+    this.requireRepository(id).commitMode = { kind: 'new' };
+    this.beforeAmend.delete(id);
+    this.setDraft(id, '');
+  }
+
   setDraft(id: string, message: string, editId: string | null = null): void {
     if (message) this.drafts.set(id, message);
     else this.drafts.delete(id);
@@ -230,6 +324,7 @@ export class SourceControlModel {
       this.tab,
       this.draft(id),
       repo?.info.headSha,
+      repo?.commitMode,
       repo?.changes.kind,
       repo?.checked.selected(),
     ]);

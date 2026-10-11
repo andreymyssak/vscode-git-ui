@@ -16,7 +16,7 @@ Inspired by the Git tool window in JetBrains' [IntelliJ IDEA Community Edition](
 
 - **Explore history.** Browse local branches, remote branches, and tags. Filter commits by text, revision, author, or date.
 - **Inspect changes.** Select a commit to see its message and files. Compare merge commits with each parent and open file diffs in the editor.
-- **Choose what to save.** Check files in Source Control's Git UI Commit tab, then commit or stash them without manually staging. Unchecked changes stay in place.
+- **Choose what to save.** Check files in Source Control's Git UI Changes section, then commit or stash them without manually staging. Unchecked changes stay in place.
 - **Browse stashes.** Inspect saved Git stashes, preview file diffs, and apply a whole stash or selected files. Restoring keeps the stash for reuse; delete it separately when finished.
 - **Manage branches.** Check out, create, rename, delete, update, merge, or rebase. Restore an accidentally deleted branch from its notification.
 - **Work with commits.** Cherry-pick, edit messages, squash, or drop eligible commits. Create a branch or tag from a commit.
@@ -38,7 +38,7 @@ And in Light Modern:
 
 After installing Git UI, open a Git repository in VS Code. Show the bottom panel and select the **Git UI** tab. Your branches and commit history load automatically.
 
-In Source Control, **Git UI** has **Commit** and **Stashes** tabs. Check the files you want to save, then enter a message and commit, or use the toolbar to stash them. The Stashes tab shows saved Git stashes and their files. Clicking a file opens its diff in the editor. You can hide the built-in Changes view if you prefer Git UI.
+In Source Control, **Git UI Changes** has **Commit** and **Stashes** tabs. Check the files you want to save, then enter a message and commit, or use the toolbar to stash them. The Stashes tab shows saved Git stashes and their files. Clicking a file opens its diff in the editor. You can hide the built-in Changes view if you prefer Git UI.
 
 ## Your repositories stay yours
 

@@ -20,6 +20,7 @@ import styles from './SourceControlPage.module.css';
 type Props = {
   disabled: boolean;
   groupByDirectory: boolean;
+  onRefresh(this: void): void;
   onGroupingChange(this: void, group: boolean): void;
   onExpand(this: void): void;
   onCollapse(this: void): void;
@@ -27,12 +28,12 @@ type Props = {
   | {
       kind: 'commit';
       canStash: boolean;
-      onRefresh(this: void): void;
       onStash(this: void): void;
       onReveal(this: void): void;
     }
   | {
       kind: 'stash';
+      hasStashes: boolean;
       canApplyStash: boolean;
       onApplyStash(this: void): void;
     }
@@ -42,6 +43,8 @@ export function SourceControlToolbar(props: Props) {
   const { disabled, groupByDirectory, onGroupingChange, onExpand, onCollapse } =
     props;
   const section = props.kind === 'commit' ? 'Changes' : 'Stashes';
+  const treeDisabled =
+    disabled || (props.kind === 'stash' && !props.hasStashes);
   const [open, setOpen] = useState(false);
   const { refs, floatingStyles, context } = useFloating({
     open,
@@ -63,15 +66,13 @@ export function SourceControlToolbar(props: Props) {
       aria-label={`${section} actions`}
       className={styles.toolbar}
     >
-      {props.kind === 'commit' && (
-        <ActionButton
-          label="Refresh"
-          icon="sync"
-          className={styles.iconButton}
-          disabled={disabled}
-          onClick={props.onRefresh}
-        />
-      )}
+      <ActionButton
+        label="Refresh"
+        icon="sync"
+        className={styles.iconButton}
+        disabled={disabled}
+        onClick={props.onRefresh}
+      />
       {props.kind === 'commit' ? (
         <ActionButton
           label="Stash Silently"
@@ -118,14 +119,14 @@ export function SourceControlToolbar(props: Props) {
         label="Expand All"
         icon="expand-all"
         className={styles.iconButton}
-        disabled={disabled}
+        disabled={treeDisabled}
         onClick={onExpand}
       />
       <ActionButton
         label="Collapse All"
         icon="collapse-all"
         className={styles.iconButton}
-        disabled={disabled}
+        disabled={treeDisabled}
         onClick={onCollapse}
       />
       {open && (

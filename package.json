@@ -183,7 +183,7 @@
       "scm": [
         {
           "id": "gitUI.changes",
-          "name": "Git UI",
+          "name": "Git UI Changes",
           "type": "webview"
         }
       ]
