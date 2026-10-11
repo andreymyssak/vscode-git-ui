@@ -259,23 +259,23 @@ test('the Changes root toggles all files and the toolbar expands, collapses and 
   expect(app.saved()).toMatchObject({ groupByDirectory: false });
 });
 
-test('an empty Changes root has no inclusion checkbox or selection action', async () => {
-  const user = userEvent.setup();
-  const app = session({
+test('the Changes tree disappears when the working copy becomes clean', () => {
+  const app = session();
+
+  expect(screen.getByRole('tree', { name: 'Changes' })).toBeVisible();
+  app.emit({
     ...initialState(),
     repositories: [
       { ...repository, changes: { kind: 'ready', items: [] }, checked: [] },
     ],
   });
-  const root = screen.getByRole('treeitem', { name: 'Changes' });
+  expect(screen.getByText('No changes.')).toBeVisible();
+  expect(screen.queryByRole('tree', { name: 'Changes' })).toBeNull();
+  expect(screen.getByRole('textbox', { name: 'Commit message' })).toBeVisible();
 
-  expect(within(root).queryByRole('checkbox')).toBeNull();
-  expect(root).not.toHaveAttribute('aria-checked');
-  await user.click(root);
-  await user.keyboard(' ');
-  expect(app.requests.filter((request) => request.kind === 'check')).toEqual(
-    [],
-  );
+  app.emit(initialState());
+  expect(screen.queryByText('No changes.')).toBeNull();
+  expect(screen.getByRole('tree', { name: 'Changes' })).toBeVisible();
 });
 
 test('commit message tools group Amend, history and generation above the editor', async () => {

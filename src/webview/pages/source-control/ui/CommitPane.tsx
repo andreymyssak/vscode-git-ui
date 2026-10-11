@@ -147,105 +147,111 @@ export function CommitPane({
             {repository.changes.kind === 'ready' && !files.length && (
               <p className={styles.empty}>No changes.</p>
             )}
-            <ChangeTree
-              files={files}
-              pathLabel={repository.pathLabel}
-              hoverDelay={hoverDelay}
-              label="Changes"
-              root="Changes"
-              groupByDirectory={groupByDirectory}
-              reveal={
-                reveal?.repositoryId === repository.info.id ? reveal : null
-              }
-              checked={checked}
-              collapsed={collapsed}
-              disabled={disabled}
-              fileKey={(file) => file.path}
-              folderKey={(path) =>
-                folderKey(repository.info.id, 'working', path)
-              }
-              onCollapse={onCollapse}
-              onCheck={(items, checked) => {
-                if (!disabled)
+            {files.length > 0 && (
+              <ChangeTree
+                files={files}
+                pathLabel={repository.pathLabel}
+                hoverDelay={hoverDelay}
+                label="Changes"
+                root="Changes"
+                groupByDirectory={groupByDirectory}
+                reveal={
+                  reveal?.repositoryId === repository.info.id ? reveal : null
+                }
+                checked={checked}
+                collapsed={collapsed}
+                disabled={disabled}
+                fileKey={(file) => file.path}
+                folderKey={(path) =>
+                  folderKey(repository.info.id, 'working', path)
+                }
+                onCollapse={onCollapse}
+                onCheck={(items, checked) => {
+                  if (!disabled)
+                    bridge.send({
+                      kind: 'check',
+                      repositoryId: repository.info.id,
+                      paths: items.map((file) => file.path),
+                      checked,
+                    });
+                }}
+                onOpen={(file) =>
                   bridge.send({
-                    kind: 'check',
+                    kind: 'open-working',
                     repositoryId: repository.info.id,
-                    paths: items.map((file) => file.path),
-                    checked,
-                  });
-              }}
-              onOpen={(file) =>
-                bridge.send({
-                  kind: 'open-working',
-                  repositoryId: repository.info.id,
-                  path: file.path,
-                  index: !file.working && file.staged,
-                })
-              }
-              context={(file, selected) =>
-                JSON.stringify({
-                  webviewSection: 'working-change',
-                  preventDefaultContextMenuItems: true,
-                  repositoryId: repository.info.id,
-                  path: file.path,
-                  paths: selected.map((item) => item.path),
-                  copyPaths: selected.map((item) => item.path),
-                  staged: selected.some((item) => item.staged),
-                  working: selected.every((item) => item.working),
-                  conflict: selected.some(
-                    (item) =>
-                      fileDecoration(item.status, item.untracked).kind ===
-                      'conflict',
-                  ),
-                  changeSelectionCount: selected.length,
-                  index: !file.working && file.staged,
-                })
-              }
-              folderContext={(path, selected) =>
-                JSON.stringify({
-                  webviewSection: 'working-change',
-                  preventDefaultContextMenuItems: true,
-                  repositoryId: repository.info.id,
-                  path,
-                  paths: selected.map((file) => file.path),
-                  copyPaths: path ? [path] : selected.map((file) => file.path),
-                  staged: selected.some((file) => file.staged),
-                  working: selected.every((file) => file.working),
-                  conflict: selected.some(
-                    (file) =>
-                      fileDecoration(file.status, file.untracked).kind ===
-                      'conflict',
-                  ),
-                  changeSelectionCount: selected.length,
-                })
-              }
-              actions={(file) =>
-                file.working &&
-                fileDecoration(file.status, file.untracked).kind !==
-                  'conflict' ? (
-                  <ActionButton
-                    label="Discard Changes"
-                    icon="discard"
-                    disabled={disabled}
-                    onClick={() =>
-                      bridge.send({
-                        kind: 'discard-working',
-                        repositoryId: repository.info.id,
-                        path: file.path,
-                      })
-                    }
-                  />
-                ) : null
-              }
-              decoration={(file) => fileDecoration(file.status, file.untracked)}
-              folderDecoration={(files) =>
-                folderDecoration(
-                  files.map((file) =>
-                    fileDecoration(file.status, file.untracked),
-                  ),
-                )
-              }
-            />
+                    path: file.path,
+                    index: !file.working && file.staged,
+                  })
+                }
+                context={(file, selected) =>
+                  JSON.stringify({
+                    webviewSection: 'working-change',
+                    preventDefaultContextMenuItems: true,
+                    repositoryId: repository.info.id,
+                    path: file.path,
+                    paths: selected.map((item) => item.path),
+                    copyPaths: selected.map((item) => item.path),
+                    staged: selected.some((item) => item.staged),
+                    working: selected.every((item) => item.working),
+                    conflict: selected.some(
+                      (item) =>
+                        fileDecoration(item.status, item.untracked).kind ===
+                        'conflict',
+                    ),
+                    changeSelectionCount: selected.length,
+                    index: !file.working && file.staged,
+                  })
+                }
+                folderContext={(path, selected) =>
+                  JSON.stringify({
+                    webviewSection: 'working-change',
+                    preventDefaultContextMenuItems: true,
+                    repositoryId: repository.info.id,
+                    path,
+                    paths: selected.map((file) => file.path),
+                    copyPaths: path
+                      ? [path]
+                      : selected.map((file) => file.path),
+                    staged: selected.some((file) => file.staged),
+                    working: selected.every((file) => file.working),
+                    conflict: selected.some(
+                      (file) =>
+                        fileDecoration(file.status, file.untracked).kind ===
+                        'conflict',
+                    ),
+                    changeSelectionCount: selected.length,
+                  })
+                }
+                actions={(file) =>
+                  file.working &&
+                  fileDecoration(file.status, file.untracked).kind !==
+                    'conflict' ? (
+                    <ActionButton
+                      label="Discard Changes"
+                      icon="discard"
+                      disabled={disabled}
+                      onClick={() =>
+                        bridge.send({
+                          kind: 'discard-working',
+                          repositoryId: repository.info.id,
+                          path: file.path,
+                        })
+                      }
+                    />
+                  ) : null
+                }
+                decoration={(file) =>
+                  fileDecoration(file.status, file.untracked)
+                }
+                folderDecoration={(files) =>
+                  folderDecoration(
+                    files.map((file) =>
+                      fileDecoration(file.status, file.untracked),
+                    ),
+                  )
+                }
+              />
+            )}
           </div>
         </>
       )}
