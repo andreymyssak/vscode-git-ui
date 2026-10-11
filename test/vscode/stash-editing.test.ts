@@ -91,6 +91,7 @@ it('silently stashes as Changes without using or clearing the commit draft, then
     await name.fill('My saved changes');
     await name.press('Enter');
     await renaming;
+    await expect(name).toBeHidden();
     const renamed = frame.getByRole('region', {
       name: 'My saved changes',
       exact: true,
@@ -115,7 +116,10 @@ it('silently stashes as Changes without using or clearing the commit draft, then
 
     await expect(file).toBeVisible();
     await expect(file.getByRole('checkbox')).toBeEnabled();
-    await file.click({ button: 'right' });
+    await file.focus();
+    await expect(file).toBeFocused();
+    // Open the native menu from the focused row after quick input closes.
+    await file.press('Shift+F10');
     await expect(
       page.getByRole('menuitem', { name: /Apply Selected Files/ }),
     ).toBeVisible();

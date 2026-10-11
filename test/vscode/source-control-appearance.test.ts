@@ -24,24 +24,30 @@ async function typography(label: Locator) {
   });
 }
 
-async function hoverAppearance(hover: Locator, contents: Locator) {
-  return {
-    ...(await typography(hover)),
-    ...(await hover.evaluate((element) => {
-      const style = getComputedStyle(element);
+async function hoverSnapshot(hover: Locator, contentsSelector?: string) {
+  return hover.evaluate((element, contentsSelector) => {
+    const style = getComputedStyle(element);
+    const contents = contentsSelector
+      ? element.querySelector(contentsSelector)
+      : element;
 
-      return {
+    if (!contents) throw new Error('Hover contents must be rendered.');
+
+    return {
+      text: (element as HTMLElement).innerText,
+      appearance: {
+        fontFamily: style.fontFamily,
+        fontSize: style.fontSize,
+        fontWeight: style.fontWeight,
         lineHeight: style.lineHeight,
         borderRadius: style.borderRadius,
         borderColor: style.borderColor,
         background: style.backgroundColor,
         color: style.color,
-      };
-    })),
-    padding: await contents.evaluate(
-      (element) => getComputedStyle(element).padding,
-    ),
-  };
+        padding: getComputedStyle(contents).padding,
+      },
+    };
+  }, contentsSelector);
 }
 
 async function folderBadge(label: Locator, native: boolean) {
@@ -233,13 +239,14 @@ describe('Source Control appearance', () => {
           const customHover = frame.getByRole('tooltip');
 
           await expect(customHover).toBeVisible();
+          const snapshot = await hoverSnapshot(customHover);
+
           comparisons.push({
             name,
             path,
             theme: theme.name,
             typography: await typography(customLabel),
-            text: await customHover.innerText(),
-            appearance: await hoverAppearance(customHover, customHover),
+            ...snapshot,
             badge:
               (await customRow.getAttribute('aria-expanded')) !== null
                 ? await folderBadge(customRow, false)
@@ -298,30 +305,29 @@ describe('Source Control appearance', () => {
         await page.locator('.scm-view .monaco-list').first().focus();
         await page.mouse.move(0, 0);
         await revealNativeLabel(page, nativeLabel);
+        const labelTypography = await typography(nativeLabel);
+        const badge =
+          comparison.badge !== undefined
+            ? await folderBadge(nativeLabel, true)
+            : undefined;
+
         // Use the native keyboard action to avoid losing a mouse hover during theme redraws.
         await vscode.commands.executeCommand('list.showHover');
         const nativeHover = page
           .locator('.monaco-hover.workbench-hover')
           .filter({ visible: true });
 
-        await expect(nativeHover).toHaveCount(1);
-        await expect(nativeHover).toContainText(
-          join(fixture.root, comparison.path),
-        );
+        // Read transient native hover contents and styles in one DOM snapshot.
+        const snapshot = await hoverSnapshot(nativeHover, '.hover-contents');
+
+        assert.ok(snapshot.text.includes(join(fixture.root, comparison.path)));
         native.push({
           name: comparison.name,
           path: comparison.path,
           theme: comparison.theme,
-          typography: await typography(nativeLabel),
-          text: await nativeHover.innerText(),
-          appearance: await hoverAppearance(
-            nativeHover,
-            nativeHover.locator('.hover-contents'),
-          ),
-          badge:
-            comparison.badge !== undefined
-              ? await folderBadge(nativeLabel, true)
-              : undefined,
+          typography: labelTypography,
+          ...snapshot,
+          badge,
         });
         await page.keyboard.press('Escape');
         await page.mouse.move(0, 0);
