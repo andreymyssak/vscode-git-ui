@@ -7,6 +7,7 @@ import type {
   Selection,
   WorktreeInfo,
 } from '../../shared/model';
+import type { GitAdapter } from '../git/adapter';
 
 export interface FileHandle {
   sha: string;
@@ -102,4 +103,18 @@ export class QuerySession {
     this.repositoryInfo = null;
     this.worktrees.clear();
   }
+}
+
+export function getRepository(
+  adapter: GitAdapter | null,
+  id: string,
+): RepositoryInfo {
+  const repository = adapter
+    ?.repositories()
+    .find((candidate) => candidate.id === id);
+
+  if (!repository)
+    throw new Error('Repository is no longer available. Refresh the view.');
+
+  return repository;
 }

@@ -5,6 +5,7 @@ import * as vscode from 'vscode';
 
 import { getGitApi } from '../../src/extension/git/api';
 import { PanelController } from '../../src/extension/panel/controller';
+import { commandId, EXTENSION_ID } from '../../src/shared/extension-identity';
 import type { PanelBody } from '../../src/shared/messages';
 
 describe('native setup', () => {
@@ -32,6 +33,16 @@ describe('native setup', () => {
         })
         .toBe(true);
       await assert.rejects(() => getGitApi(), /Enable/);
+      await vscode.extensions.getExtension(EXTENSION_ID)?.activate();
+      for (const command of [
+        'annotate-blame',
+        'close-blame',
+        'open-blame-commit',
+      ] as const)
+        assert.equal(
+          await vscode.commands.executeCommand(commandId(command)),
+          false,
+        );
       const messages: PanelBody[] = [];
 
       controller = new PanelController({

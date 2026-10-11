@@ -407,6 +407,23 @@
         "title": "Delete Selected Files…",
         "category": "Git UI",
         "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
+      },
+      {
+        "command": "gitUI.annotate-blame",
+        "title": "Annotate with Git Blame",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && config.git.enabled && gitOpenRepositoryCount > 0 && (resourceScheme == file || resourceScheme == git)"
+      },
+      {
+        "command": "gitUI.close-blame",
+        "title": "Close Git Blame",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && config.git.enabled && gitOpenRepositoryCount > 0 && (resourceScheme == file || resourceScheme == git)"
+      },
+      {
+        "command": "gitUI.open-blame-commit",
+        "title": "Open Blame Commit in Git UI",
+        "enablement": "isWorkspaceTrusted && config.git.enabled"
       }
     ],
     "menus": {
@@ -713,6 +730,18 @@
         {
           "command": "gitUI.delete-stash-files",
           "when": "false"
+        },
+        {
+          "command": "gitUI.annotate-blame",
+          "when": "isWorkspaceTrusted && config.git.enabled && gitOpenRepositoryCount > 0 && (resourceScheme == file || resourceScheme == git) && !gitUI.blame-enabled"
+        },
+        {
+          "command": "gitUI.close-blame",
+          "when": "isWorkspaceTrusted && config.git.enabled && gitOpenRepositoryCount > 0 && (resourceScheme == file || resourceScheme == git) && gitUI.blame-enabled"
+        },
+        {
+          "command": "gitUI.open-blame-commit",
+          "when": "false"
         }
       ],
       "scm/resourceState/context": [
@@ -720,6 +749,30 @@
           "command": "gitUI.show-changes",
           "when": "scmProvider == git",
           "group": "3_git_ui@1"
+        }
+      ],
+      "editor/lineNumber/context": [
+        {
+          "command": "gitUI.annotate-blame",
+          "when": "isWorkspaceTrusted && config.git.enabled && gitOpenRepositoryCount > 0 && (resourceScheme == file || resourceScheme == git) && !gitUI.blame-enabled",
+          "group": "gitUI_blame@1"
+        },
+        {
+          "command": "gitUI.close-blame",
+          "when": "isWorkspaceTrusted && config.git.enabled && gitOpenRepositoryCount > 0 && (resourceScheme == file || resourceScheme == git) && gitUI.blame-enabled",
+          "group": "gitUI_blame@1"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "gitUI.annotate-blame",
+          "when": "isWorkspaceTrusted && config.git.enabled && gitOpenRepositoryCount > 0 && (resourceScheme == file || resourceScheme == git) && !gitUI.blame-enabled",
+          "group": "gitUI_blame@1"
+        },
+        {
+          "command": "gitUI.close-blame",
+          "when": "isWorkspaceTrusted && config.git.enabled && gitOpenRepositoryCount > 0 && (resourceScheme == file || resourceScheme == git) && gitUI.blame-enabled",
+          "group": "gitUI_blame@1"
         }
       ]
     }

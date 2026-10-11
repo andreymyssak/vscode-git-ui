@@ -10,7 +10,7 @@ import type { PanelBody, RequestBody, Result } from '../../src/shared/messages';
 import { commitWithDate, createFixture } from '../fixtures/repository';
 
 describe('native navigation', () => {
-  it('reveals distant targets with progress and preserves scope when a scope change is declined', async () => {
+  it('reveals distant targets and preserves scope when a scope change is declined', async () => {
     const fixture = await createFixture({
       prefix: 'git-ui-native navigation ',
     });
@@ -55,7 +55,6 @@ describe('native navigation', () => {
       const adapter = await createGitAdapter();
       const id = vscode.Uri.file(fixture.root).toString();
       const sent: Result<PanelBody>[] = [];
-      const progress: number[] = [];
       let accept = false;
       let picks = 0;
 
@@ -74,11 +73,6 @@ describe('native navigation', () => {
           return refs.find((r) => r.kind === 'tag')?.id ?? null;
         },
         offerNavigation: async () => accept,
-        navigationProgress: async (work) => {
-          await work(new AbortController().signal, (count) =>
-            progress.push(count),
-          );
-        },
       });
       await controller.selectRepository(id);
       const request = async (body: RequestBody) => {
@@ -96,7 +90,6 @@ describe('native navigation', () => {
       };
 
       await request({ kind: 'go-to', input: original });
-      assert.ok(progress.some((n) => n > 200));
       assert.ok(
         sent.some((m) => m.body.kind === 'reveal' && m.body.sha === original),
       );

@@ -6,6 +6,7 @@ import {
   LOG_VIEW_ID,
   SNAPSHOT_DOCUMENT_SCHEME,
 } from '../shared/extension-identity';
+import { registerBlame } from './native/blame-commands';
 import { EmptyDocumentProvider } from './native/empty-document';
 import { SnapshotDocumentProvider } from './native/snapshot-document';
 import { registerSourceControlViews } from './native/source-control-views';
@@ -17,6 +18,9 @@ export function activate(context: vscode.ExtensionContext): void {
     context.extensionUri,
     context.globalStorageUri,
   );
+
+  context.subscriptions.push(provider);
+  registerBlame(context, provider);
 
   for (const kind of [
     'update-branch',

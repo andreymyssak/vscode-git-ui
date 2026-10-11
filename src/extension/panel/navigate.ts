@@ -12,12 +12,6 @@ import type { QuerySession } from './queries';
 export interface NavigationPrompts {
   pickReference?: (references: Reference[]) => Promise<string | null>;
   offerNavigation?: (decision: NavigationDecision) => Promise<boolean>;
-  navigationProgress?: (
-    work: (
-      signal: AbortSignal,
-      progress: (count: number) => void,
-    ) => Promise<void>,
-  ) => Promise<void>;
 }
 
 interface NavigationResult {
@@ -37,15 +31,23 @@ export class PanelNavigator {
     private readonly prompts: NavigationPrompts,
   ) {}
 
+  cancel(): void {
+    this.navigationSequence++;
+  }
+
   async navigate(
     id: string,
     input: string,
     query: HistoryInput,
     apply: (result: NavigationResult, isLatest: () => boolean) => Promise<void>,
+    options: { confirmScopeChange: boolean; isCurrent?: () => boolean } = {
+      confirmScopeChange: true,
+    },
   ): Promise<void> {
     const generation = this.session.generation;
     const sequence = ++this.navigationSequence;
-    const isLatest = () => sequence === this.navigationSequence;
+    const isLatest = () =>
+      sequence === this.navigationSequence && (options.isCurrent?.() ?? true);
     const current = () => this.session.current(id, generation) && isLatest();
 
     try {
@@ -69,67 +71,60 @@ export class PanelNavigator {
       }
 
       const commit = target.commit;
-      const run = async (
-        signal: AbortSignal,
-        progress: (count: number) => void,
-      ): Promise<void> => {
-        const scan = async (
-          input: HistoryInput,
-        ): Promise<HistoryPage | null> => {
-          const commits: HistoryPage['commits'] = [];
-          let cursor: string | null = null;
+      const signal = this.session.abort.signal;
+      const scan = async (input: HistoryInput): Promise<HistoryPage | null> => {
+        const commits: HistoryPage['commits'] = [];
+        let cursor: string | null = null;
 
-          do {
-            signal.throwIfAborted();
-            this.session.abort.signal.throwIfAborted();
-            if (!current()) return null;
-            const page = await this.adapter.history(
-              id,
-              { ...input, cursor },
-              signal,
-            );
+        do {
+          signal.throwIfAborted();
+          this.session.abort.signal.throwIfAborted();
+          if (!current()) return null;
+          const page = await this.adapter.history(
+            id,
+            { ...input, cursor },
+            signal,
+          );
 
-            commits.push(...page.commits);
-            progress(commits.length);
-            if (page.commits.some((item) => item.sha === commit.sha))
-              return { ...page, commits };
-            cursor = page.nextCursor;
-          } while (cursor);
+          commits.push(...page.commits);
+          if (page.commits.some((item) => item.sha === commit.sha))
+            return { ...page, commits };
+          cursor = page.nextCursor;
+        } while (cursor);
 
-          return null;
-        };
-
-        let page = this.session.commits.has(commit.sha)
-          ? null
-          : await scan(query);
-        const inQuery = this.session.commits.has(commit.sha) || page !== null;
-        const allPage = inQuery
-          ? null
-          : await scan({ scope: { kind: 'all' }, text: '', cursor: null });
-
-        if (!current()) return;
-        const decision = planNavigation(target, {
-          inQuery,
-          inAll: allPage !== null,
-          scope: query.scope,
-        });
-        const replace = decision.kind !== 'reveal';
-        let nextInput = query;
-
-        if (replace) {
-          if (!(await this.prompts.offerNavigation?.(decision)) || !current())
-            return;
-          nextInput = { scope: decision.scope, text: '', cursor: null };
-          page = allPage ?? (await scan(nextInput));
-          if (!page || !current()) return;
-        }
-
-        await apply({ commit, page, input: nextInput, replace }, isLatest);
+        return null;
       };
 
-      if (this.prompts.navigationProgress)
-        await this.prompts.navigationProgress(run);
-      else await run(this.session.abort.signal, () => {});
+      let page = this.session.commits.has(commit.sha)
+        ? null
+        : await scan(query);
+      const inQuery = this.session.commits.has(commit.sha) || page !== null;
+      const allPage = inQuery
+        ? null
+        : await scan({ scope: { kind: 'all' }, text: '', cursor: null });
+
+      if (!current()) return;
+      const decision = planNavigation(target, {
+        inQuery,
+        inAll: allPage !== null,
+        scope: query.scope,
+      });
+      const replace = decision.kind !== 'reveal';
+      let nextInput = query;
+
+      if (replace) {
+        if (
+          (options.confirmScopeChange &&
+            !(await this.prompts.offerNavigation?.(decision))) ||
+          !current()
+        )
+          return;
+        nextInput = { scope: decision.scope, text: '', cursor: null };
+        page = allPage ?? (await scan(nextInput));
+        if (!page || !current()) return;
+      }
+
+      await apply({ commit, page, input: nextInput, replace }, isLatest);
     } catch (error) {
       if (isLatest()) throw error;
     }

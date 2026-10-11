@@ -206,6 +206,7 @@ describe('private package', () => {
 
           assert.ok(bounds);
           const before = await widths();
+          const side = name.startsWith('Resize Commit') ? 0 : 1;
 
           await frame.page().mouse.down();
           try {
@@ -219,11 +220,12 @@ describe('private package', () => {
             await frame
               .page()
               .mouse.move(bounds.x + 2 - 10, bounds.y + 12, { steps: 5 });
+            await expect
+              .poll(async () => (await widths())[side])
+              .toBeCloseTo(before[side]! - 10, 0);
           } finally {
             await frame.page().mouse.up();
           }
-
-          const side = name.startsWith('Resize Commit') ? 0 : 1;
 
           await expect
             .poll(async () => (await widths())[side])

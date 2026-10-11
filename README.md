@@ -2,43 +2,47 @@
 
 [![MIT license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE.txt)
 
-**Finally, a proper Git UI for VS Code.**
+**Finally, a proper Git UI for VS Code. Completely free and open source. No subscriptions or paid tiers.**
 
-Git UI is a free, focused alternative to [GitLens](https://github.com/gitkraken/vscode-gitlens) for browsing history, managing branches and worktrees, and inspecting changes. It uses familiar VS Code styling, follows your chosen theme, and opens file comparisons in VS Code's native diff editor.
+Git UI helps you browse history, commit the files you choose, manage stashes, and trace code with Git Blame. It follows your VS Code theme and opens comparisons in the native diff editor.
 
 Inspired by the Git tool window in JetBrains' [IntelliJ IDEA Community Edition](https://github.com/JetBrains/intellij-community).
 
-**Completely free and open source. No subscriptions or paid tiers.**
+## Commit the files you choose
+
+![Git UI Changes with two files checked for a commit, two files left unchecked, and the selected file open in VS Code's diff editor](assets/readme/changes.png)
+
+### Keep unfinished work in stashes
+
+![The Stashes tab with named stashes, their creation times, a checked saved file, and its native diff](assets/readme/stashes.png)
+
+## Browse history and inspect changes
 
 ![Demo of commit selection, opening a changed file in VS Code's diff editor, history search, and worktrees in Git UI](assets/readme/browsing.gif)
 
-## What you can do
+## Trace a line back to its commit
 
-- **Explore history.** Browse local branches, remote branches, and tags. Filter commits by text, revision, author, or date.
-- **Inspect changes.** Select a commit to see its message and files. Compare merge commits with each parent and open file diffs in the editor.
-- **Choose what to save.** Check files in Source Control's Git UI Changes section, then commit or stash them without manually staging. Unchecked changes stay in place.
-- **Browse stashes.** Inspect saved Git stashes, preview file diffs, and apply a whole stash or selected files. Restoring keeps the stash for reuse; delete it separately when finished.
-- **Manage branches.** Check out, create, rename, delete, update, merge, or rebase. Restore an accidentally deleted branch from its notification.
-- **Work with commits.** Cherry-pick, edit messages, squash, or drop eligible commits. Create a branch or tag from a commit.
-- **Use worktrees.** Create a working folder for a branch, open it in this window or a new one, and remove it when finished.
-
-Branch, commit, and worktree lists support multiple selection. Use VS Code's Source Control and editors to resolve conflicts.
+![Git Blame dates and authors beside syntax-highlighted code, with a clicked annotation's commit selected in Git UI and its originating file highlighted in the changed-files list](assets/readme/blame.png)
 
 ## Fits your VS Code theme
 
 The panel follows your VS Code theme. Here it is in Dark Modern:
-
 ![Git UI in VS Code's Dark Modern theme, showing branches, a commit graph, and changed files](assets/readme/log-dark.png)
 
 And in Light Modern:
-
 ![Git UI in VS Code's Light Modern theme](assets/readme/log-light.png)
 
-## Open Git UI
+## More ways to work with Git
 
-After installing Git UI, open a Git repository in VS Code. Show the bottom panel and select the **Git UI** tab. Your branches and commit history load automatically.
+- Create, check out, rename, delete, update, merge, or rebase branches. Restore an accidentally deleted branch from its notification.
+- Cherry-pick commits, edit messages, squash, or drop eligible commits. Create a branch or tag from a commit.
+- Create a worktree for another branch, open it in this window or a new one, and remove it when finished.
 
-In Source Control, **Git UI Changes** has **Commit** and **Stashes** tabs. Check the files you want to save, then enter a message and commit, or use the toolbar to stash them. The Stashes tab shows saved Git stashes and their files. Clicking a file opens its diff in the editor. You can hide the built-in Changes view if you prefer Git UI.
+Branch, commit, and worktree lists support multiple selection. Use VS Code's Source Control and editors to resolve conflicts.
+
+## Get started
+
+Install Git UI and open a Git repository in VS Code. The **Git UI** tab in the bottom panel loads your branches and history automatically. In Source Control, expand **Git UI Changes** to find the **Commit** and **Stashes** tabs. You can hide the built-in Changes view if you prefer the checkbox workflow.
 
 ## Your repositories stay yours
 

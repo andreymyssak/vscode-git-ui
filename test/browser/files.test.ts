@@ -33,6 +33,66 @@ async function showChangedFiles(page: Page, files = changedFiles) {
   }, files);
 }
 
+test('a host file selection expands its folders and scrolls the selected row into view', async ({
+  page,
+}) => {
+  await showChangedFiles(page, [
+    ...Array.from({ length: 100 }, (_, index) => ({
+      id: `other-${index}`,
+      status: 'modified' as const,
+      oldPath: `aa/file-${String(index).padStart(3, '0')}.ts`,
+      newPath: `aa/file-${String(index).padStart(3, '0')}.ts`,
+    })),
+    {
+      id: 'readme',
+      status: 'modified',
+      oldPath: 'zz/README.md',
+      newPath: 'zz/README.md',
+    },
+    {
+      id: 'architecture',
+      status: 'modified',
+      oldPath: 'zz/docs/architecture.md',
+      newPath: 'zz/docs/architecture.md',
+    },
+  ]);
+  const folder = page.getByRole('treeitem', {
+    name: 'zz 2 files',
+    exact: true,
+  });
+
+  await folder.click();
+  await expect(folder).toHaveAttribute('aria-expanded', 'false');
+  await page.locator('#files').evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  await page.evaluate(() => {
+    const request = window.__requests.at(-1)!;
+
+    window.__deliver({
+      ...request,
+      body: {
+        kind: 'selection',
+        sha: '1'.padStart(40, '0'),
+        parentSha: 'a'.repeat(40),
+        filePath: 'zz/docs/architecture.md',
+        anchor: { sha: '1'.padStart(40, '0'), offset: 0 },
+      },
+    });
+  });
+  const selected = page.getByRole('treeitem', {
+    name: 'Modified · architecture.md',
+    exact: true,
+  });
+
+  await expect(folder).toHaveAttribute('aria-expanded', 'true');
+  await expect(selected).toHaveAttribute('aria-selected', 'true');
+  await expect(selected).toBeInViewport();
+  expect(
+    await page.locator('#files').evaluate((element) => element.scrollTop),
+  ).toBeGreaterThan(100);
+});
+
 test('Log folders show themed status dots while counts stay beside the label', async ({
   page,
 }) => {

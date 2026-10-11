@@ -273,6 +273,7 @@ const validators = {
     isOptionalFilters(body.filters) &&
     isOptionalBoolean(body.restoring),
   'history-settled': () => true,
+  'focus-log': () => true,
   details: (body) => isCommit(body.commit),
   files: (body) =>
     isString(body.sha) &&

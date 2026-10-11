@@ -2,7 +2,10 @@ import { randomBytes } from 'node:crypto';
 
 import * as vscode from 'vscode';
 
-import { extensionIdentity } from '../../shared/extension-identity';
+import {
+  extensionIdentity,
+  LOG_VIEW_ID,
+} from '../../shared/extension-identity';
 import type {
   BranchActionKind,
   CommitActionKind,
@@ -31,6 +34,7 @@ import {
   showOperationInfo,
 } from '../native/operation-feedback';
 import { openWorktree } from '../native/worktrees';
+import { type CommitJump, CommitJumpQueue } from './commit-jump';
 import { PanelController } from './controller';
 import { attachFileIcons } from './file-icon-host';
 import {
@@ -41,6 +45,35 @@ import {
 } from './protocol';
 
 export class GitViewProvider implements vscode.WebviewViewProvider {
+  private readonly jumps = new CommitJumpQueue();
+  private focusSequence = 0;
+  private viewCleanup: (() => void) | null = null;
+
+  async revealCommit(
+    target: CommitJump,
+    isCurrent = () => true,
+  ): Promise<void> {
+    if (!isCurrent()) return;
+    const sequence = ++this.focusSequence;
+    const current = () => sequence === this.focusSequence && isCurrent();
+    const pending = this.jumps.enqueue(target, current);
+
+    void pending.catch(() => {});
+    try {
+      await vscode.commands.executeCommand(`${LOG_VIEW_ID}.focus`);
+    } catch (error) {
+      if (!current()) return;
+      this.jumps.detach(error);
+    }
+
+    await pending;
+  }
+
+  dispose(): void {
+    this.jumps.dispose();
+    this.viewCleanup?.();
+  }
+
   private menuAction:
     ((kind: BranchActionKind, value: unknown) => Promise<void>) | null = null;
 
@@ -255,31 +288,6 @@ export class GitViewProvider implements vscode.WebviewViewProvider {
             )) === action
           );
         },
-        navigationProgress: async (work) => {
-          await vscode.window.withProgress(
-            {
-              location: vscode.ProgressLocation.Notification,
-              title: 'Finding commit',
-              cancellable: true,
-            },
-            async (progress, token) => {
-              const abort = new AbortController();
-              const cancellation = token.onCancellationRequested(() =>
-                abort.abort(),
-              );
-
-              try {
-                await work(abort.signal, (count) =>
-                  progress.report({ message: `${count} commits checked` }),
-                );
-              } catch (error) {
-                if (!abort.signal.aborted) throw error;
-              } finally {
-                cancellation.dispose();
-              }
-            },
-          );
-        },
         initialRepositoryId,
         setupError,
       });
@@ -326,27 +334,41 @@ export class GitViewProvider implements vscode.WebviewViewProvider {
     };
 
     this.worktreeMenuAction = worktreeMenuAction;
+    const handleMessage = async (result: PanelController, message: unknown) => {
+      await result.handle(message);
+      if (
+        !closed &&
+        controller === result &&
+        parseRequest(message)?.body.kind === 'ready'
+      )
+        this.jumps.attach((target, current) =>
+          result.revealCommit(target, current),
+        );
+    };
+
     const messages = webview.onDidReceiveMessage((message: unknown) => {
       if (parseRequest(message)?.body.kind === 'ready') fileIcons.ready();
       initializing ??= initialize();
       void initializing
-        .then((result) => result.handle(message))
-        .catch((error) =>
+        .then((result) => handleMessage(result, message))
+        .catch((error) => {
+          this.jumps.detach(error);
           vscode.window.showErrorMessage(
             error instanceof Error
               ? error.message
               : `${extensionIdentity.displayName} initialization failed.`,
             'Dismiss',
-          ),
-        );
+          );
+        });
     });
     const trust = vscode.workspace.onDidGrantWorkspaceTrust(() => {
+      this.jumps.detach();
       controller?.dispose();
       controller = null;
       initializing = initialize();
       void initializing
         .then((result) =>
-          result.handle({
+          handleMessage(result, {
             requestId: 'trust',
             repositoryId: '',
             generation: 0,
@@ -359,12 +381,13 @@ export class GitViewProvider implements vscode.WebviewViewProvider {
     });
     const settings = vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration('git.enabled')) {
+        this.jumps.detach();
         controller?.dispose();
         controller = null;
         initializing = initialize();
         void initializing
           .then((result) =>
-            result.handle({
+            handleMessage(result, {
               requestId: 'settings',
               repositoryId: '',
               generation: 0,
@@ -376,9 +399,20 @@ export class GitViewProvider implements vscode.WebviewViewProvider {
           );
       }
     });
+    const visibility = view.onDidChangeVisibility(() => {
+      // Hidden views can lose their frontend while retaining this controller.
+      // Wait for the recreated frontend's ready message before another jump.
+      if (!view.visible) this.jumps.detach();
+    });
 
-    view.onDidDispose(() => {
+    const cleanup = () => {
+      if (closed) return;
       closed = true;
+      if (this.viewCleanup === cleanup) {
+        this.jumps.detach();
+        this.viewCleanup = null;
+      }
+
       if (this.menuAction === menuAction) this.menuAction = null;
       if (this.commitMenuAction === commitMenuAction)
         this.commitMenuAction = null;
@@ -389,6 +423,11 @@ export class GitViewProvider implements vscode.WebviewViewProvider {
       messages.dispose();
       trust.dispose();
       settings.dispose();
-    });
+      visibility.dispose();
+      viewDisposed?.dispose();
+    };
+
+    this.viewCleanup = cleanup;
+    const viewDisposed = view.onDidDispose(cleanup);
   }
 }

@@ -63,6 +63,9 @@ export function fixture(
     references: async () => page([]).refs,
     history: async () => page([a, b]),
     resolve: async () => ({ kind: 'missing', message: 'Missing' }),
+    blame: async () => {
+      throw new Error('Unexpected blame read.');
+    },
     changes: async (id, sha) => [
       {
         id: `${id}-${sha}`,

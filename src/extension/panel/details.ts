@@ -23,7 +23,10 @@ export class PanelDetails {
   private loadedEpoch: number | null = null;
   private pendingEpoch: number | null = null;
   private activation = 0;
-  private readonly comparisons = new Map<string, Promise<void>>();
+  private readonly comparisons = new Map<
+    string,
+    { work: Promise<void>; current: () => boolean }
+  >();
 
   constructor(
     private readonly adapter: GitAdapter,
@@ -111,13 +114,15 @@ export class PanelDetails {
     parentSha: string | null,
     epoch: number,
     requestId: string,
+    sourceCurrent = () => true,
   ): Promise<void> {
+    if (!sourceCurrent()) return;
     const id = this.session.repositoryId;
     const generation = this.session.generation;
     const key = JSON.stringify([id, generation, epoch, sha, parentSha]);
     const pending = this.comparisons.get(key);
 
-    if (pending) return pending;
+    if (pending?.current()) return pending.work;
     const loading = this.loadFiles(
       id,
       generation,
@@ -125,13 +130,16 @@ export class PanelDetails {
       parentSha,
       epoch,
       requestId,
+      sourceCurrent,
     );
+    const comparison = { work: loading, current: sourceCurrent };
 
-    this.comparisons.set(key, loading);
+    this.comparisons.set(key, comparison);
     try {
       await loading;
     } finally {
-      this.comparisons.delete(key);
+      if (this.comparisons.get(key) === comparison)
+        this.comparisons.delete(key);
     }
   }
 
@@ -142,8 +150,10 @@ export class PanelDetails {
     parentSha: string | null,
     epoch: number,
     requestId: string,
+    sourceCurrent: () => boolean,
   ): Promise<void> {
     const current = () =>
+      sourceCurrent() &&
       this.session.current(id, generation) &&
       this.session.selectedSha === sha &&
       this.session.detailEpoch === epoch;

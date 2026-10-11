@@ -105,6 +105,7 @@ export type PanelBody =
   | FileIconThemeMessage
   | { kind: 'filters'; filters: HistoryFilters }
   | { kind: 'reveal'; sha: string }
+  | { kind: 'focus-log' }
   | {
       kind: 'selection';
       sha: string | null;

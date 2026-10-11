@@ -70,7 +70,9 @@ export class PanelHistory {
     requestId: string,
     cursor: string | null,
     preserve = false,
+    sourceCurrent = () => true,
   ): Promise<HistoryPage | null> {
+    if (!sourceCurrent()) return null;
     const id = this.session.repositoryId;
     const generation = this.session.generation;
     const signal = this.session.abort.signal;
@@ -80,7 +82,8 @@ export class PanelHistory {
       filters: normalizeHistoryFilters(query.filters),
       cursor,
     };
-    const current = () => this.session.current(id, generation);
+    const current = () =>
+      this.session.current(id, generation) && sourceCurrent();
 
     if (!cursor)
       await this.publication.send(
