@@ -266,12 +266,9 @@ export class PanelController {
 
     let ownedGeneration = request.generation;
 
-    if (
-      this.commitNavigation?.hostNavigation &&
-      (request.body.kind === 'restore' || request.body.kind === 'ready')
-    )
-      return;
     const kind = request.body.kind;
+
+    if (this.commitNavigation?.hostNavigation && kind === 'restore') return;
 
     if (
       kind === 'choose-repository' ||
@@ -298,6 +295,9 @@ export class PanelController {
 
       if (!(await this.setup())) return;
       if (body.kind === 'ready') {
+        // A recreated webview needs normal initialization and saved-state restore.
+        // Provider commit jumps start only after this ready request completes.
+        if (this.commitNavigation) this.commitNavigation.hostNavigation = false;
         const repositories = this.options.adapter?.repositories() ?? [];
 
         if (!repositories.length) {

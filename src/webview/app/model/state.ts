@@ -351,6 +351,8 @@ export function reduceView(state: ViewState, event: ViewEvent): ViewState {
             ...state,
             selectedSha: body.sha,
             commitRange: singleCommitRange(body.sha),
+            selectedParentSha: null,
+            selectedFilePath: null,
             files: {},
             fileErrors: {},
             details: null,

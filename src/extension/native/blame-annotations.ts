@@ -27,6 +27,8 @@ const cancelled = (error: unknown) =>
   error instanceof Error && error.name === 'AbortError';
 
 export class BlameAnnotations implements vscode.Disposable {
+  private readonly enabledChanged = new vscode.EventEmitter<void>();
+  readonly onDidChangeEnabled = this.enabledChanged.event;
   private readonly decoration = vscode.window.createTextEditorDecorationType({
     before: {
       color: new vscode.ThemeColor('git.blame.editorDecorationForeground'),
@@ -80,6 +82,7 @@ export class BlameAnnotations implements vscode.Disposable {
           previous.editor = editor;
           this.sessions.set(editor, previous);
           this.render(previous);
+          this.enabledChanged.fire();
         }
       }),
       vscode.workspace.onDidChangeConfiguration((event) => {
@@ -108,6 +111,7 @@ export class BlameAnnotations implements vscode.Disposable {
     };
 
     this.sessions.set(editor, session);
+    this.enabledChanged.fire();
     try {
       await this.refresh(session, true);
     } catch (error) {
@@ -126,6 +130,7 @@ export class BlameAnnotations implements vscode.Disposable {
     session.repository?.dispose();
     session.snapshot = null;
     editor.setDecorations(this.decoration, []);
+    this.enabledChanged.fire();
   }
 
   isEnabled(editor: vscode.TextEditor): boolean {
@@ -343,5 +348,6 @@ export class BlameAnnotations implements vscode.Disposable {
     this.decoration.dispose();
     this.immutable.clear();
     this.commits.clear();
+    this.enabledChanged.dispose();
   }
 }

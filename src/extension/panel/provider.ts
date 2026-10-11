@@ -417,6 +417,11 @@ export class GitViewProvider implements vscode.WebviewViewProvider {
           );
       }
     });
+    const visibility = view.onDidChangeVisibility(() => {
+      // Hidden views can lose their frontend while retaining this controller.
+      // Wait for the recreated frontend's ready message before another jump.
+      if (!view.visible) this.jumps.detach();
+    });
 
     const cleanup = () => {
       if (closed) return;
@@ -436,6 +441,7 @@ export class GitViewProvider implements vscode.WebviewViewProvider {
       messages.dispose();
       trust.dispose();
       settings.dispose();
+      visibility.dispose();
       viewDisposed?.dispose();
     };
 

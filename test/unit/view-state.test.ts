@@ -3,6 +3,44 @@ import { expect, test } from 'vitest';
 import type { Scope } from '../../src/shared/model';
 import { initialView, reduceView } from '../../src/webview/app/model/state';
 
+test('revealing an older commit clears the previous diff comparison and file selection', () => {
+  const sha = 'a'.repeat(40);
+  const olderSha = 'b'.repeat(40);
+  const commit = {
+    sha,
+    parents: [olderSha],
+    message: 'Current',
+    authorName: null,
+    authorEmail: null,
+    authorDate: null,
+    commitDate: null,
+  };
+  const before = {
+    ...initialView(),
+    commits: [commit, { ...commit, sha: olderSha, parents: [] }],
+    selectedSha: sha,
+    selectedParentSha: olderSha,
+    selectedFilePath: 'sample.txt',
+    details: commit,
+    files: { [olderSha]: [] },
+  };
+  const revealed = reduceView(before, {
+    kind: 'host',
+    message: {
+      requestId: 'commit-jump',
+      repositoryId: 'one',
+      generation: 0,
+      body: { kind: 'reveal', sha: olderSha },
+    },
+  });
+
+  expect(revealed.selectedSha).toBe(olderSha);
+  expect(revealed.selectedParentSha).toBeNull();
+  expect(revealed.selectedFilePath).toBeNull();
+  expect(revealed.details).toBeNull();
+  expect(revealed.files).toEqual({});
+});
+
 test('comparison errors are parent-scoped, reject stale identities, and clear after success or selection change', () => {
   const sha = 'a'.repeat(40);
   const parent = 'b'.repeat(40);

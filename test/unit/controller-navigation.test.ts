@@ -369,6 +369,46 @@ test('a subsequent user selection cancels a slow host jump', async (t) => {
   ).toMatchObject({ commit: { sha: a } });
 });
 
+test('a recreated Log restores its saved selection after a completed host jump', async (t) => {
+  const f = fixture();
+
+  t.onTestFinished(() => f.controller.dispose());
+  f.adapter.history = async () => page([a, b]);
+  f.adapter.resolve = async () => ({
+    kind: 'commit',
+    commit: page([b]).commits[0]!,
+  });
+  await f.controller.selectRepository('one');
+  await f.controller.revealCommit({ repositoryId: 'one', sha: b });
+  f.sent.length = 0;
+  await f.controller.handle(
+    f.request({ kind: 'ready', savedRepositoryId: 'one' }, '', 0),
+  );
+  const history = f.sent.find(({ body }) => body.kind === 'history');
+
+  assert.ok(history, 'a recreated webview must receive its history');
+  await f.controller.handle(
+    f.request(
+      {
+        kind: 'restore',
+        scope: { kind: 'head' },
+        text: '',
+        selection: { sha: b, parentSha: a, filePath: null },
+        anchor: null,
+      },
+      'one',
+      history.generation,
+    ),
+  );
+  expect(
+    f.sent.find(({ body }) => body.kind === 'selection')?.body,
+  ).toMatchObject({
+    kind: 'selection',
+    sha: b,
+  });
+  expect(f.writes).toEqual([]);
+});
+
 test('late saved-state restoration cannot reset a host jump', async (t) => {
   const f = fixture();
 

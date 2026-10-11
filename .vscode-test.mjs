@@ -96,6 +96,8 @@ export default defineConfig([
     mocha: nativeMocha,
     files: [
       'dist/test/vscode/package.test.cjs',
+      'dist/test/vscode/blame.test.cjs',
+      'dist/test/vscode/blame-documents.test.cjs',
       'dist/test/vscode/changes-stashes.test.cjs',
       'dist/test/vscode/stash-editing.test.cjs',
       'dist/test/vscode/change-menus.test.cjs',
