@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { writeFile } from 'node:fs/promises';
 import { isAbsolute, relative } from 'node:path';
 
 import type { Frame } from '@playwright/test';
@@ -199,26 +200,52 @@ describe('private package', () => {
           'Resize Author and Date columns',
         ]) {
           const handle = frame.getByRole('separator', { name });
+
+          await handle.hover({ position: { x: 2, y: 12 } });
           const bounds = await handle.boundingBox();
 
           assert.ok(bounds);
           const before = await widths();
 
-          await frame
-            .page()
-            .mouse.move(bounds.x + bounds.width / 2, bounds.y + 12);
           await frame.page().mouse.down();
-          await frame
-            .page()
-            .mouse.move(bounds.x + bounds.width / 2 - 10, bounds.y + 12, {
-              steps: 5,
-            });
-          await frame.page().mouse.up();
+          try {
+            await expect
+              .poll(() =>
+                handle.evaluate((node) =>
+                  (node as HTMLElement).hasPointerCapture(1),
+                ),
+              )
+              .toBe(true);
+            await frame
+              .page()
+              .mouse.move(bounds.x + 2 - 10, bounds.y + 12, { steps: 5 });
+          } finally {
+            await frame.page().mouse.up();
+          }
+
           const side = name.startsWith('Resize Commit') ? 0 : 1;
 
           await expect
             .poll(async () => (await widths())[side])
-            .toBeCloseTo(before[side]! - 10, 0);
+            .toBeCloseTo(before[side]! - 10, 0)
+            .catch(async (error: unknown) => {
+              await writeFile(
+                '.artifacts/installed-column-resize-failure.json',
+                JSON.stringify({
+                  name,
+                  before,
+                  after: await widths(),
+                  bounds,
+                  currentBounds: await handle.boundingBox(),
+                  value: await handle.getAttribute('aria-valuenow'),
+                  minimum: await handle.getAttribute('aria-valuemin'),
+                }),
+              );
+              await frame!.page().screenshot({
+                path: '.artifacts/installed-column-resize-failure.png',
+              });
+              throw error;
+            });
         }
 
         await row.locator('[data-references]').hover();
