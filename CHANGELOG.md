@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.2.0](https://github.com/andreymyssak/vscode-git-ui/compare/v0.1.3...v0.2.0) (2026-10-11)
+
+### Features
+
+- commit selected files and manage stashes in Source Control ([a335286](https://github.com/andreymyssak/vscode-git-ui/commit/a335286bb43bfdc9cc11d357bef1e4d1de7b2e30))
+
 ## [0.1.3](https://github.com/andreymyssak/vscode-git-ui/compare/v0.1.2...v0.1.3) (2026-10-10)
 
 ### Bug Fixes

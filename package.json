@@ -1,6 +1,6 @@
 {
   "name": "git-ui-native",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "private": true,
   "description": "Finally, a proper Git UI for VS Code. Inspired by JetBrains IDEs.",
   "icon": "assets/marketplace-icon.png",
@@ -201,7 +201,7 @@
       },
       {
         "command": "gitUI.create-worktree",
-        "title": "New Worktree from Selected Branch\u2026",
+        "title": "New Worktree from Selected Branch…",
         "enablement": "refKind != tag"
       },
       {
@@ -216,11 +216,11 @@
       },
       {
         "command": "gitUI.create-branch",
-        "title": "New Branch from Here\u2026"
+        "title": "New Branch from Here…"
       },
       {
         "command": "gitUI.rename-branch",
-        "title": "Rename\u2026",
+        "title": "Rename…",
         "enablement": "refKind == local"
       },
       {
@@ -248,25 +248,25 @@
       },
       {
         "command": "gitUI.edit-commit-message",
-        "title": "Edit Commit Message\u2026",
+        "title": "Edit Commit Message…",
         "enablement": "commitCanEdit"
       },
       {
         "command": "gitUI.squash-commits",
-        "title": "Squash Commits\u2026",
+        "title": "Squash Commits…",
         "enablement": "commitCanSquash"
       },
       {
         "command": "gitUI.branch-from-commit",
-        "title": "New Branch\u2026"
+        "title": "New Branch…"
       },
       {
         "command": "gitUI.tag-from-commit",
-        "title": "New Tag\u2026"
+        "title": "New Tag…"
       },
       {
         "command": "gitUI.drop-commits",
-        "title": "Drop Commits\u2026",
+        "title": "Drop Commits…",
         "enablement": "commitCanDrop"
       },
       {
@@ -319,7 +319,7 @@
       },
       {
         "command": "gitUI.show-changes",
-        "title": "Stash Changes\u2026",
+        "title": "Stash Changes…",
         "category": "Git UI",
         "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy",
         "icon": "$(archive)"
@@ -356,7 +356,7 @@
       },
       {
         "command": "gitUI.delete-stash",
-        "title": "Delete Stash\u2026",
+        "title": "Delete Stash…",
         "category": "Git UI",
         "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
       },
@@ -374,13 +374,13 @@
       },
       {
         "command": "gitUI.commit-selected",
-        "title": "Commit Selected Files\u2026",
+        "title": "Commit Selected Files…",
         "category": "Git UI",
         "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
       },
       {
         "command": "gitUI.stash-selected",
-        "title": "Stash Selected Files\u2026",
+        "title": "Stash Selected Files…",
         "category": "Git UI",
         "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
       },
@@ -392,19 +392,19 @@
       },
       {
         "command": "gitUI.rollback-selected",
-        "title": "Rollback\u2026",
+        "title": "Rollback…",
         "category": "Git UI",
         "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
       },
       {
         "command": "gitUI.rename-stash",
-        "title": "Rename Stash\u2026",
+        "title": "Rename Stash…",
         "category": "Git UI",
         "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
       },
       {
         "command": "gitUI.delete-stash-files",
-        "title": "Delete Selected Files\u2026",
+        "title": "Delete Selected Files…",
         "category": "Git UI",
         "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
       }
