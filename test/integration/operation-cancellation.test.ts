@@ -29,10 +29,10 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-async function outcome(operation: Promise<OperationResult>) {
+async function outcome(operation: Promise<OperationResult>, timeout = 500) {
   return Promise.race([
     operation,
-    delay(500).then(() => ({ kind: 'timeout' })),
+    delay(timeout).then(() => ({ kind: 'timeout' })),
   ]);
 }
 
@@ -109,11 +109,20 @@ test.each(['reference-name', 'common-directory'] as const)(
     const helper = join(f.directory, 'held-read.cjs');
     const enteredPath = join(f.directory, 'entered.json');
     const releasePath = join(f.directory, 'release');
+    const nextEntered = deferred<void>();
+    const releaseWrite = deferred<void>();
+    const createBranch = repo.createBranch;
     let first: Promise<OperationResult> | undefined;
     let second: Promise<OperationResult> | undefined;
 
     repo.getCommit = async (hash) => ({ hash, parents: [], message: 'C' });
     repo.status = async () => {};
+
+    repo.createBranch = async (...args) => {
+      nextEntered.resolve();
+      await releaseWrite.promise;
+      await createBranch(...args);
+    };
 
     await writeFile(
       helper,
@@ -158,10 +167,17 @@ if ((${readStage === 'common-directory' ? "args.includes('--git-common-dir')" : 
         name: 'after-cancel',
       });
       expect((await outcome(first)).kind).toBe('cancelled');
-      expect((await outcome(second)).kind).toBe('success');
+      expect(
+        await Promise.race([
+          nextEntered.promise.then(() => true),
+          delay(5000).then(() => false),
+        ]),
+      ).toBe(true);
       await vi.waitFor(() => {
         expect(() => process.kill(pid, 0)).toThrow();
       });
+      releaseWrite.resolve();
+      expect((await outcome(second, 5000)).kind).toBe('success');
       expect(
         (await f.runGit(['rev-parse', 'refs/heads/after-cancel'])).trim(),
       ).toBe(f.c);
@@ -175,6 +191,7 @@ if ((${readStage === 'common-directory' ? "args.includes('--git-common-dir')" : 
         ).trim(),
       ).toBe('');
     } finally {
+      releaseWrite.resolve();
       await writeFile(releasePath, 'release');
       await Promise.allSettled([first, second]);
       vi.unstubAllEnvs();
