@@ -97,6 +97,9 @@ function runWorkbench({
       ? undefined
       : setTimeout(() => {
           timedOut = true;
+          console.error(
+            `VS Code test window exceeded its ${timeout} ms deadline.`,
+          );
           child.kill();
         }, timeout);
 
@@ -205,7 +208,9 @@ if (prepared.kind === 'restricted') {
       profile,
     ],
     env,
-    timeout: 300000,
+    // Bound the complete suite, including startup, within the 20-minute CI job.
+    // Windows can exceed five minutes without any individual test timing out.
+    timeout: 600000,
   });
   if (process.exitCode === 0)
     await runInstalledActions({
