@@ -1,10 +1,49 @@
-import { realpath } from 'node:fs/promises';
+import { access, realpath, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { expect, onTestFinished, test, vi } from 'vitest';
 
 import { createFixture } from '../fixtures/repository';
 import { createSquashFixture } from '../fixtures/squash-repository';
+
+test('fixture disposal lets the native host close a repository before its files disappear', async () => {
+  const fixture = await createFixture({ prefix: 'git-ui-native-cleanup-' });
+  const previous = globalThis.gitUiFixtureCleanup;
+  let cleaned = false;
+
+  globalThis.gitUiFixtureCleanup = async (root) => {
+    expect(root).toBe(fixture.root);
+    await access(join(root, '.git'));
+    cleaned = true;
+
+    return false;
+  };
+
+  try {
+    await fixture.dispose();
+    expect(cleaned).toBe(true);
+    await expect(access(fixture.root)).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  } finally {
+    globalThis.gitUiFixtureCleanup = previous;
+    await fixture.dispose();
+  }
+});
+
+test('native fixtures can retain retired files until their test host exits', async () => {
+  const fixture = await createFixture({ prefix: 'git-ui-native-retired-' });
+  const previous = globalThis.gitUiFixtureCleanup;
+
+  globalThis.gitUiFixtureCleanup = async () => true;
+  try {
+    await fixture.dispose();
+    await access(join(fixture.root, '.git'));
+  } finally {
+    globalThis.gitUiFixtureCleanup = previous;
+    await rm(fixture.root, { recursive: true, force: true });
+  }
+});
 
 test.each([
   {

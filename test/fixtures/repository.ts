@@ -8,6 +8,15 @@ import { gitFixtureEnvironment } from './git-environment';
 
 const execute = promisify(execFile);
 
+declare global {
+  var gitUiFixtureCleanup: ((root: string) => Promise<boolean>) | undefined;
+}
+
+export async function disposeFixtureDirectory(root: string): Promise<void> {
+  if (await globalThis.gitUiFixtureCleanup?.(root)) return;
+  await rm(root, { recursive: true, force: true, maxRetries: 5 });
+}
+
 export interface Fixture {
   root: string;
   runGit(args: string[]): Promise<string>;
@@ -54,7 +63,7 @@ export async function createFixture(options: {
     return {
       root,
       runGit,
-      dispose: () => rm(root, { recursive: true, force: true, maxRetries: 5 }),
+      dispose: () => disposeFixtureDirectory(root),
     };
   } catch (error) {
     await rm(directory, { recursive: true, force: true, maxRetries: 5 });

@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { rm } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { promisify } from 'node:util';
 
@@ -10,6 +9,7 @@ import type { GitAdapter } from '../../src/extension/git/adapter';
 import { createGitAdapter } from '../../src/extension/git/adapter';
 import { getGitApi } from '../../src/extension/git/api';
 import type { Reference } from '../../src/shared/model';
+import { disposeFixtureDirectory } from '../fixtures/repository';
 
 const execute = promisify(execFile);
 
@@ -128,7 +128,7 @@ describe('incoming-only demo branches', () => {
       );
     } finally {
       adapter?.dispose();
-      await rm(directory, { recursive: true, force: true });
+      await disposeFixtureDirectory(directory);
     }
   });
 });
