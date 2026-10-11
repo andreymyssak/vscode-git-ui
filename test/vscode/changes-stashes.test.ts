@@ -13,7 +13,8 @@ import { createFixture } from '../fixtures/repository';
 import { sourceControlFrame } from '../fixtures/source-control-view';
 
 // Git writes spawn several processes; wait for their result before fixture cleanup.
-const mutation = expect.configure({ timeout: 30000 });
+const mutationTimeout = 30000;
+const mutation = expect.configure({ timeout: mutationTimeout });
 
 async function open(fixture: Fixture): Promise<Frame> {
   const access = await getGitApi();
@@ -475,9 +476,12 @@ describe('combined Commit and Stash view', () => {
       await frame
         .getByRole('button', { name: 'Stash Silently', exact: true })
         .click();
-      await mutation
-        .poll(() => readFile(join(fixture.root, 'chosen', 'same.txt'), 'utf8'))
-        .toBe('commit one\n');
+      // Windows can temporarily lock the file while Git restores its contents.
+      await mutation(async () => {
+        expect(
+          await readFile(join(fixture.root, 'chosen', 'same.txt'), 'utf8'),
+        ).toBe('commit one\n');
+      }).toPass({ timeout: mutationTimeout });
       await settled(frame);
       const stashSha = (
         await fixture.runGit(['rev-parse', 'refs/stash'])
@@ -520,9 +524,11 @@ describe('combined Commit and Stash view', () => {
       await frame
         .getByRole('button', { name: 'Apply Stash', exact: true })
         .click();
-      await mutation
-        .poll(() => readFile(join(fixture.root, 'chosen', 'same.txt'), 'utf8'))
-        .toBe('saved one\n');
+      await mutation(async () => {
+        expect(
+          await readFile(join(fixture.root, 'chosen', 'same.txt'), 'utf8'),
+        ).toBe('saved one\n');
+      }).toPass({ timeout: mutationTimeout });
       await settled(frame);
       assert.equal(
         await readFile(
