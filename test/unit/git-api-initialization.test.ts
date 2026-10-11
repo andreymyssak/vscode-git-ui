@@ -61,3 +61,38 @@ test('an initialized API is immediately available without retaining a listener',
   expect(f.listeners.size).toBe(0);
   expect(f.counts()).toStrictEqual({ subscriptions: 0, disposals: 0 });
 });
+
+test('cancelling discovery settles the wait and removes its listener before initialization', async () => {
+  const f = fixture('uninitialized');
+  const owner = new AbortController();
+  const reason = new Error('The view closed.');
+  const wait = waitForGitInitialization(f.api, owner.signal);
+  const settled = wait.then(
+    () => ({ kind: 'ready' }),
+    (error: unknown) => ({ kind: 'cancelled', error }),
+  );
+
+  try {
+    owner.abort(reason);
+    expect(f.listeners.size).toBe(0);
+    expect(await settled).toEqual({ kind: 'cancelled', error: reason });
+    f.changeState('initialized');
+    expect(f.counts()).toStrictEqual({ subscriptions: 1, disposals: 1 });
+  } finally {
+    f.changeState('initialized');
+    await settled;
+  }
+});
+
+test('discovery normalizes a non-Error cancellation reason to an AbortError', async () => {
+  const f = fixture('uninitialized');
+  const owner = new AbortController();
+  const settled = waitForGitInitialization(f.api, owner.signal).catch(
+    (error: unknown) => error,
+  );
+
+  owner.abort('The view closed.');
+  expect(await settled).toBeInstanceOf(DOMException);
+  expect(await settled).toMatchObject({ name: 'AbortError' });
+  expect(f.listeners.size).toBe(0);
+});

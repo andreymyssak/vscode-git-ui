@@ -38,6 +38,7 @@ describe('native setup', () => {
         'annotate-blame',
         'close-blame',
         'open-blame-commit',
+        'open-current-blame-commit',
       ] as const)
         assert.equal(
           await vscode.commands.executeCommand(commandId(command)),

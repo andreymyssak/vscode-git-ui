@@ -123,6 +123,18 @@ export class GitCli {
     });
   }
 
+  runBytesWithInput(
+    repositoryId: string,
+    args: readonly string[],
+    input: Buffer,
+    signal?: AbortSignal,
+  ): Promise<Buffer> {
+    return this.executeBytes(repositoryId, args, {
+      input,
+      ...(signal ? { signal } : {}),
+    });
+  }
+
   async withTemporaryIndex<T>(
     repositoryId: string,
     callback: (index: PrivateIndex) => Promise<T>,

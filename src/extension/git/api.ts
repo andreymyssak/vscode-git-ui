@@ -10,6 +10,7 @@ import { extensionIdentity } from '../../shared/extension-identity';
 import type { RepositoryInfo } from '../../shared/model';
 import type { GitApiInitialization } from './api-initialization';
 import { waitForGitInitialization } from './api-initialization';
+import { readWithCancellation } from './read-cancellation';
 
 export interface GitRef {
   readonly type: 0 | 1 | 2;
@@ -104,7 +105,8 @@ interface GitExtension {
   getAPI(version: 1): GitAPI;
 }
 
-export async function getGitApi(): Promise<GitApiAccess> {
+export async function getGitApi(signal?: AbortSignal): Promise<GitApiAccess> {
+  signal?.throwIfAborted();
   if (!vscode.workspace.isTrusted)
     throw new Error('Trust this workspace through VS Code to use Git.');
   if (!vscode.workspace.getConfiguration('git').get<boolean>('enabled', true))
@@ -112,12 +114,12 @@ export async function getGitApi(): Promise<GitApiAccess> {
   const extension = vscode.extensions.getExtension<GitExtension>('vscode.git');
 
   if (!extension) throw new Error('Enable VS Code’s built-in Git extension.');
-  await extension.activate();
+  await readWithCancellation(() => extension.activate(), signal);
   if (!extension.exports.enabled)
     throw new Error('Enable Git in VS Code settings and install Git.');
   const api = extension.exports.getAPI(1);
 
-  await waitForGitInitialization(api);
+  await waitForGitInitialization(api, signal);
 
   return {
     api,

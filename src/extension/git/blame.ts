@@ -1,7 +1,8 @@
 import { isAbsolute, win32 } from 'node:path';
 
 import type { GitApiAccess } from './api';
-import type { BlameQuery, BlameResult } from './blame-model';
+import { decodeBlamePorcelain, utf8BlameCodec } from './blame-bytes';
+import type { BlameQuery, BlameResult, BlameTextCodec } from './blame-model';
 import { parseBlamePorcelain } from './blame-porcelain';
 import type { GitCli } from './cli';
 
@@ -36,9 +37,70 @@ function unborn(error: unknown): boolean {
   );
 }
 
+async function checkSourceEncoding(
+  query: BlameQuery,
+  cli: Pick<GitCli, 'run'>,
+  signal?: AbortSignal,
+): Promise<void> {
+  const revision = query.source.kind === 'revision';
+
+  if (
+    revision &&
+    ['utf8', 'utf8bom', 'utf-8'].includes(query.encoding ?? 'utf8')
+  )
+    return;
+  let attributes: string;
+
+  try {
+    attributes = await cli.run(
+      query.repositoryId,
+      [
+        'check-attr',
+        '-z',
+        ...(query.source.kind === 'revision'
+          ? [`--source=${query.source.sha}`]
+          : []),
+        'working-tree-encoding',
+        '--',
+        query.source.path,
+      ],
+      signal,
+    );
+  } catch (error) {
+    if (
+      revision &&
+      error instanceof Error &&
+      'stderr' in error &&
+      typeof error.stderr === 'string' &&
+      /(?:unknown|unrecognized) (?:option|switch).*source/i.test(error.stderr)
+    )
+      throw new Error(
+        'Annotating non-UTF-8 historical files requires Git 2.40 or newer to check source encoding attributes.',
+        { cause: error },
+      );
+    throw error;
+  }
+
+  const [path, name, value, ending, extra] = attributes.split('\0');
+
+  if (
+    path !== query.source.path ||
+    name !== 'working-tree-encoding' ||
+    value === undefined ||
+    ending !== '' ||
+    extra !== undefined
+  )
+    throw new Error('Git returned invalid file encoding attributes.');
+  if (value !== 'unspecified' && value !== 'unset')
+    throw new Error(
+      'Git blame does not support files transformed by working-tree-encoding.',
+    );
+}
+
 export function createBlameQueries(
   access: GitApiAccess,
-  cli: Pick<GitCli, 'run' | 'runWithInput'>,
+  cli: Pick<GitCli, 'run' | 'runBytes' | 'runBytesWithInput'>,
+  codec: BlameTextCodec = utf8BlameCodec,
 ): (query: BlameQuery, signal?: AbortSignal) => Promise<BlameResult> {
   return async (query, signal) => {
     signal?.throwIfAborted();
@@ -48,11 +110,13 @@ export function createBlameQueries(
 
     if (query.ignoreWhitespace) args.push('-w');
     const { source, repositoryId } = query;
-    let output: string;
+    const encoding = query.encoding ?? 'utf8';
+    let output: Buffer;
     let pathInHead = true;
 
     if (source.kind === 'revision') {
-      output = await cli.run(
+      await checkSourceEncoding(query, cli, signal);
+      output = await cli.runBytes(
         repositoryId,
         [...args, source.sha, '--', source.path],
         signal,
@@ -105,10 +169,14 @@ export function createBlameQueries(
         ))
       )
         return { kind: 'no-history' };
-      output = await cli.runWithInput(
+      await checkSourceEncoding(query, cli, signal);
+      const input = Buffer.from(await codec.encode(source.contents, encoding));
+
+      signal?.throwIfAborted();
+      output = await cli.runBytesWithInput(
         repositoryId,
         [...args, '--contents', '-', '--', source.path],
-        source.contents,
+        input,
         signal,
       );
       checkHead(await readHead());
@@ -117,7 +185,11 @@ export function createBlameQueries(
     signal?.throwIfAborted();
     access.repository(repositoryId);
 
-    const lines = parseBlamePorcelain(output);
+    const lines = parseBlamePorcelain(
+      await decodeBlamePorcelain(output, codec, encoding),
+    );
+
+    signal?.throwIfAborted();
 
     if (!pathInHead && !lines.some((line) => line.kind === 'committed'))
       return { kind: 'no-history' };

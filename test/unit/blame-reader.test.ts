@@ -21,30 +21,51 @@ function fixture() {
     [];
   let head = blameSha;
   let failure: Error | null = null;
+  let attributes = 'unspecified';
+  let attributeFailure: Error | null = null;
   let afterRead = () => {};
 
-  const read = createBlameQueries(squashAccess('/unused'), {
-    run: async (_id, args) => {
-      calls.push({ args, input: null });
-      if (args.includes('rev-parse')) {
+  const read = createBlameQueries(
+    squashAccess('/unused'),
+    {
+      run: async (_id, args) => {
+        calls.push({ args, input: null });
+        if (args.includes('rev-parse')) {
+          if (failure) throw failure;
+
+          return head + '\n';
+        }
+
+        if (args.includes('ls-tree')) return 'sample.txt\0';
+        if (args.includes('check-attr')) {
+          if (attributeFailure) throw attributeFailure;
+
+          return `${args.at(-1)}\0working-tree-encoding\0${attributes}\0`;
+        }
+
         if (failure) throw failure;
 
-        return head + '\n';
-      }
+        return porcelainRecord();
+      },
+      runBytes: async (_id, args) => {
+        calls.push({ args, input: null });
+        if (failure) throw failure;
 
-      if (args.includes('ls-tree')) return 'sample.txt\0';
-      if (failure) throw failure;
+        return Buffer.from(porcelainRecord());
+      },
+      runBytesWithInput: async (_id, args, input) => {
+        calls.push({ args, input });
+        if (failure) throw failure;
+        afterRead();
 
-      return porcelainRecord();
+        return Buffer.from(porcelainRecord());
+      },
     },
-    runWithInput: async (_id, args, input) => {
-      calls.push({ args, input });
-      if (failure) throw failure;
-      afterRead();
-
-      return porcelainRecord();
+    {
+      encode: async (text) => Buffer.from(text, 'latin1'),
+      decode: async (bytes) => Buffer.from(bytes).toString('latin1'),
     },
-  });
+  );
 
   return {
     read,
@@ -57,6 +78,12 @@ function fixture() {
     },
     afterRead: (value: () => void) => {
       afterRead = value;
+    },
+    setAttributes: (value: string) => {
+      attributes = value;
+    },
+    setAttributeFailure: (value: Error) => {
+      attributeFailure = value;
     },
   };
 }
@@ -103,8 +130,68 @@ describe('blame reader boundaries', () => {
         '--',
         'sample.txt',
       ],
-      input: 'first\n',
+      input: Buffer.from('first\n'),
     });
+  });
+
+  it('checks source revision attributes only for non-UTF-8 historical decoding', async () => {
+    const f = fixture();
+
+    await f.read({
+      ...contents,
+      encoding: 'iso88591',
+      source: { kind: 'revision', path: 'sample.txt', sha: blameSha },
+    });
+    expect(f.calls[0]).toEqual({
+      args: [
+        'check-attr',
+        '-z',
+        `--source=${blameSha}`,
+        'working-tree-encoding',
+        '--',
+        'sample.txt',
+      ],
+      input: null,
+    });
+    expect(f.calls[1]?.args[0]).toBe('blame');
+  });
+
+  it('rejects transformed displayed contents before supplying any stdin', async () => {
+    const f = fixture();
+
+    f.setAttributes('ISO-8859-1');
+    await expect(f.read(contents)).rejects.toThrow('working-tree-encoding');
+    expect(f.calls.some(({ input }) => input !== null)).toBe(false);
+    expect(f.calls.find(({ args }) => args[0] === 'check-attr')?.args).toEqual([
+      'check-attr',
+      '-z',
+      'working-tree-encoding',
+      '--',
+      'sample.txt',
+    ]);
+  });
+
+  it('keeps ordinary UTF-8 history readable when Git lacks source attribute support', async () => {
+    const f = fixture();
+
+    f.setAttributeFailure(
+      Object.assign(new Error('Unsupported option'), {
+        stderr: "error: unknown option `source'",
+      }),
+    );
+    await expect(
+      f.read({
+        ...contents,
+        source: { kind: 'revision', path: 'sample.txt', sha: blameSha },
+      }),
+    ).resolves.toMatchObject({ kind: 'blame' });
+    await expect(
+      f.read({
+        ...contents,
+        encoding: 'iso88591',
+        source: { kind: 'revision', path: 'sample.txt', sha: blameSha },
+      }),
+    ).rejects.toThrow('Git 2.40 or newer');
   });
 
   it('rejects a snapshot after HEAD changes during the read', async () => {

@@ -1,9 +1,25 @@
 import type { GitApiAccess, GitCommit } from '../git/api';
 import type { BlameLine, BlameQuery, BlameResult } from '../git/blame-model';
 
+interface PendingRead {
+  repositoryId: string;
+  abort: AbortController;
+  promise: Promise<BlameResult>;
+  consumers: number;
+}
+
+const abortError = (signal: AbortSignal): Error => {
+  const reason: unknown = signal.reason;
+
+  return reason instanceof Error
+    ? reason
+    : new DOMException('Blame was canceled.', 'AbortError');
+};
+
 export class BlameReadCache {
   private readonly revisions = new Map<string, readonly BlameLine[]>();
   private readonly commits = new Map<string, Promise<GitCommit>>();
+  private readonly pending = new Map<string, PendingRead>();
   private disposed = false;
 
   constructor(
@@ -14,39 +30,115 @@ export class BlameReadCache {
   ) {}
 
   async read(query: BlameQuery, signal: AbortSignal): Promise<BlameResult> {
-    const key =
-      query.source.kind === 'revision'
-        ? `${query.repositoryId}\0${query.source.sha}\0${query.source.path}\0${query.ignoreWhitespace}`
-        : null;
-    const cached = key ? this.revisions.get(key) : undefined;
+    signal.throwIfAborted();
+    if (this.disposed)
+      throw new DOMException('Blame was closed.', 'AbortError');
+    const key = `${query.repositoryId}\0${JSON.stringify([query.source, query.ignoreWhitespace, query.encoding ?? 'utf8'])}`;
+    const cached = this.revisions.get(key);
 
-    if (cached) return { kind: 'blame', lines: cached };
-    const result = await this.readBlame(query, signal);
-
-    if (
-      !this.disposed &&
-      !signal.aborted &&
-      key &&
-      result.kind === 'blame' &&
-      result.lines.length <= 100_000
-    ) {
+    if (cached) {
       this.revisions.delete(key);
-      this.revisions.set(key, result.lines);
-      while (
-        this.revisions.size > 8 ||
-        [...this.revisions.values()].reduce(
-          (sum, lines) => sum + lines.length,
-          0,
-        ) > 100_000
-      ) {
-        const oldest = this.revisions.keys().next().value;
+      this.revisions.set(key, cached);
 
-        if (oldest === undefined) break;
-        this.revisions.delete(oldest);
-      }
+      return { kind: 'blame', lines: cached };
     }
 
-    return result;
+    let pending = this.pending.get(key);
+
+    if (!pending) {
+      const abort = new AbortController();
+      const promise = (async () => this.readBlame(query, abort.signal))()
+        .then((result) => {
+          if (
+            this.pending.get(key)?.abort === abort &&
+            !abort.signal.aborted &&
+            query.source.kind === 'revision' &&
+            result.kind === 'blame'
+          )
+            this.retain(key, result.lines);
+
+          return result;
+        })
+        .finally(() => {
+          if (this.pending.get(key)?.abort === abort) this.pending.delete(key);
+        });
+
+      pending = {
+        repositoryId: query.repositoryId,
+        abort,
+        promise,
+        consumers: 0,
+      };
+      this.pending.set(key, pending);
+    }
+
+    return this.consume(key, pending, signal);
+  }
+
+  private consume(
+    key: string,
+    pending: PendingRead,
+    signal: AbortSignal,
+  ): Promise<BlameResult> {
+    pending.consumers++;
+
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const release = () => {
+        if (settled) return false;
+        settled = true;
+        signal.removeEventListener('abort', cancel);
+        pending.abort.signal.removeEventListener('abort', cancelProducer);
+        if (--pending.consumers === 0 && this.pending.get(key) === pending) {
+          this.pending.delete(key);
+          pending.abort.abort();
+        }
+
+        return true;
+      };
+
+      const cancel = () => {
+        if (release()) reject(abortError(signal));
+      };
+
+      const cancelProducer = () => {
+        if (release()) reject(abortError(pending.abort.signal));
+      };
+
+      signal.addEventListener('abort', cancel, { once: true });
+      pending.abort.signal.addEventListener('abort', cancelProducer, {
+        once: true,
+      });
+      pending.promise.then(
+        (result) => {
+          if (release()) resolve(result);
+        },
+        (error: unknown) => {
+          if (release())
+            reject(error instanceof Error ? error : new Error(String(error)));
+        },
+      );
+      if (signal.aborted) cancel();
+      else if (pending.abort.signal.aborted) cancelProducer();
+    });
+  }
+
+  private retain(key: string, lines: readonly BlameLine[]): void {
+    if (lines.length > 100_000) return;
+    this.revisions.delete(key);
+    this.revisions.set(key, lines);
+    while (
+      this.revisions.size > 8 ||
+      [...this.revisions.values()].reduce(
+        (sum, value) => sum + value.length,
+        0,
+      ) > 100_000
+    ) {
+      const oldest = this.revisions.keys().next().value;
+
+      if (oldest === undefined) break;
+      this.revisions.delete(oldest);
+    }
   }
 
   commit(
@@ -78,6 +170,12 @@ export class BlameReadCache {
   }
 
   invalidate(repositoryId?: string): void {
+    for (const [key, pending] of this.pending)
+      if (!repositoryId || pending.repositoryId === repositoryId) {
+        this.pending.delete(key);
+        pending.abort.abort();
+      }
+
     for (const cache of [this.revisions, this.commits])
       for (const key of cache.keys())
         if (!repositoryId || key.startsWith(repositoryId + '\0'))

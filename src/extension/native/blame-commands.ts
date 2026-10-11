@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { commandId } from '../../shared/extension-identity';
 import { createGitAdapter, type GitAdapter } from '../git/adapter';
 import { getGitApi } from '../git/api';
+import { readWithCancellation } from '../git/read-cancellation';
 import type { CommitJump } from '../panel/commit-jump';
 import { BlameAnnotations } from './blame-annotations';
 import { blameFileUri } from './blame-document';
@@ -62,6 +63,8 @@ export function registerBlame(
 ): void {
   let annotations: BlameAnnotations | null = null;
   let adapter: Promise<GitAdapter> | null = null;
+  let adapterOwner: AbortController | null = null;
+  const lifetime = new AbortController();
   let disposed = false;
   let commitRequest = 0;
   const updateEnabled = () => {
@@ -77,6 +80,8 @@ export function registerBlame(
   const releaseAdapter = () => {
     const previous = adapter;
 
+    adapterOwner?.abort();
+    adapterOwner = null;
     adapter = null;
     void previous?.then(
       (value) => value.dispose(),
@@ -85,10 +90,24 @@ export function registerBlame(
   };
 
   const readAdapter = async () => {
-    adapter ??= createGitAdapter().catch((error: unknown) => {
-      adapter = null;
-      throw error;
-    });
+    if (!adapter) {
+      adapterOwner = new AbortController();
+      const pending = createGitAdapter(
+        undefined,
+        undefined,
+        adapterOwner.signal,
+      ).catch((error: unknown) => {
+        if (adapter === pending) {
+          adapter = null;
+          adapterOwner = null;
+        }
+
+        throw error;
+      });
+
+      adapter = pending;
+    }
+
     const current = await adapter;
 
     if (disposed) {
@@ -104,7 +123,10 @@ export function registerBlame(
       annotations = new BlameAnnotations({
         getAccess: getGitApi,
         readBlame: async (query, signal) =>
-          (await readAdapter()).blame(query, signal),
+          (await readWithCancellation(readAdapter, signal)).blame(
+            query,
+            signal,
+          ),
         openCommit: async (target, isCurrent) => {
           await openCommit(
             {
@@ -127,7 +149,7 @@ export function registerBlame(
     isCurrent = () => !disposed,
   ): Promise<boolean> => {
     try {
-      await getGitApi();
+      await getGitApi(lifetime.signal);
       if (!isCurrent()) return false;
       await work();
 
@@ -164,7 +186,7 @@ export function registerBlame(
       const file = blameFileUri(uri);
 
       if (!file) throw new Error('This blame document is not a Git file.');
-      const access = await getGitApi();
+      const access = await getGitApi(lifetime.signal);
 
       if (!isCurrent()) return;
       const found = access.api.getRepository(file);
@@ -197,6 +219,25 @@ export function registerBlame(
     vscode.commands.registerCommand(
       commandId('close-blame'),
       (value: unknown) => run(() => annotations?.close(commandEditor(value))),
+    ),
+    vscode.commands.registerCommand(
+      commandId('open-current-blame-commit'),
+      (value: unknown) =>
+        run(async () => {
+          const editor = commandEditor(value);
+          const parsed = menuArgument.safeParse(value);
+
+          if (!annotations)
+            throw new Error(
+              'Annotate this file before opening its line commit.',
+            );
+          await annotations.openCurrentCommit(
+            editor,
+            parsed.success
+              ? parsed.data.lineNumber - 1
+              : editor.selection.active.line,
+          );
+        }),
     ),
     vscode.languages.registerHoverProvider(
       [{ scheme: 'file' }, { scheme: 'git' }],
@@ -233,6 +274,7 @@ export function registerBlame(
     }),
     new vscode.Disposable(() => {
       disposed = true;
+      lifetime.abort();
       annotations?.dispose();
       releaseAdapter();
       updateEnabled();

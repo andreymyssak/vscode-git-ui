@@ -14,6 +14,7 @@ import type {
   ResolveResult,
   WorktreeInfo,
 } from '../../shared/model';
+import { nativeBlameCodec } from '../native/blame-encoding';
 import { operationDialogs } from '../native/dialogs';
 import { getGitApi } from './api';
 import { createBlameQueries } from './blame';
@@ -82,8 +83,9 @@ export interface GitAdapter {
 export async function createGitAdapter(
   dialogs: OperationDialogs = operationDialogs,
   squash?: { runtime: SquashRuntime; storageDirectory: string },
+  signal?: AbortSignal,
 ): Promise<GitAdapter> {
-  const access = await getGitApi();
+  const access = await getGitApi(signal);
   const disposables: Disposable[] = [];
   const cli = new GitCli(access);
   const history = createHistoryQueries(access, cli);
@@ -116,10 +118,11 @@ export async function createGitAdapter(
   };
 
   await reconcileRecovery();
+  signal?.throwIfAborted();
   const operate = createOperations(access, cli, dialogs, services);
 
   return {
-    blame: createBlameQueries(access, cli),
+    blame: createBlameQueries(access, cli, nativeBlameCodec),
     invalidateHistory: (id) => history.invalidate(id),
     authors: (id, signal) => history.authors(id, signal),
     repositories: () => access.repositories(),

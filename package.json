@@ -201,7 +201,7 @@
       },
       {
         "command": "gitUI.create-worktree",
-        "title": "New Worktree from Selected Branch…",
+        "title": "New Worktree from Selected Branch\u2026",
         "enablement": "refKind != tag"
       },
       {
@@ -216,11 +216,11 @@
       },
       {
         "command": "gitUI.create-branch",
-        "title": "New Branch from Here…"
+        "title": "New Branch from Here\u2026"
       },
       {
         "command": "gitUI.rename-branch",
-        "title": "Rename…",
+        "title": "Rename\u2026",
         "enablement": "refKind == local"
       },
       {
@@ -248,25 +248,25 @@
       },
       {
         "command": "gitUI.edit-commit-message",
-        "title": "Edit Commit Message…",
+        "title": "Edit Commit Message\u2026",
         "enablement": "commitCanEdit"
       },
       {
         "command": "gitUI.squash-commits",
-        "title": "Squash Commits…",
+        "title": "Squash Commits\u2026",
         "enablement": "commitCanSquash"
       },
       {
         "command": "gitUI.branch-from-commit",
-        "title": "New Branch…"
+        "title": "New Branch\u2026"
       },
       {
         "command": "gitUI.tag-from-commit",
-        "title": "New Tag…"
+        "title": "New Tag\u2026"
       },
       {
         "command": "gitUI.drop-commits",
-        "title": "Drop Commits…",
+        "title": "Drop Commits\u2026",
         "enablement": "commitCanDrop"
       },
       {
@@ -319,7 +319,7 @@
       },
       {
         "command": "gitUI.show-changes",
-        "title": "Stash Changes…",
+        "title": "Stash Changes\u2026",
         "category": "Git UI",
         "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy",
         "icon": "$(archive)"
@@ -356,7 +356,7 @@
       },
       {
         "command": "gitUI.delete-stash",
-        "title": "Delete Stash…",
+        "title": "Delete Stash\u2026",
         "category": "Git UI",
         "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
       },
@@ -374,13 +374,13 @@
       },
       {
         "command": "gitUI.commit-selected",
-        "title": "Commit Selected Files…",
+        "title": "Commit Selected Files\u2026",
         "category": "Git UI",
         "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
       },
       {
         "command": "gitUI.stash-selected",
-        "title": "Stash Selected Files…",
+        "title": "Stash Selected Files\u2026",
         "category": "Git UI",
         "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
       },
@@ -392,19 +392,19 @@
       },
       {
         "command": "gitUI.rollback-selected",
-        "title": "Rollback…",
+        "title": "Rollback\u2026",
         "category": "Git UI",
         "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
       },
       {
         "command": "gitUI.rename-stash",
-        "title": "Rename Stash…",
+        "title": "Rename Stash\u2026",
         "category": "Git UI",
         "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
       },
       {
         "command": "gitUI.delete-stash-files",
-        "title": "Delete Selected Files…",
+        "title": "Delete Selected Files\u2026",
         "category": "Git UI",
         "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
       },
@@ -424,6 +424,12 @@
         "command": "gitUI.open-blame-commit",
         "title": "Open Blame Commit in Git UI",
         "enablement": "isWorkspaceTrusted && config.git.enabled"
+      },
+      {
+        "command": "gitUI.open-current-blame-commit",
+        "title": "Open Line Commit in Git UI",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && config.git.enabled && gitOpenRepositoryCount > 0 && (resourceScheme == file || resourceScheme == git) && gitUI.blame-enabled"
       }
     ],
     "menus": {
@@ -742,6 +748,10 @@
         {
           "command": "gitUI.open-blame-commit",
           "when": "false"
+        },
+        {
+          "command": "gitUI.open-current-blame-commit",
+          "when": "isWorkspaceTrusted && config.git.enabled && gitOpenRepositoryCount > 0 && (resourceScheme == file || resourceScheme == git) && gitUI.blame-enabled"
         }
       ],
       "scm/resourceState/context": [
@@ -761,6 +771,11 @@
           "command": "gitUI.close-blame",
           "when": "isWorkspaceTrusted && config.git.enabled && gitOpenRepositoryCount > 0 && (resourceScheme == file || resourceScheme == git) && gitUI.blame-enabled",
           "group": "gitUI_blame@1"
+        },
+        {
+          "command": "gitUI.open-current-blame-commit",
+          "when": "isWorkspaceTrusted && config.git.enabled && gitOpenRepositoryCount > 0 && (resourceScheme == file || resourceScheme == git) && gitUI.blame-enabled",
+          "group": "gitUI_blame@2"
         }
       ],
       "editor/context": [
@@ -773,6 +788,11 @@
           "command": "gitUI.close-blame",
           "when": "isWorkspaceTrusted && config.git.enabled && gitOpenRepositoryCount > 0 && (resourceScheme == file || resourceScheme == git) && gitUI.blame-enabled",
           "group": "gitUI_blame@1"
+        },
+        {
+          "command": "gitUI.open-current-blame-commit",
+          "when": "isWorkspaceTrusted && config.git.enabled && gitOpenRepositoryCount > 0 && (resourceScheme == file || resourceScheme == git) && gitUI.blame-enabled",
+          "group": "gitUI_blame@2"
         }
       ]
     }

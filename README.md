@@ -22,7 +22,9 @@ Inspired by the Git tool window in JetBrains' [IntelliJ IDEA Community Edition](
 
 ## Trace a line back to its commit
 
-![Git Blame dates and authors beside syntax-highlighted code, with a clicked annotation's commit selected in Git UI and its originating file highlighted in the changed-files list](assets/readme/blame.png)
+![Git Blame dates and authors beside syntax-highlighted code, with the line's commit selected in Git UI and its originating file highlighted in the changed-files list](assets/readme/blame.png)
+
+Choose **Annotate with Git Blame** from the editor's line-number menu. Open a commit through the annotation's hover link or **Open Line Commit in Git UI** in the editor menu. Git UI selects the exact commit and its originating file in the Log while you keep the native editor's syntax highlighting and editing tools.
 
 ## Fits your VS Code theme
 

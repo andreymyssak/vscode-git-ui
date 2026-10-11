@@ -69,7 +69,12 @@ export async function resolveBlameDocument(
   const ready = (source: BlameQuery['source']): BlameDocument => ({
     kind: 'ready',
     documentVersion: document.version,
-    query: { repositoryId, source, ignoreWhitespace },
+    query: {
+      repositoryId,
+      source,
+      ignoreWhitespace,
+      encoding: document.encoding,
+    },
   });
 
   if (document.uri.scheme === 'git') {

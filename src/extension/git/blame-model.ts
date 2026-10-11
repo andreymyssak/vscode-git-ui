@@ -6,6 +6,12 @@ export interface BlameQuery {
   repositoryId: string;
   source: BlameSource;
   ignoreWhitespace: boolean;
+  encoding?: string;
+}
+
+export interface BlameTextCodec {
+  encode(text: string, encoding: string): Promise<Uint8Array>;
+  decode(bytes: Uint8Array, encoding: string): Promise<string>;
 }
 
 export type BlameLine =

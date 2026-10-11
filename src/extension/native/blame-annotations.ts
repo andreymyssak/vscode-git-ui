@@ -23,11 +23,23 @@ interface Snapshot {
 
 interface Session {
   editor: vscode.TextEditor;
+  tab: vscode.Tab | null;
   abort: AbortController;
   timer: ReturnType<typeof setTimeout> | null;
   snapshot: Snapshot | null;
   repository: vscode.Disposable | null;
   repositoryId: string | null;
+}
+
+function tabContains(tab: vscode.Tab, uri: vscode.Uri): boolean {
+  const input = tab.input;
+
+  return input instanceof vscode.TabInputText
+    ? input.uri.toString() === uri.toString()
+    : input instanceof vscode.TabInputTextDiff &&
+        [input.original, input.modified].some(
+          (value) => value.toString() === uri.toString(),
+        );
 }
 
 const cancelled = (error: unknown) =>
@@ -44,13 +56,18 @@ export class BlameAnnotations implements vscode.Disposable {
   });
 
   private readonly sessions = new Map<vscode.TextEditor, Session>();
+  private readonly replacements = new Map<
+    Session,
+    { tab: vscode.Tab; opened: number }
+  >();
+
   private readonly cache: BlameReadCache;
   private readonly listeners: vscode.Disposable[];
   private disposed = false;
 
   constructor(
     private readonly options: {
-      getAccess: () => Promise<GitApiAccess>;
+      getAccess: (signal?: AbortSignal) => Promise<GitApiAccess>;
       readBlame: (
         query: BlameQuery,
         signal?: AbortSignal,
@@ -63,39 +80,36 @@ export class BlameAnnotations implements vscode.Disposable {
   ) {
     this.cache = new BlameReadCache(options.readBlame);
     this.listeners = [
-      vscode.window.onDidChangeTextEditorSelection((event) => {
-        const session = this.sessions.get(event.textEditor);
-        const selection = event.selections[0];
-        const snapshot = session?.snapshot;
-        const line = snapshot?.lines[selection?.active.line ?? -1];
+      vscode.window.tabGroups.onDidChangeTabs((event) => {
+        for (const tab of event.opened) {
+          const owners = [...this.sessions.values()].filter(
+            (session) =>
+              session.tab && tabContains(tab, session.editor.document.uri),
+          );
 
-        if (!session || !snapshot || !selection) return;
-        if (
-          event.kind === vscode.TextEditorSelectionChangeKind.Mouse &&
-          selection.isEmpty &&
-          selection.active.character === 0 &&
-          line?.kind === 'committed'
-        ) {
-          const current = () =>
-            this.liveSnapshot(session, snapshot) &&
-            vscode.window.visibleTextEditors.includes(session.editor);
-
-          void this.options
-            .openCommit(
-              {
-                documentUri: session.editor.document.uri,
-                sha: line.sha,
-                filePath: line.originalPath,
-              },
-              current,
-            )
-            .catch((error: unknown) => {
-              if (current() && !cancelled(error))
-                void showOperationError(
-                  error instanceof Error ? error.message : String(error),
-                );
-            });
+          if (owners.length === 1)
+            this.replacements.set(owners[0]!, { tab, opened: Date.now() });
         }
+
+        for (const session of this.sessions.values()) {
+          if (!session.tab || !event.closed.includes(session.tab)) continue;
+          const replacement = this.replacements.get(session);
+
+          this.replacements.delete(session);
+          if (
+            replacement &&
+            Date.now() - replacement.opened < 1000 &&
+            !event.closed.includes(replacement.tab) &&
+            replacement.tab.group.tabs.includes(replacement.tab)
+          )
+            session.tab = replacement.tab;
+          else this.close(session.editor);
+        }
+
+        for (const [session, replacement] of this.replacements)
+          if (event.closed.includes(replacement.tab))
+            this.replacements.delete(session);
+        this.bindVisible(vscode.window.visibleTextEditors);
       }),
       vscode.workspace.onDidChangeTextDocument(({ document }) => {
         for (const session of this.sessions.values())
@@ -105,24 +119,9 @@ export class BlameAnnotations implements vscode.Disposable {
         for (const session of this.sessions.values())
           if (session.editor.document === document) this.close(session.editor);
       }),
-      vscode.window.onDidChangeVisibleTextEditors((editors) => {
-        for (const editor of editors) {
-          if (this.sessions.has(editor)) continue;
-          const previous = [...this.sessions.values()].find(
-            (session) =>
-              !editors.includes(session.editor) &&
-              session.editor.document === editor.document &&
-              session.editor.viewColumn === editor.viewColumn,
-          );
-
-          if (!previous) continue;
-          this.sessions.delete(previous.editor);
-          previous.editor = editor;
-          this.sessions.set(editor, previous);
-          this.render(previous);
-          this.enabledChanged.fire();
-        }
-      }),
+      vscode.window.onDidChangeVisibleTextEditors((editors) =>
+        this.bindVisible(editors),
+      ),
       vscode.workspace.onDidChangeConfiguration((event) => {
         if (event.affectsConfiguration('git.enabled')) {
           for (const editor of this.sessions.keys()) this.close(editor);
@@ -134,13 +133,63 @@ export class BlameAnnotations implements vscode.Disposable {
     ];
   }
 
+  private bindVisible(editors: readonly vscode.TextEditor[]): void {
+    for (const session of this.sessions.values()) {
+      const replacement = this.replacements.get(session);
+
+      // Two simultaneously visible copies are a split, not a moved tab.
+      if (
+        replacement &&
+        editors.includes(session.editor) &&
+        editors.some(
+          (editor) =>
+            editor.document === session.editor.document &&
+            editor.viewColumn === replacement.tab.group.viewColumn,
+        )
+      )
+        this.replacements.delete(session);
+      if (session.tab && !session.tab.isActive) continue;
+      if (editors.includes(session.editor)) continue;
+      const editor = editors.find(
+        (candidate) =>
+          candidate.document === session.editor.document &&
+          (candidate.viewColumn === session.tab?.group.viewColumn ||
+            (candidate === vscode.window.activeTextEditor &&
+              session.tab?.group === vscode.window.tabGroups.activeTabGroup)),
+      );
+
+      if (!editor || this.sessions.has(editor)) continue;
+      this.sessions.delete(session.editor);
+      session.editor.setDecorations(this.decoration, []);
+      session.editor = editor;
+      this.sessions.set(editor, session);
+      this.render(session);
+      this.enabledChanged.fire();
+    }
+  }
+
   async annotate(editor: vscode.TextEditor): Promise<void> {
     if (this.disposed) return;
     const existing = this.sessions.get(editor);
 
     if (existing) return this.refresh(existing, true);
+    // Diff-side editors have no viewColumn. Their active editor and tab
+    // still identify the owning group through the public API.
+    const group =
+      editor.viewColumn === undefined
+        ? editor === vscode.window.activeTextEditor
+          ? vscode.window.tabGroups.activeTabGroup
+          : undefined
+        : vscode.window.tabGroups.all.find(
+            (value) => value.viewColumn === editor.viewColumn,
+          );
+    const activeTab = group?.activeTab;
     const session: Session = {
       editor,
+      tab:
+        activeTab && tabContains(activeTab, editor.document.uri)
+          ? activeTab
+          : null,
       abort: new AbortController(),
       timer: null,
       snapshot: null,
@@ -153,7 +202,8 @@ export class BlameAnnotations implements vscode.Disposable {
     try {
       await this.refresh(session, true);
     } catch (error) {
-      this.close(editor);
+      if (this.sessions.get(session.editor) === session)
+        this.close(session.editor);
       throw error;
     }
   }
@@ -163,6 +213,7 @@ export class BlameAnnotations implements vscode.Disposable {
 
     if (!session) return;
     this.sessions.delete(editor);
+    this.replacements.delete(session);
     session.abort.abort();
     if (session.timer) clearTimeout(session.timer);
     session.repository?.dispose();
@@ -173,6 +224,30 @@ export class BlameAnnotations implements vscode.Disposable {
 
   isEnabled(editor: vscode.TextEditor): boolean {
     return this.sessions.has(editor);
+  }
+
+  async openCurrentCommit(
+    editor: vscode.TextEditor,
+    lineNumber = editor.selection.active.line,
+  ): Promise<void> {
+    const session = this.sessions.get(editor);
+    const snapshot = session?.snapshot;
+    const line = snapshot?.lines[lineNumber];
+
+    if (!session || !snapshot || !this.liveSnapshot(session, snapshot))
+      throw new Error('Annotate this file before opening its line commit.');
+    if (line?.kind !== 'committed')
+      throw new Error('This line has no committed history.');
+    await this.options.openCommit(
+      {
+        documentUri: editor.document.uri,
+        sha: line.sha,
+        filePath: line.originalPath,
+      },
+      () =>
+        this.liveSnapshot(session, snapshot) &&
+        vscode.window.visibleTextEditors.includes(session.editor),
+    );
   }
 
   private schedule(session: Session): void {
@@ -210,7 +285,7 @@ export class BlameAnnotations implements vscode.Disposable {
     const text = document.getText();
 
     try {
-      const access = await this.options.getAccess();
+      const access = await this.options.getAccess(abort.signal);
 
       if (!this.current(session, abort, version)) return;
       const resolved = await resolveBlameDocument(access, document);
@@ -312,7 +387,8 @@ export class BlameAnnotations implements vscode.Disposable {
             contentText: formatBlameLabel(line).padEnd(width),
             width: `${width + 1}ch`,
             color: new vscode.ThemeColor('editorCodeLens.foreground'),
-            textDecoration: `none; border-right: 1px solid var(--vscode-panel-border); padding-right: 0.6em; white-space: pre; overflow: hidden; text-overflow: ellipsis; vertical-align: top; cursor: ${line.kind === 'committed' ? 'pointer' : 'text'}`,
+            textDecoration:
+              'none; border-right: 1px solid var(--vscode-panel-border); padding-right: 0.6em; white-space: pre; overflow: hidden; text-overflow: ellipsis; vertical-align: top; cursor: default',
             backgroundColor:
               line.kind === 'committed'
                 ? `hsla(${210 - 170 * (newest === oldest ? 0 : (Date.parse(line.authorDate) - oldest) / (newest - oldest))}, 65%, 55%, 0.14)`
@@ -330,6 +406,7 @@ export class BlameAnnotations implements vscode.Disposable {
       !this.disposed &&
       session.snapshot === snapshot &&
       this.sessions.get(session.editor) === session &&
+      (!session.tab || session.tab.isActive) &&
       session.editor.document.version === snapshot.version &&
       !session.editor.document.isClosed
     );

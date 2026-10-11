@@ -25,6 +25,8 @@ The Source Control view works independently of the Log webview and uses ordinary
 
 Stash names are independent of the commit draft. Applying saved files keeps the stash intact; explicitly deleting files removes their saved versions. Rename and partial deletion preserve stash order and dates through the same guarded ref/reflog writer used for stash deletion.
 
+Blame uses native editor decorations and hover links. A shared reader owns identical pending snapshots; each editor cancels its own subscription, and the last reader releases the Git process. Tab closure releases editor state. The adapter converts displayed text with VS Code's encoding APIs while decoding Git metadata independently.
+
 Pages own workflow UI and saved view preferences. The extension host owns per-repository Source Control drafts and checked-file state. Shared contracts contain no VS Code, Node or DOM dependencies.
 
 Log, Commit and Stashes share `src/webview/shared/ui/file-tree/` for rendering and navigation. Pages supply their files and actions.

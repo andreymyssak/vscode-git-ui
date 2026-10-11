@@ -7,16 +7,12 @@ import * as vscode from 'vscode';
 
 import { getGitApi } from '../../src/extension/git/api';
 import { commandId } from '../../src/shared/extension-identity';
-import {
-  annotationPoint,
-  nativeHover,
-  workbench,
-} from '../fixtures/native-blame';
+import { nativeHover, workbench } from '../fixtures/native-blame';
 import { nativePanel } from '../fixtures/native-panel';
 import { createFixture } from '../fixtures/repository';
 
 describe('native Blame editor', () => {
-  it('a plain annotation click reveals and highlights the file at its original name', async function () {
+  it('the line commit command repeatedly reveals and highlights the file at its original name', async function () {
     this.timeout(60000);
     const fixture = await createFixture({ prefix: 'git-ui-blame-renamed-' });
     const path = join(fixture.root, 'renamed.txt');
@@ -42,17 +38,13 @@ describe('native Blame editor', () => {
         await vscode.commands.executeCommand(commandId('annotate-blame')),
         true,
       );
-      const page = await workbench();
-      const native = page
-        .locator('.monaco-editor')
-        .filter({
-          has: page.locator('.view-line', { hasText: /^first$/ }),
-        })
-        .last();
-      const point = await annotationPoint(native, 'Fixture');
-
-      editor.selection = new vscode.Selection(0, 2, 0, 2);
-      await page.mouse.click(point.x, point.y);
+      editor.selection = new vscode.Selection(0, 0, 0, 0);
+      assert.equal(
+        await vscode.commands.executeCommand(
+          commandId('open-current-blame-commit'),
+        ),
+        true,
+      );
       const frame = await nativePanel(repository.rootUri.toString());
 
       await expect(
@@ -64,6 +56,14 @@ describe('native Blame editor', () => {
 
       await expect(file).toHaveAttribute('aria-selected', 'true');
       await expect(file).toBeInViewport();
+      await vscode.window.showTextDocument(editor.document, editor.viewColumn);
+      assert.equal(
+        await vscode.commands.executeCommand(
+          commandId('open-current-blame-commit'),
+        ),
+        true,
+      );
+      await expect(file).toHaveAttribute('aria-selected', 'true');
       assert.equal((await fixture.runGit(['rev-parse', 'HEAD'])).trim(), head);
       assert.equal(editor.document.uri.fsPath, vscode.Uri.file(path).fsPath);
     } finally {

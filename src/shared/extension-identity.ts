@@ -57,6 +57,7 @@ export function commandId(
     | 'annotate-blame'
     | 'close-blame'
     | 'open-blame-commit'
+    | 'open-current-blame-commit'
     | 'blame-enabled',
 ): string {
   return `${extensionIdentity.commandNamespace}.${kind}`;

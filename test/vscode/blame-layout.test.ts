@@ -295,7 +295,7 @@ describe('native Blame layout', () => {
       );
     }
   });
-  it('shows a pointer over clickable annotation labels', async function () {
+  it('keeps a normal cursor on labels and exposes navigation in the hover', async function () {
     this.timeout(60000);
     const f = await setup();
 
@@ -310,7 +310,12 @@ describe('native Blame layout', () => {
             return label ? getComputedStyle(label, '::before').cursor : null;
           }),
         )
-        .toBe('pointer');
+        .toBe('default');
+      const hover = await nativeHover(f.native, 'Fixture');
+
+      await expect(
+        hover.getByRole('link', { name: 'Open Commit in Git UI' }),
+      ).toBeVisible();
     } finally {
       await f.dispose();
     }
@@ -354,7 +359,7 @@ describe('native Blame layout', () => {
       await f.dispose();
     }
   });
-  it('keeps blame colors unchanged when clicking an annotation to open the commit', async function () {
+  it('keeps blame colors unchanged when selecting a line and opening its commit', async function () {
     this.timeout(60000);
     const f = await setup();
 
@@ -371,6 +376,12 @@ describe('native Blame layout', () => {
       const ageColors = await annotationColors(f.native);
 
       await f.page.mouse.click(label.x, label.y);
+      assert.equal(
+        await vscode.commands.executeCommand(
+          commandId('open-current-blame-commit'),
+        ),
+        true,
+      );
       const frame = await nativePanel(f.repositoryId);
 
       await expect(
