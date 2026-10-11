@@ -96,3 +96,45 @@ export async function commitWithDate(
     })
   ).stdout.trim();
 }
+
+/** Create identical-tree history without a separate Git process for each revision. */
+export async function commitLinearHistory(
+  fixture: Fixture,
+  parent: string,
+  revisions: readonly { message: string; date: string }[],
+): Promise<string> {
+  if (!revisions.length) return parent;
+  const ref = 'refs/fixture/linear-history';
+  const stream = revisions.map(({ message, date }, index) => {
+    const text = message + '\n';
+
+    return (
+      `commit ${ref}\nmark :${index + 1}\n` +
+      `author Fixture <fixture@example.test> ${date}\n` +
+      `committer Fixture <fixture@example.test> ${date}\n` +
+      `data ${Buffer.byteLength(text)}\n${text}\n` +
+      `from ${index === 0 ? parent : `:${index}`}\n\n`
+    );
+  });
+  const env = gitFixtureEnvironment({
+    GIT_CONFIG_GLOBAL: join(fixture.root, 'isolated-gitconfig'),
+    GIT_CONFIG_NOSYSTEM: '1',
+  });
+
+  return new Promise<string>((resolve, reject) => {
+    const child = execFile(
+      'git',
+      ['fast-import', '--quiet', '--done'],
+      { cwd: fixture.root, env },
+      (error, stdout) => {
+        if (error) reject(new Error(error.message, { cause: error }));
+        else resolve(stdout.trim());
+      },
+    );
+
+    child.stdin?.on('error', reject);
+    child.stdin?.end(
+      stream.join('') + `get-mark :${revisions.length}\nreset ${ref}\n\ndone\n`,
+    );
+  });
+}

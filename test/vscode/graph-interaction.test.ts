@@ -2,13 +2,16 @@ import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { expect, type Frame } from '@playwright/test';
+import { expect } from '@playwright/test';
 import * as vscode from 'vscode';
 
 import { getGitApi } from '../../src/extension/git/api';
 import { LOG_VIEW_ID } from '../../src/shared/extension-identity';
-import { nativeBrowser, refreshNativeHistory } from '../fixtures/native-panel';
-import { createFixture } from '../fixtures/repository';
+import {
+  refreshNativeHistory,
+  selectNativeRepository,
+} from '../fixtures/native-panel';
+import { createFixture, type Fixture } from '../fixtures/repository';
 
 describe('native graph interactions', () => {
   it('marks the checkout and opens details through graph dots without a hover popup', async () => {
@@ -16,6 +19,7 @@ describe('native graph interactions', () => {
       prefix: 'git-ui-native graph hover ',
     });
     const rootUri = vscode.Uri.file(fixture.root);
+    let previous: Fixture | undefined;
 
     try {
       await writeFile(join(fixture.root, 'sample.txt'), 'graph update\n');
@@ -31,23 +35,14 @@ describe('native graph interactions', () => {
       const parentSha = (await fixture.runGit(['rev-parse', 'HEAD^'])).trim();
       const access = await getGitApi();
 
+      previous = await createFixture({ prefix: 'git-ui-native prior graph ' });
+      await access.api.openRepository(vscode.Uri.file(previous.root));
+      await vscode.commands.executeCommand(`${LOG_VIEW_ID}.focus`);
+      await selectNativeRepository(vscode.Uri.file(previous.root).toString());
       await access.api.openRepository(rootUri);
       await access.repository(rootUri.toString()).status();
       await vscode.commands.executeCommand(`${LOG_VIEW_ID}.focus`);
-      const browser = await nativeBrowser();
-      let frame: Frame | undefined;
-
-      for (let attempt = 0; attempt < 100 && !frame; attempt++) {
-        for (const context of browser.contexts())
-          for (const page of context.pages())
-            for (const candidate of page.frames())
-              if (await candidate.locator('#branches').count())
-                frame = candidate;
-        if (!frame) await new Promise((resolve) => setTimeout(resolve, 50));
-      }
-
-      assert.ok(frame);
-      await frame.page().bringToFront();
+      const frame = await selectNativeRepository(rootUri.toString());
       const head = await refreshNativeHistory(frame, rootUri.toString());
 
       await expect(head).toHaveAttribute('data-sha', headSha);
@@ -80,6 +75,7 @@ describe('native graph interactions', () => {
       );
     } finally {
       await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      await previous?.dispose();
       await fixture.dispose();
     }
   });

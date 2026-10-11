@@ -7,7 +7,7 @@ import { createGitAdapter } from '../../src/extension/git/adapter';
 import { getGitApi } from '../../src/extension/git/api';
 import { PanelController } from '../../src/extension/panel/controller';
 import type { PanelBody, RequestBody, Result } from '../../src/shared/messages';
-import { commitWithDate, createFixture } from '../fixtures/repository';
+import { commitLinearHistory, createFixture } from '../fixtures/repository';
 
 describe('native navigation', () => {
   it('reveals distant targets and preserves scope when a scope change is declined', async () => {
@@ -19,16 +19,15 @@ describe('native navigation', () => {
     try {
       const original = (await fixture.runGit(['rev-parse', 'HEAD'])).trim();
       const tree = (await fixture.runGit(['rev-parse', 'HEAD^{tree}'])).trim();
-      let head = original;
+      const head = await commitLinearHistory(
+        fixture,
+        original,
+        Array.from({ length: 205 }, (_, i) => ({
+          message: `Nav ${i}`,
+          date: `${1700000000 + i} +0000`,
+        })),
+      );
 
-      for (let i = 0; i < 205; i++)
-        head = await commitWithDate(
-          fixture,
-          tree,
-          head,
-          `Nav ${i}`,
-          `${1700000000 + i} +0000`,
-        );
       await fixture.runGit(['update-ref', 'refs/heads/main', head]);
       await fixture.runGit(['tag', 'main', original]);
       const outside = (

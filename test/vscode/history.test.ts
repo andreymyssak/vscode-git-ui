@@ -9,7 +9,11 @@ import type { GitAdapter } from '../../src/extension/git/adapter';
 import { createGitAdapter } from '../../src/extension/git/adapter';
 import { getGitApi } from '../../src/extension/git/api';
 import type { Fixture } from '../fixtures/repository';
-import { commitWithDate, createFixture } from '../fixtures/repository';
+import {
+  commitLinearHistory,
+  commitWithDate,
+  createFixture,
+} from '../fixtures/repository';
 
 describe('history and identity', () => {
   let fixture: Fixture;
@@ -22,26 +26,21 @@ describe('history and identity', () => {
     fixture = await createFixture({ prefix: 'git-ui-native history ü ' });
     initial = (await fixture.runGit(['rev-parse', 'HEAD'])).trim();
     prefix = initial.slice(0, 7);
-    const tree = (await fixture.runGit(['rev-parse', 'HEAD^{tree}'])).trim();
-    // commit-tree creates empty-tree-identical commits without rewriting the working tree.
-    let parent = initial;
+    const parent = await commitLinearHistory(
+      fixture,
+      initial,
+      Array.from({ length: 220 }, (_, index) => {
+        const i = index + 1;
+        const message =
+          i === 80
+            ? 'Literal [x].* MixedCase'
+            : i === 120
+              ? `Mention ${prefix}`
+              : `Commit ${i}`;
 
-    for (let i = 1; i <= 220; i++) {
-      const message =
-        i === 80
-          ? 'Literal [x].* MixedCase'
-          : i === 120
-            ? `Mention ${prefix}`
-            : `Commit ${i}`;
-
-      parent = await commitWithDate(
-        fixture,
-        tree,
-        parent,
-        message,
-        `${1700000000 - i} +0000`,
-      );
-    }
+        return { message, date: `${1700000000 - i} +0000` };
+      }),
+    );
 
     await fixture.runGit(['update-ref', 'refs/heads/main', parent]);
     await fixture.runGit(['update-ref', 'refs/heads/-n10', initial]);
