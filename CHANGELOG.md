@@ -9,6 +9,10 @@
 - **git:** order writes across linked worktrees and cancel abandoned action checks ([7efd073](https://github.com/andreymyssak/vscode-git-ui/commit/7efd0736b5703b931e9163518e98aa855051e2b0))
 - **log:** retry failed history pages and reuse repeated changed-file comparisons ([0e0aabc](https://github.com/andreymyssak/vscode-git-ui/commit/0e0aabc99eccceaf42947cb595c0e2978f727590))
 
+### Performance Improvements
+
+- **log:** keep large histories responsive when older commits cannot be edited ([878494b](https://github.com/andreymyssak/vscode-git-ui/commit/878494b0a5b25707fe3055bc27f60c733cb96e76))
+
 ## [0.3.0](https://github.com/andreymyssak/vscode-git-ui/compare/v0.2.0...v0.3.0) (2026-10-11)
 
 ### Features
