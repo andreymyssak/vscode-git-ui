@@ -4,11 +4,15 @@ import {
   commandId,
   EMPTY_DOCUMENT_SCHEME,
   LOG_VIEW_ID,
+  SNAPSHOT_DOCUMENT_SCHEME,
 } from '../shared/extension-identity';
 import { EmptyDocumentProvider } from './native/empty-document';
+import { SnapshotDocumentProvider } from './native/snapshot-document';
+import { registerSourceControlViews } from './native/source-control-views';
 import { GitViewProvider } from './panel/provider';
 
 export function activate(context: vscode.ExtensionContext): void {
+  registerSourceControlViews(context);
   const provider = new GitViewProvider(
     context.extensionUri,
     context.globalStorageUri,
@@ -89,6 +93,10 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.workspace.registerTextDocumentContentProvider(
       EMPTY_DOCUMENT_SCHEME,
       new EmptyDocumentProvider(),
+    ),
+    vscode.workspace.registerTextDocumentContentProvider(
+      SNAPSHOT_DOCUMENT_SCHEME,
+      new SnapshotDocumentProvider(),
     ),
     vscode.window.registerWebviewViewProvider(LOG_VIEW_ID, provider),
   );

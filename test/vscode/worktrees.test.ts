@@ -19,7 +19,7 @@ import {
   refreshNativeHistory,
   selectNativeRepository,
 } from '../fixtures/native-panel';
-import { createFixture } from '../fixtures/repository';
+import { createFixture, disposeFixtureDirectory } from '../fixtures/repository';
 
 describe('existing worktrees', () => {
   it('current marker follows root rather than main flag and detached worktree is labeled', async () => {
@@ -82,9 +82,9 @@ describe('existing worktrees', () => {
       assert.equal(calls.length, 2);
     } finally {
       adapter?.dispose();
-      await rm(linked, { recursive: true, force: true, maxRetries: 5 });
-      await rm(detached, { recursive: true, force: true, maxRetries: 5 });
       await f.dispose();
+      await disposeFixtureDirectory(linked);
+      await disposeFixtureDirectory(detached);
     }
   });
 
@@ -194,9 +194,9 @@ describe('existing worktrees', () => {
           .getByRole('tab', { name: 'Log', exact: true })
           .click({ timeout: 1000 })
           .catch(() => {});
-      await rm(linked, { recursive: true, force: true, maxRetries: 5 });
-      await rm(second, { recursive: true, force: true, maxRetries: 5 });
-      await rm(created, { recursive: true, force: true, maxRetries: 5 });
+      await disposeFixtureDirectory(linked);
+      await disposeFixtureDirectory(second);
+      await disposeFixtureDirectory(created);
       await fixture.dispose();
     }
   });
@@ -384,7 +384,7 @@ describe('existing worktrees', () => {
             .getByRole('tab', { name: 'Log', exact: true })
             .click({ timeout: 1000 })
             .catch(() => {});
-        await rm(linked, { recursive: true, force: true, maxRetries: 5 });
+        await disposeFixtureDirectory(linked);
         await f.dispose();
       }
     }
@@ -493,8 +493,8 @@ describe('existing worktrees', () => {
           .getByRole('tab', { name: 'Log', exact: true })
           .click({ timeout: 1000 })
           .catch(() => {});
-      await rm(alpha, { recursive: true, force: true, maxRetries: 5 });
-      await rm(beta, { recursive: true, force: true, maxRetries: 5 });
+      await disposeFixtureDirectory(alpha);
+      await disposeFixtureDirectory(beta);
       await f.dispose();
     }
   });

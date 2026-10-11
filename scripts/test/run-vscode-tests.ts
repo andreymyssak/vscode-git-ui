@@ -150,7 +150,10 @@ if (prepared.kind === 'restricted') {
   mkdirSync(join(profile, 'User'));
   writeFileSync(
     join(profile, 'User/settings.json'),
-    JSON.stringify({ 'window.menuStyle': 'custom' }),
+    JSON.stringify({
+      'window.menuStyle': 'custom',
+      'window.dialogStyle': 'custom',
+    }),
   );
   const extensions = mkdtempSync(resolve('.artifacts/installed-extensions-'));
   const cli = resolveCliPathFromVSCodeExecutablePath(executable);

@@ -86,7 +86,7 @@ test('retained details never cross a repository switch', () => {
   expect(screen.queryByText('old.txt')).not.toBeInTheDocument();
 });
 
-test('a failed replacement comparison releases retained details and offers retry', () => {
+test('a failed replacement comparison releases retained details and stops loading without inline errors', () => {
   const onIntent = vi.fn();
   const { container, rerender } = render(
     <CommitDetails data={ready} onIntent={onIntent} />,
@@ -108,11 +108,12 @@ test('a failed replacement comparison releases retained details and offers retry
   expect(screen.getByText('Next commit')).toBeVisible();
   expect(screen.queryByText('Previous commit')).not.toBeInTheDocument();
   expect(container.querySelector('#details')).not.toHaveAttribute('inert');
-  fireEvent.click(screen.getByRole('button', { name: 'Retry comparison' }));
-  expect(onIntent).toHaveBeenLastCalledWith({
-    kind: 'request',
-    body: { kind: 'load-parent', sha: 'b'.repeat(40), parentSha: null },
-  });
+  expect(screen.queryByText('Could not read files')).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Retry comparison' })).toBeNull();
+  expect(container.querySelector('[role="group"]')).toHaveAttribute(
+    'aria-busy',
+    'false',
+  );
   rerender(<CommitDetails data={pending} onIntent={onIntent} />);
   expect(screen.getByText('Next commit')).toBeVisible();
   expect(screen.queryByText('Previous commit')).not.toBeInTheDocument();

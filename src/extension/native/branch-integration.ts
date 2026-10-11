@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 
 import type { Reference } from '../../shared/model';
 import { askBranchName } from './dialogs';
+import { showOperationError } from './operation-feedback';
 
 export async function confirmBranchIntegration(
   kind: 'merge-branch' | 'rebase-branch',
@@ -92,14 +93,19 @@ export async function askWorktree(
 
   const root = vscode.Uri.parse(rootUri).fsPath;
   const folder = (name ?? reference.name).replace(/[/\\]/g, '-');
-  const path = await vscode.window.showInputBox({
-    title: 'Worktree Folder',
-    prompt: `Create a worktree from "${reference.name}" in a new folder`,
-    value: join(dirname(root), `${basename(root)}-${folder}`),
-    ignoreFocusOut: true,
-    validateInput: (value) =>
-      isAbsolute(value) ? null : 'Enter an absolute folder path.',
-  });
+  let value = join(dirname(root), `${basename(root)}-${folder}`);
 
-  return path === undefined ? null : { path, name };
+  for (;;) {
+    const path = await vscode.window.showInputBox({
+      title: 'Worktree Folder',
+      prompt: `Create a worktree from "${reference.name}" in a new folder`,
+      value,
+      ignoreFocusOut: true,
+    });
+
+    if (path === undefined) return null;
+    if (isAbsolute(path)) return { path, name };
+    await showOperationError('Enter an absolute folder path.');
+    value = path;
+  }
 }

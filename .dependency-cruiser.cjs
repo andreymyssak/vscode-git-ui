@@ -7,7 +7,7 @@ module.exports = {
       from: {},
       to: { couldNotResolve: true },
     },
-    ...['log', 'worktrees'].flatMap((page) => [
+    ...['log', 'worktrees', 'source-control'].flatMap((page) => [
       {
         name: 'pages-do-not-import-other-pages',
         severity: 'error',

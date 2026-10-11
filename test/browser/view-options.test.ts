@@ -1,5 +1,43 @@
 import { expect, test } from '../fixtures/browser';
 
+test('invalid dates request a native notification and keep the period editable', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Date filter', exact: true }).click();
+  await page.getByRole('button', { name: 'Select period…' }).click();
+  await page.getByLabel('From', { exact: true }).fill('2026-10-07');
+  await page.getByLabel('To', { exact: true }).fill('2026-10-01');
+  const before = (await page.evaluate(() => window.__requests)).filter(
+    ({ body }) => body.kind === 'history',
+  ).length;
+
+  await page.getByRole('button', { name: 'Apply dates' }).click();
+  expect((await page.evaluate(() => window.__requests)).at(-1)?.body).toEqual({
+    kind: 'invalid-date-filter',
+  });
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(
+    page.getByText('Start date must be on or before end date.'),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole('dialog', { name: 'Filter by committed date' }),
+  ).toBeVisible();
+  expect(
+    (await page.evaluate(() => window.__requests)).filter(
+      ({ body }) => body.kind === 'history',
+    ),
+  ).toHaveLength(before);
+  await page.getByLabel('To', { exact: true }).fill('2026-10-08');
+  await page.getByRole('button', { name: 'Apply dates' }).click();
+  expect(
+    (await page.evaluate(() => window.__requests)).at(-1)?.body,
+  ).toMatchObject({
+    kind: 'history',
+    filters: { date: { kind: 'range', from: '2026-10-07', to: '2026-10-08' } },
+  });
+});
+
 test('calendar range applies once, survives reopening and clears independently', async ({
   page,
 }) => {

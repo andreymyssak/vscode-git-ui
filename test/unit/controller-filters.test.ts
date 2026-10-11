@@ -125,7 +125,7 @@ test('a refresh interrupted by another repository event retains its selection an
       : { ...page([a]), nextCursor: 'second' };
   };
 
-  await expect(f.controller.refresh()).rejects.toThrow(/History changed/);
+  await f.controller.refresh();
   await f.controller.refresh();
   const selection = f.sent
     .filter((message) => message.body.kind === 'selection')
@@ -210,7 +210,7 @@ test('an explicit cleared scroll anchor supersedes a failed refresh restoration 
     return { ...page([a]), nextCursor: 'second' };
   };
 
-  await expect(f.controller.refresh()).rejects.toThrow(/History changed/);
+  await f.controller.refresh();
   await f.controller.handle(
     f.request({ kind: 'anchor', anchor: null }, 'one', 2),
   );
@@ -237,7 +237,7 @@ test('a fresh filter replaces a failed refresh restoration target', async (t) =>
     throw new Error('History changed');
   };
 
-  await expect(f.controller.refresh()).rejects.toThrow(/History changed/);
+  await f.controller.refresh();
   f.adapter.history = async () => page([a, target]);
   await f.controller.handle(
     f.request(

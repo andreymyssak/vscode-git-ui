@@ -46,6 +46,12 @@ button:disabled {
   min-width: 620px;
   overflow: hidden;
 }
+body[data-view='source-control'] {
+  background: var(--vscode-sideBar-background, var(--vscode-editor-background));
+}
+body[data-view='source-control'] #app {
+  min-width: 0;
+}
 input {
   background: var(--vscode-input-background, #333);
   color: var(--vscode-input-foreground, #fff);

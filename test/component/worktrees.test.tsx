@@ -91,7 +91,7 @@ test('worktrees expose named columns and creation independent of row selection',
   await user.click(
     within(toolbar).getByRole('button', { name: 'Refresh Worktrees' }),
   );
-  expect(request).toHaveBeenLastCalledWith({ kind: 'worktrees' });
+  expect(request).toHaveBeenLastCalledWith({ kind: 'worktrees', retry: true });
   rerender(<WorktreesPage worktrees={[]} onRequest={request} />);
   await user.click(create);
   expect(request).toHaveBeenLastCalledWith({

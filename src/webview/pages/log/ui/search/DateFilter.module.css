@@ -14,9 +14,6 @@
   min-width: 0;
   padding: 4px;
 }
-.error {
-  color: var(--vscode-errorForeground, #f48771);
-}
 .actions {
   display: flex;
   justify-content: space-between;

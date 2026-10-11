@@ -22,10 +22,12 @@ test('Strict Mode subscribes before ready without repeating it', async ({
       requestId: 'after-effects',
       repositoryId: 'one',
       generation: 1,
-      body: { kind: 'notice', message: 'After effect cleanup' },
+      body: { kind: 'reveal', sha: '2'.padStart(40, '0') },
     }),
   );
-  await expect(page.getByRole('status')).toHaveText('After effect cleanup');
+  await expect(
+    page.locator('[data-sha="' + '2'.padStart(40, '0') + '"]'),
+  ).toHaveAttribute('aria-selected', 'true');
 });
 test('pane drag cancellation releases ownership', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 280 });
@@ -245,14 +247,14 @@ for (const path of ['/', '/development.html']) {
       window.__deliver({
         ...window.__requests.at(-1)!,
         body: {
-          kind: 'notice',
-          message: 'Response after returning to cached page',
+          kind: 'reveal',
+          sha: '2'.padStart(40, '0'),
         },
       }),
     );
-    await expect(page.getByRole('status')).toHaveText(
-      'Response after returning to cached page',
-    );
+    await expect(
+      page.locator('[data-sha="' + '2'.padStart(40, '0') + '"]'),
+    ).toHaveAttribute('aria-selected', 'true');
   });
 
   for (const previouslyCached of [false, true]) {
@@ -340,7 +342,7 @@ for (const path of ['/', '/development.html']) {
       await page.evaluate(() =>
         window.__deliver({
           ...window.__requests.at(-1)!,
-          body: { kind: 'notice', message: 'After permanent teardown' },
+          body: { kind: 'reveal', sha: '2'.padStart(40, '0') },
         }),
       );
       await expect(page.locator('#app')).toBeEmpty();

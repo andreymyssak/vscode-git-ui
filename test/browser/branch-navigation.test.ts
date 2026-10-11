@@ -324,6 +324,7 @@ test('keyboard navigation reveals deep reference names in a narrow pane', async 
   page,
 }) => {
   await page.setViewportSize({ width: 620, height: 280 });
+  await expect(page.locator('#branch-pane')).toHaveCSS('width', '150px');
   await updateReferences(page, ['main', 'feature/team/epic/deep-reference']);
   const search = page.getByRole('searchbox', { name: 'Branch or tag' });
 

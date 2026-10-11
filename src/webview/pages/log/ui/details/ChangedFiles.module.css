@@ -5,68 +5,6 @@
   padding: 0;
   user-select: none;
 }
-.row {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  height: 22px;
-  line-height: 22px;
-  width: 100%;
-  padding: 0 12px 0 calc(8px + var(--tree-depth, 0) * 8px);
-  margin: 0;
-  border: 0;
-  border-radius: 0;
-  list-style: none;
-  white-space: nowrap;
-  text-align: left;
-  cursor: pointer;
-}
-.row::-webkit-details-marker {
-  display: none;
-}
-.row:hover {
-  background: var(--vscode-list-hoverBackground, #2a2d2e);
-}
-.row[aria-selected='true'] {
-  background: var(--vscode-list-inactiveSelectionBackground, #37373d);
-  color: var(
-    --vscode-list-inactiveSelectionForeground,
-    var(--vscode-foreground, #ccc)
-  );
-}
-.files:focus-within .row[aria-selected='true'] {
-  background: var(--vscode-list-activeSelectionBackground, #094771);
-  color: var(--vscode-list-activeSelectionForeground, #fff);
-}
-.chevron,
-.glyph {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 22px;
-  flex-shrink: 0;
-  color: var(--vscode-icon-foreground, #ccc);
-  pointer-events: none;
-}
-.chevron {
-  width: 22px;
-  padding-right: 6px;
-  transform: translateX(3px);
-}
-.chevron :global(.codicon),
-.glyph :global(.codicon) {
-  font-size: 16px;
-}
-.glyph {
-  margin-right: 6px;
-}
-.glyph:empty {
-  display: none;
-}
-.alignFileIcons .leaf .chevron {
-  display: none;
-}
 .group {
   background: var(--vscode-sideBarSectionHeader-background, #262626);
   color: var(
@@ -74,67 +12,11 @@
     var(--vscode-foreground, #ccc)
   );
 }
-.separator {
-  margin: 0 2px;
-  opacity: 0.5;
-}
-.name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.count {
-  flex-shrink: 0;
-  color: var(--vscode-descriptionForeground, #aaa);
-  font-size: 12px;
-  margin-left: 6px;
-}
 .comparisonCount {
   min-width: 44px;
 }
 .comparisonBody {
   min-height: 22px;
-}
-.children {
-  position: relative;
-}
-.children::before {
-  content: '';
-  position: absolute;
-  left: calc(16px + var(--tree-depth, 0) * 8px);
-  top: 0;
-  bottom: 0;
-  z-index: 1;
-  border-left: 1px solid var(--vscode-tree-inactiveIndentGuidesStroke, #404040);
-  opacity: 0;
-  pointer-events: none;
-}
-.files:hover .children::before {
-  opacity: 1;
-}
-.children:has(> .leaf:is([aria-selected='true'], :focus))::before,
-.files details[open]:has(> .row:focus) > .children::before,
-.children:has(> details:not([open]) > .row:focus)::before {
-  border-color: var(--vscode-tree-indentGuidesStroke, #585858);
-  opacity: 1;
-}
-.status {
-  margin-left: auto;
-  padding-left: 6px;
-  flex-shrink: 0;
-  font-size: 12px;
-}
-.row[data-status='added'] .status {
-  color: var(--vscode-gitDecoration-addedResourceForeground, #81b88b);
-}
-.row[data-status='modified'] .status {
-  color: var(--vscode-gitDecoration-modifiedResourceForeground, #73b4ff);
-}
-.row[data-status='deleted'] .status {
-  color: var(--vscode-gitDecoration-deletedResourceForeground, #c74e39);
-}
-.row[data-status='renamed'] .status {
-  color: var(--vscode-gitDecoration-renamedResourceForeground, #73c991);
 }
 .message {
   margin: 0;
@@ -143,18 +25,8 @@
   line-height: 22px;
   color: var(--vscode-descriptionForeground, #aaa);
 }
-.unloaded {
-  padding: 2px 12px 2px 24px;
-  color: var(--vscode-descriptionForeground, #aaa);
-}
 .empty {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-.unloaded .message {
-  padding: 0;
-}
-.retry {
-  font-size: 11px;
 }

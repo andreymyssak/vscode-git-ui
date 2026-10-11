@@ -33,6 +33,13 @@ for (const kind of [
   'update-branch',
   'merge-branch',
   'rebase-branch',
+  'fetch-all',
+  'checkout',
+  'rename-branch',
+  'delete-branch',
+  'create-branch',
+  'copy-sha',
+  'copy-branch',
 ] as const) {
   for (const result of [
     {

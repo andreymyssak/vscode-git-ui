@@ -283,7 +283,7 @@ export async function run() {
         await expect(
           notification.locator('.notification-list-item'),
         ).toHaveClass(/\bexpanded\b/);
-        await expect(frame.locator('#status')).toContainText(
+        await expect(notification).toContainText(
           'Commit or stash local changes before checking out "topic".',
         );
         await expect(

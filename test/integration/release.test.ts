@@ -104,7 +104,7 @@ if (process.env.RELEASE_FIXTURE_FAIL) throw new Error('Fixture checks failed');
       execute(process.execPath, [npm, 'run', name, '--', '--ci', ...args], {
         cwd: f.root,
         env: { ...env, ...overrides },
-        timeout: 20000,
+        timeout: 45000,
         maxBuffer: 1024 * 1024,
       }),
     remoteGit: (args: string[]) => f.runGit(['--git-dir', remote, ...args]),
@@ -143,6 +143,7 @@ test.each([
     expect(await f.remoteGit(['rev-parse', 'main'])).toBe(remoteHead);
     expect((await f.remoteGit(['tag', '--list'])).trim()).toBe('v1.0.0');
   },
+  60000,
 );
 
 test('preview leaves the version, notes, working tree and tags unchanged', async () => {

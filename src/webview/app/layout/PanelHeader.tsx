@@ -4,6 +4,13 @@ import { Icon } from '@webview/shared/ui';
 import type { BrowserController } from '../model/useBrowserState';
 import styles from './PanelHeader.module.css';
 
+const setupGuidance = {
+  untrusted: 'Trust this workspace through VS Code to use Git.',
+  'git-disabled':
+    'Enable the built-in Git extension and Git in VS Code settings, and install Git.',
+  'no-repository': 'Open a folder containing a Git repository.',
+};
+
 export function PanelHeader({
   state,
   request,
@@ -33,13 +40,13 @@ export function PanelHeader({
   const status =
     state.activeView === 'log' && state.loading
       ? 'Loading history…'
-      : (state.error ??
-        state.notice ??
-        (state.activeView === 'log' &&
-        state.commits.length === 0 &&
-        state.setup === 'ready'
+      : state.setup !== 'ready'
+        ? setupGuidance[state.setup]
+        : state.activeView === 'log' &&
+            state.commits.length === 0 &&
+            !state.error
           ? 'No commits in these results.'
-          : ''));
+          : '';
 
   return (
     <header className={styles.header}>

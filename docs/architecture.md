@@ -1,25 +1,33 @@
 # Architecture
 
-Git UI has an extension host for Git access and a React webview for presentation.
+Git UI has an extension host for Git access and React webviews for Log/Worktrees and Source Control's Commit/Stashes view.
 
 ## Modules
 
-| Location                    | Responsibility                                                     |
-| --------------------------- | ------------------------------------------------------------------ |
-| `src/extension/activate.ts` | Registers the view and commands.                                   |
-| `src/extension/panel/`      | Webview lifecycle, request validation and coordination.            |
-| `src/extension/git/`        | Repository reads, serialized Git writes and history recovery.      |
-| `src/extension/native/`     | VS Code dialogs, notifications, editors and worktree opening.      |
-| `src/shared/`               | Serializable contracts and pure models shared by host and webview. |
-| `src/webview/app/`          | Layout, host communication and saved view state.                   |
-| `src/webview/pages/`        | Log and Worktrees workflows.                                       |
-| `src/webview/shared/`       | Reusable controls, icons and browser bridge.                       |
+| Location                        | Responsibility                                                      |
+| ------------------------------- | ------------------------------------------------------------------- |
+| `src/extension/activate.ts`     | Registers the view and commands.                                    |
+| `src/extension/panel/`          | Webview lifecycle, request validation and coordination.             |
+| `src/extension/changes/`        | Checkbox inclusion and unsaved-file prompts.                        |
+| `src/extension/source-control/` | Source Control webview, repository drafts and checked-file actions. |
+| `src/extension/git/`            | Repository reads, serialized Git writes and history recovery.       |
+| `src/extension/native/`         | VS Code dialogs, notifications, editors and worktree opening.       |
+| `src/shared/`                   | Serializable contracts and pure models shared by host and webview.  |
+| `src/webview/app/`              | Layout, host communication and saved view state.                    |
+| `src/webview/pages/`            | Log, Worktrees, Commit and Stash workflows.                         |
+| `src/webview/shared/`           | Reusable controls, icons and browser bridge.                        |
 
 The webview sends requests to the extension host. The host validates their repository and targets before calling the Git adapter. Repository changes invalidate stale requests.
 
 The Git adapter uses the installed Git extension where possible and explicit Git calls for API gaps. VS Code provides native diffs and conflict resolution. The [backend ADR](adr/0002-git-operation-backends.md) and [history recovery ADR](adr/0003-history-replay-and-recovery.md) explain those choices.
 
-Each webview has its own Zustand store. App owns state restoration; pages own workflow UI. Shared contracts contain no VS Code, Node or DOM dependencies.
+The Source Control view works independently of the Log webview and uses ordinary Git stashes. Selected commits and stash creation use a temporary index to exclude unchecked staged changes. Writes share the repository operation queue and a lock across linked worktrees.
+
+Stash names are independent of the commit draft. Applying saved files keeps the stash intact; explicitly deleting files removes their saved versions. Rename and partial deletion preserve stash order and dates through the same guarded ref/reflog writer used for stash deletion.
+
+Pages own workflow UI and saved view preferences. The extension host owns per-repository Source Control drafts and checked-file state. Shared contracts contain no VS Code, Node or DOM dependencies.
+
+Log, Commit and Stashes share `src/webview/shared/ui/file-tree/` for rendering and navigation. Pages supply their files and actions.
 
 `package.json` owns extension identity. Builds inject its name, publisher, display name and command namespace into `src/shared/extension-identity.ts`, which derives command, URI, helper and recovery identifiers. Menu payloads use domain field names without a branding prefix.
 

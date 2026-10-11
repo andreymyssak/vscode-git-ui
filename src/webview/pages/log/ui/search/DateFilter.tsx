@@ -10,14 +10,15 @@ import { FilterDropdown } from './FilterDropdown';
 export function DateFilter({
   date,
   onChange,
+  onInvalid,
 }: {
   date: CalendarFilter;
   onChange(this: void, date: CalendarFilter): void;
+  onInvalid(this: void): void;
 }) {
   const [period, setPeriod] = useState(false);
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
-  const [error, setError] = useState('');
   const range = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -49,7 +50,6 @@ export function DateFilter({
         setFrom(typeof date === 'object' ? (date.from ?? '') : '');
         setTo(typeof date === 'object' ? (date.to ?? '') : '');
         setPeriod(false);
-        setError('');
       }}
     >
       {(close) => {
@@ -70,7 +70,7 @@ export function DateFilter({
 
               if (!from && !to) apply('all');
               else if (isDateFilter(selectedRange)) apply(selectedRange);
-              else setError('Start date must be on or before end date.');
+              else onInvalid();
             }}
           >
             {period ? (
@@ -94,11 +94,6 @@ export function DateFilter({
                     />
                   </label>
                 </div>
-                {error && (
-                  <p role="alert" className={styles.error}>
-                    {error}
-                  </p>
-                )}
                 <div className={styles.actions}>
                   <button type="button" onClick={close}>
                     Cancel

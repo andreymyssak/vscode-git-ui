@@ -145,7 +145,7 @@ for (const width of [620, 1400])
     });
     await toolbar.getByRole('button', { name: 'Refresh Worktrees' }).click();
     expect((await page.evaluate(() => window.__requests)).at(-1)?.body).toEqual(
-      { kind: 'worktrees' },
+      { kind: 'worktrees', retry: true },
     );
   });
 

@@ -88,12 +88,9 @@ for (const width of [620, 1280])
       if (outcome === 'success') {
         await expect(page.locator('[data-commit-row]').first()).toBeVisible();
         await expect(page.getByRole('status')).toBeHidden();
-      } else {
+      } else if (outcome === 'empty') {
         await expect(page.locator('[data-commit-row]')).toHaveCount(0);
-        const message =
-          outcome === 'empty'
-            ? 'No commits in these results.'
-            : 'Branch history failed.';
+        const message = 'No commits in these results.';
 
         await expect(page.getByRole('status')).toBeInViewport({ ratio: 1 });
         await expect(page.getByRole('status')).toHaveText(message);
@@ -101,6 +98,10 @@ for (const width of [620, 1280])
           'title',
           message,
         );
+      } else {
+        await expect(page.locator('[data-commit-row]')).toHaveCount(0);
+        await expect(page.getByText('Branch history failed.')).toHaveCount(0);
+        await expect(page.locator('#status')).toBeHidden();
       }
 
       await page

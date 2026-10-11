@@ -1,9 +1,53 @@
 import { extensionIdentity } from '../../shared/extension-identity';
-import type { Request, RequestBody } from '../../shared/messages';
+import type { PanelBody, Request, RequestBody } from '../../shared/messages';
 import type { GitAction, Reference, WorktreeInfo } from '../../shared/model';
 import { canOpenWorktree } from '../../shared/worktree-selection';
 import type { GitAdapter } from '../git/adapter';
+import type { PanelNotifications } from './notifications';
 import type { QuerySession } from './queries';
+
+interface WorktreePublication {
+  adapter: GitAdapter | null;
+  session: QuerySession;
+  notifications: PanelNotifications;
+  send(this: void, body: PanelBody, requestId: string): Promise<void>;
+}
+
+/** Keeps list reads and issued worktree handles in the same generation. */
+export class PanelWorktrees {
+  constructor(private readonly publication: WorktreePublication) {}
+
+  async load(requestId = 'host'): Promise<void> {
+    const { adapter, session } = this.publication;
+
+    if (!adapter) return;
+    const id = session.repositoryId;
+    const generation = session.generation;
+    let worktrees;
+
+    try {
+      worktrees = await adapter.worktrees(id);
+    } catch (error) {
+      if (session.current(id, generation))
+        await this.publication.notifications.readFailed(
+          'worktrees',
+          error,
+          'Could not load worktrees.',
+          requestId,
+          id,
+          generation,
+        );
+
+      return;
+    }
+
+    if (!session.current(id, generation)) return;
+    session.worktrees.clear();
+    for (const worktree of worktrees)
+      session.worktrees.set(worktree.id, worktree);
+    await this.publication.send({ kind: 'worktrees', worktrees }, requestId);
+  }
+}
 
 export interface WorktreeOpening {
   openWorktree?: (

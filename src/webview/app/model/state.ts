@@ -37,7 +37,6 @@ export interface ViewState {
   loading: boolean;
   restoring: boolean;
   error: string | null;
-  notice: string | null;
   setup: SetupState;
   text: string;
   filters: HistoryFilters;
@@ -86,7 +85,6 @@ export function initialView(): ViewState {
     loading: false,
     restoring: false,
     error: null,
-    notice: null,
     setup: 'ready',
     text: '',
     filters: normalizeHistoryFilters(),
@@ -311,7 +309,7 @@ export function reduceView(state: ViewState, event: ViewEvent): ViewState {
             ? { ...state, loading: false, restoring: false }
             : state;
         case 'notice':
-          return { ...state, notice: body.message };
+          return state;
         case 'references':
           return generation === state.generation
             ? { ...state, refs: body.references }
@@ -385,13 +383,7 @@ export function reduceView(state: ViewState, event: ViewEvent): ViewState {
         case 'error':
           return { ...state, error: body.message, loading: state.restoring };
         case 'operation':
-          return {
-            ...state,
-            notice:
-              body.result.kind === 'error' || body.result.kind === 'conflict'
-                ? body.result.message
-                : null,
-          };
+          return state;
         case 'file-icon-theme':
         case 'filters':
           return state;

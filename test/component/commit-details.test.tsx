@@ -208,7 +208,7 @@ test('the same path in two merge comparisons selects only its actual parent', ()
   expect(selected).toHaveLength(1);
   expect(selected[0]).toHaveAttribute('data-file', 'second');
 });
-test('all parent counts load while collapsed without duplicate requests, and only failures offer retry', async () => {
+test('all parent counts load once while collapsed and failed comparisons remain quiet', async () => {
   const user = userEvent.setup();
   const onIntent = vi.fn();
   const data = { ...initialView(), selectedSha: sha, details: commit };
@@ -239,10 +239,10 @@ test('all parent counts load while collapsed without duplicate requests, and onl
       />
     </StrictMode>,
   );
-  await user.click(
-    screen.getAllByRole('button', { name: 'Retry comparison' })[0]!,
-  );
-  expect(onIntent).toHaveBeenCalledTimes(4);
+  expect(screen.queryByRole('button', { name: 'Retry comparison' })).toBeNull();
+  expect(screen.queryByText('Parent object unavailable.')).toBeNull();
+  expect(screen.queryByText('Unavailable')).toBeNull();
+  expect(onIntent).toHaveBeenCalledTimes(3);
   const file = {
     id: 'owned-file-id',
     status: 'renamed' as const,

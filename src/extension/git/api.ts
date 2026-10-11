@@ -56,6 +56,7 @@ export interface GitRepository {
     readonly onDidChange: vscode.Event<void>;
   };
   status(): Promise<void>;
+  clean(paths: string[]): Promise<void>;
   getBranch(name: string): Promise<GitRef>;
   getRefs(query: { pattern?: string }): Promise<GitRef[]>;
   log(options?: GitLogOptions): Promise<GitCommit[]>;

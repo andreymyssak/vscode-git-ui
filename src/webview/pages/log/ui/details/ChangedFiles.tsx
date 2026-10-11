@@ -1,12 +1,12 @@
 import clsx from 'clsx';
-import { useContext, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
-import { FileIconThemeContext, Icon } from '@webview/shared/ui';
+import { fileCountLabel, Icon, navigateFileTree } from '@webview/shared/ui';
+import treeStyles from '@webview/shared/ui/file-tree/FileTree.module.css';
 
-import { buildFileTree } from '../../model/file-tree';
 import type { LogData, LogIntent } from '../../model/view';
 import styles from './ChangedFiles.module.css';
-import { fileCountLabel, FileTree, navigateFileTree } from './FileTree';
+import { FileTree } from './FileTree';
 
 type Props = {
   data: LogData;
@@ -91,38 +91,39 @@ function ParentGroup({
         role="treeitem"
         tabIndex={0}
         aria-expanded={open}
-        className={clsx(styles.row, styles.group)}
+        className={clsx(treeStyles.row, styles.group)}
         aria-label={
           label +
-          ' · ' +
           (files
-            ? fileCountLabel(files.length)
+            ? ' · ' + fileCountLabel(files.length)
             : error
-              ? 'Comparison unavailable'
-              : 'Loading file count')
+              ? ''
+              : ' · Loading file count')
         }
         title={label}
       >
-        <span className={styles.chevron}>
+        <span className={treeStyles.chevron}>
           <Icon name={open ? 'chevron-down' : 'chevron-right'} />
         </span>
-        <span className={styles.name}>{comparison ? label : 'Changes'}</span>
+        <span className={treeStyles.name}>
+          {comparison ? label : 'Changes'}
+        </span>
         <span
-          className={clsx(styles.count, styles.comparisonCount)}
+          className={clsx(treeStyles.count, styles.comparisonCount)}
           aria-label={!files && !error ? 'Loading file count' : undefined}
         >
-          {files ? fileCountLabel(files.length) : error ? 'Unavailable' : '…'}
+          {files ? fileCountLabel(files.length) : error ? '' : '…'}
         </span>
       </summary>
       <div
         role="group"
-        className={clsx(styles.children, styles.comparisonBody)}
+        className={clsx(treeStyles.children, styles.comparisonBody)}
         aria-busy={!files && !error}
       >
         {files ? (
           files.length ? (
             <FileTree
-              nodes={buildFileTree(files)}
+              files={files}
               selectedPath={selectedPath}
               onOpen={(fileId, preview) =>
                 onIntent({
@@ -139,27 +140,7 @@ function ParentGroup({
               {emptyMessage}
             </p>
           )
-        ) : error ? (
-          <div className={styles.unloaded}>
-            <p className={styles.message}>{error}</p>
-            <button
-              type="button"
-              className={styles.retry}
-              onClick={() =>
-                onIntent({
-                  kind: 'request',
-                  body: {
-                    kind: 'load-parent',
-                    sha: commit.sha,
-                    parentSha: parent,
-                  },
-                })
-              }
-            >
-              Retry comparison
-            </button>
-          </div>
-        ) : (
+        ) : error ? null : (
           <p
             className={styles.message}
             role="status"
@@ -177,31 +158,11 @@ function ParentGroup({
 
 export function ChangedFiles({ data, onIntent, inactive = false }: Props) {
   const parents = data.details?.parents.length ? data.details.parents : [null];
-  const theme = useContext(FileIconThemeContext);
-  const associations = theme?.associations;
-  const hasFiles =
-    !associations ||
-    !!associations.file ||
-    [
-      associations.fileNames,
-      associations.fileExtensions,
-      associations.languageIds,
-    ].some((map) => Object.keys(map).length > 0);
-  const hasFolders =
-    !associations ||
-    !!associations.folder ||
-    !!associations.folderExpanded ||
-    [associations.folderNames, associations.folderNamesExpanded].some(
-      (map) => Object.keys(map).length > 0,
-    );
 
   return (
     <div
       id="files"
-      className={clsx(
-        styles.files,
-        hasFiles && !hasFolders && styles.alignFileIcons,
-      )}
+      className={clsx(styles.files, treeStyles.tree)}
       role="tree"
       aria-label="Changed files"
       onKeyDown={navigateFileTree}

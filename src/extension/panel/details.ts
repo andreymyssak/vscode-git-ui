@@ -4,6 +4,12 @@ import type { FileHandle, QuerySession } from './queries';
 
 interface DetailsPublication {
   send(body: PanelBody, requestId: string): Promise<void>;
+  reportError(
+    id: string,
+    sha: string,
+    parentSha: string | null,
+    message: string,
+  ): Promise<void>;
   openChange(
     id: string,
     handle: FileHandle,
@@ -147,15 +153,18 @@ export class PanelDetails {
       files = await this.adapter.changes(id, sha, parentSha);
     } catch (error) {
       if (!current()) return;
+      const message =
+        error instanceof Error && error.message
+          ? error.message
+          : 'Could not load this comparison.';
+
+      await this.publication.reportError(id, sha, parentSha, message);
       await this.publication.send(
         {
           kind: 'files-error',
           sha,
           parentSha,
-          message:
-            error instanceof Error && error.message
-              ? error.message
-              : 'Could not load this comparison.',
+          message,
         },
         requestId,
       );

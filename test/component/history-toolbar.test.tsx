@@ -115,13 +115,17 @@ test('calendar date drafts cancel, reject reversed bounds and apply one inclusiv
     target: { value: '2026-10-05' },
   });
   await user.click(screen.getByRole('button', { name: 'Apply dates' }));
-  expect(screen.getByRole('alert')).toHaveTextContent(/on or before/);
-  expect(onIntent).not.toHaveBeenCalled();
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(onIntent).toHaveBeenCalledExactlyOnceWith({
+    kind: 'request',
+    body: { kind: 'invalid-date-filter' },
+  });
   fireEvent.change(screen.getByLabelText('To'), {
     target: { value: '2026-10-06' },
   });
   await user.click(screen.getByRole('button', { name: 'Apply dates' }));
-  expect(onIntent).toHaveBeenCalledExactlyOnceWith({
+  expect(onIntent).toHaveBeenCalledTimes(2);
+  expect(onIntent).toHaveBeenLastCalledWith({
     kind: 'filters',
     filters: {
       ...initialView().filters,

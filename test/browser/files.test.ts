@@ -3,7 +3,7 @@ import type { Page } from '@playwright/test';
 import { expect, test } from '../fixtures/browser';
 import { changedFiles } from '../fixtures/changed-files';
 
-async function showChangedFiles(page: Page) {
+async function showChangedFiles(page: Page, files = changedFiles) {
   await page.goto('/');
   await page.locator('[data-commit-row]').first().click();
   await page.evaluate((files) => {
@@ -30,8 +30,76 @@ async function showChangedFiles(page: Page) {
       ...request,
       body: { kind: 'files', sha, parentSha: parent, files },
     });
-  }, changedFiles);
+  }, files);
 }
+
+test('Log folders show themed status dots while counts stay beside the label', async ({
+  page,
+}) => {
+  await showChangedFiles(page, [
+    ...changedFiles,
+    {
+      id: 'deleted-folder-file',
+      status: 'deleted',
+      oldPath: 'removed/old.ts',
+      newPath: null,
+    },
+  ]);
+  await page.evaluate(() => {
+    document.documentElement.style.setProperty(
+      '--vscode-gitDecoration-modifiedResourceForeground',
+      '#73b4ff',
+    );
+    document.documentElement.style.setProperty(
+      '--vscode-gitDecoration-renamedResourceForeground',
+      '#73c991',
+    );
+  });
+  const common = page.getByRole('treeitem', { name: 'common 4 files' });
+  const renamed = page.getByRole('treeitem', {
+    name: 'packages/api/src 1 file',
+  });
+  const removed = page.getByRole('treeitem', { name: 'removed 1 file' });
+
+  await expect(common.locator('[data-folder-status]')).toBeVisible();
+  await expect(common.locator('[data-folder-status]')).toHaveCSS(
+    'color',
+    'rgb(115, 180, 255)',
+  );
+  await expect(renamed.locator('[data-folder-status]')).toHaveCSS(
+    'color',
+    'rgb(115, 201, 145)',
+  );
+  await expect(removed.locator('[data-folder-status]')).toHaveCount(0);
+  const label = (await common
+    .getByText('common', { exact: true })
+    .boundingBox())!;
+  const count = (await common
+    .getByText('4 files', { exact: true })
+    .boundingBox())!;
+  const dot = (await common.locator('[data-folder-status]').boundingBox())!;
+
+  expect(count.x - label.x - label.width).toBe(6);
+  expect(dot.x).toBeGreaterThan(count.x + count.width);
+});
+
+test('changed-file hover shows renamed paths in one tooltip', async ({
+  page,
+}) => {
+  await showChangedFiles(page);
+  const file = page.locator('[data-file="api-file"]');
+
+  await file.getByText('index.ts', { exact: true }).hover();
+  const tooltip = page.getByRole('tooltip');
+
+  await expect(tooltip).toHaveCount(1);
+  await expect(tooltip).toHaveText(
+    'packages/api/src/old.ts → packages/api/src/index.ts • Renamed',
+  );
+  expect(await file.evaluate((row) => row.closest('[title]'))).toBeNull();
+  await page.keyboard.press('Escape');
+  await expect(tooltip).toHaveCount(0);
+});
 
 test('ancestor guides paint through an opaque nested file selection background', async ({
   page,
@@ -556,7 +624,7 @@ test('fast empty comparisons retain row geometry without flashing loading text',
   ).toHaveCount(0);
 });
 
-test('parent failures are distinct from empty results and retry clears only the failed comparison', async ({
+test('failed parent comparisons settle quietly and toolbar refresh retries them', async ({
   page,
 }) => {
   await showChangedFiles(page);
@@ -591,18 +659,26 @@ test('parent failures are distinct from empty results and retry clears only the 
   });
   const second = page.locator('[data-parent="' + 'b'.repeat(40) + '"]');
 
-  await expect(second.locator('summary')).toContainText('Unavailable');
+  await expect(second.locator('summary')).not.toContainText('Unavailable');
   await second.locator('summary').click();
-  await expect(second.getByText('Parent object unavailable.')).toBeVisible();
+  await expect(second.getByText('Parent object unavailable.')).toHaveCount(0);
+  await expect(second.locator('[role="group"]')).toHaveAttribute(
+    'aria-busy',
+    'false',
+  );
+  await expect(
+    second.getByText('No changes compared with this parent.'),
+  ).toHaveCount(0);
   await expect(page.locator('[data-file="lock-file"]')).toBeVisible();
-  await second.getByRole('button', { name: 'Retry comparison' }).click();
   await expect(
     second.getByRole('button', { name: 'Retry comparison' }),
   ).toHaveCount(0);
-  await expect(second.locator('[role="group"]')).toHaveAttribute(
-    'aria-busy',
-    'true',
-  );
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  expect(
+    (await page.evaluate(() => window.__requests)).some(
+      ({ body }) => body.kind === 'refresh',
+    ),
+  ).toBe(true);
   await page.evaluate(() => {
     const r = window.__requests.at(-1)!;
 

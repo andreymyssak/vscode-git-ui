@@ -75,21 +75,24 @@ export async function selectNativeRepository(
   let frame: Frame | undefined;
 
   await expect
-    .poll(async () => {
-      for (const context of browser.contexts())
-        for (const page of context.pages())
-          for (const candidate of page.frames())
-            if (
-              !candidate.isDetached() &&
-              (await candidate.locator('#log-tab').count())
-            ) {
-              frame = candidate;
+    .poll(
+      async () => {
+        for (const context of browser.contexts())
+          for (const page of context.pages())
+            for (const candidate of page.frames())
+              if (
+                !candidate.isDetached() &&
+                (await candidate.locator('#log-tab').count())
+              ) {
+                frame = candidate;
 
-              return true;
-            }
+                return true;
+              }
 
-      return false;
-    })
+        return false;
+      },
+      { timeout: 15000 },
+    )
     .toBe(true)
     .catch(async (error: unknown) => {
       const documents = await Promise.all(

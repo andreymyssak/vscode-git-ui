@@ -42,6 +42,9 @@ export function HistoryToolbar({
       />
       <DateFilter
         date={filters.date}
+        onInvalid={() =>
+          onIntent({ kind: 'request', body: { kind: 'invalid-date-filter' } })
+        }
         onChange={(date) =>
           onIntent({ kind: 'filters', filters: { ...filters, date } })
         }

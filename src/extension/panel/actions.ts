@@ -87,7 +87,7 @@ export async function publishOperationResult(
   ].includes(kind);
 
   await Promise.all([
-    nativeResult && (result.kind === 'error' || result.kind === 'conflict')
+    result.kind === 'error' || result.kind === 'conflict'
       ? lifecycle.reportError?.(
           result.message,
           result.kind === 'conflict' || result.recovery === 'source-control',

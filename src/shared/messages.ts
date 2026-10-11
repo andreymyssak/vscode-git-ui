@@ -80,13 +80,14 @@ export type RequestBody =
       filters?: HistoryFilters;
     }
   | { kind: 'choose-authors' }
+  | { kind: 'invalid-date-filter' }
   | { kind: 'select-commit'; sha: string }
   | { kind: 'select-commits'; shas: string[]; activeSha: string }
   | { kind: 'load-parent'; sha: string; parentSha: string | null }
   | { kind: 'open-file'; fileId: string; preview: boolean }
   | { kind: 'go-to'; input: string }
   | { kind: 'action'; action: UserAction }
-  | { kind: 'worktrees' }
+  | { kind: 'worktrees'; retry?: true }
   | { kind: 'open-worktree'; worktreeId: string; newWindow: boolean }
   | {
       kind: 'restore';

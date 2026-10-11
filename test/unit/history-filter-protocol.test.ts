@@ -57,6 +57,31 @@ test('author picker requests carry no arbitrary query or command arguments', () 
     parseRequest(request({ kind: 'choose-authors', command: 'push' })),
   ).toBe(null);
 });
+test('invalid date notifications carry no arbitrary message or command arguments', () => {
+  expect(parseRequest(request({ kind: 'invalid-date-filter' }))?.body).toEqual({
+    kind: 'invalid-date-filter',
+  });
+  expect(
+    parseRequest(
+      request({ kind: 'invalid-date-filter', message: 'Forged error' }),
+    ),
+  ).toBeNull();
+  expect(
+    parseRequest(request({ kind: 'invalid-date-filter', command: 'push' })),
+  ).toBeNull();
+});
+test('worktree refresh accepts an explicit retry flag without extra arguments', () => {
+  expect(
+    parseRequest(request({ kind: 'worktrees', retry: true }))?.body,
+  ).toEqual({ kind: 'worktrees', retry: true });
+  expect(parseRequest(request({ kind: 'worktrees', retry: false }))).toBeNull();
+  expect(
+    parseRequest(request({ kind: 'worktrees', retry: 'true' })),
+  ).toBeNull();
+  expect(
+    parseRequest(request({ kind: 'worktrees', retry: true, command: 'push' })),
+  ).toBeNull();
+});
 test('forged filter shapes are rejected before repository access', () => {
   for (const invalid of [
     null,

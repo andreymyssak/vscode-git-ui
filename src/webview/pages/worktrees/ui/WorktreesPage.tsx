@@ -121,7 +121,7 @@ export function WorktreesPage({
           className={styles.action}
           label="Refresh Worktrees"
           icon="sync"
-          onClick={() => onRequest({ kind: 'worktrees' })}
+          onClick={() => onRequest({ kind: 'worktrees', retry: true })}
         />
         <div className={styles.separator} />
         <ActionButton

@@ -7,6 +7,11 @@ const root = '.artifacts/browser-tests';
 await mkdir(root, { recursive: true });
 for (const fixture of [
   {
+    input: 'test/browser/source-control-host.ts',
+    name: 'source-control-host',
+    mode: 'production',
+  },
+  {
     input: 'test/browser/fake-vscode-host.ts',
     name: 'fake-vscode-host',
     mode: 'production',
@@ -54,6 +59,10 @@ await writeFile(
 await writeFile(
   `${root}/development.html`,
   '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="development.css"></head><body><main id="app"></main><script src="fake-vscode-host.js"></script><script src="development.js"></script></body></html>',
+);
+await writeFile(
+  `${root}/source-control.html`,
+  '<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="webview.css"></head><body data-view="source-control"><main id="app"></main><script src="source-control-host.js"></script><script src="webview.js"></script></body></html>',
 );
 await preview({
   configFile: false,

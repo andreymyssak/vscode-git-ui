@@ -39,10 +39,7 @@ export interface OperationDialogs extends UpdateBranchDialogs {
 }
 export class OperationQueue {
   private readonly tails = new Map<string, Promise<unknown>>();
-  async run(
-    id: string,
-    action: () => Promise<OperationResult>,
-  ): Promise<OperationResult> {
+  async run<T>(id: string, action: () => Promise<T>): Promise<T> {
     const previous = this.tails.get(id) ?? Promise.resolve();
     const next = previous.catch(() => {}).then(action);
 
@@ -54,7 +51,7 @@ export class OperationQueue {
     }
   }
 }
-const queue = new OperationQueue();
+export const repositoryOperations = new OperationQueue();
 
 export function createOperations(
   access: GitApiAccess,
@@ -90,7 +87,7 @@ export function createOperations(
               }
             : requested;
 
-    return queue.run(id, async () => {
+    return repositoryOperations.run<OperationResult>(id, async () => {
       if (context?.aborted) return { kind: 'cancelled', backend: null };
       let backend: 'api' | 'cli' = [
         'cherry-pick',

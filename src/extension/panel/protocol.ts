@@ -246,11 +246,16 @@ function isRequestBody(value: unknown): value is RequestBody {
       );
     case 'choose-repository':
     case 'choose-authors':
+    case 'invalid-date-filter':
     case 'refresh':
-    case 'worktrees':
     case 'source-control':
     case 'trust':
       return keys(value, ['kind']);
+    case 'worktrees':
+      return (
+        keys(value, ['kind']) ||
+        (keys(value, ['kind', 'retry']) && value.retry === true)
+      );
     case 'history':
       return (
         filterKeys(value, ['kind', 'scope', 'text', 'cursor']) &&

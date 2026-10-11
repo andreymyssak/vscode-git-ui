@@ -27,11 +27,16 @@ import { PanelDetails } from './details';
 import { PanelHistory } from './history';
 import type { NavigationPrompts } from './navigate';
 import { PanelNavigator } from './navigate';
+import { comparisonSource, PanelNotifications } from './notifications';
 import { parseRequest } from './protocol';
 import { type FileHandle, QuerySession } from './queries';
 import { DeferredRepositoryRefresh } from './repository-refresh';
 import { reconcileSelection } from './selection';
-import { openSelectedWorktree, type WorktreeOpening } from './worktrees';
+import {
+  openSelectedWorktree,
+  PanelWorktrees,
+  type WorktreeOpening,
+} from './worktrees';
 
 export interface ControllerOptions
   extends ActionPrompts, NavigationPrompts, WorktreeOpening {
@@ -57,6 +62,8 @@ export class PanelController {
   private readonly navigator: PanelNavigator | null;
   private readonly historyQuery: PanelHistory | null;
   private readonly details: PanelDetails | null;
+  private readonly notifications: PanelNotifications;
+  private readonly worktreeQuery: PanelWorktrees;
   private input: HistoryInput = {
     scope: { kind: 'head' },
     text: '',
@@ -75,6 +82,19 @@ export class PanelController {
 
   private readonly repositorySubscription: Disposable | null;
   constructor(private readonly options: ControllerOptions) {
+    this.notifications = new PanelNotifications({
+      report: options.reportActionError,
+      session: this.session,
+      closed: () => this.closed,
+      send: (body, requestId, id, generation) =>
+        this.send(body, requestId, id, generation),
+    });
+    this.worktreeQuery = new PanelWorktrees({
+      adapter: options.adapter,
+      session: this.session,
+      notifications: this.notifications,
+      send: (body, requestId) => this.send(body, requestId),
+    });
     this.actions = options.adapter
       ? new PanelActions(options.adapter, this.session, options)
       : null;
@@ -91,6 +111,12 @@ export class PanelController {
     this.details = options.adapter
       ? new PanelDetails(options.adapter, this.session, {
           send: (body, requestId) => this.send(body, requestId),
+          reportError: (id, sha, parentSha, message) =>
+            this.notifications.failed(
+              id,
+              comparisonSource(sha, parentSha),
+              message,
+            ),
           openChange: (id, handle, preview, current) =>
             options.openChange(
               id,
@@ -103,13 +129,11 @@ export class PanelController {
     this.repositorySubscription =
       options.adapter?.subscribeRepositories(() => {
         void this.repositoriesChanged().catch((error) =>
-          this.send({
-            kind: 'error',
-            message:
-              error instanceof Error
-                ? error.message
-                : 'Repository refresh failed.',
-          }),
+          this.notifications.readFailed(
+            'history',
+            error,
+            'Repository refresh failed.',
+          ),
         );
       }) ?? null;
   }
@@ -152,13 +176,17 @@ export class PanelController {
     id = this.session.repositoryId,
     generation = this.session.generation,
   ): Promise<void> {
-    if (!this.closed)
+    if (!this.closed) {
+      this.notifications.succeeded(id, body);
+      if (body.kind === 'notice')
+        await this.options.reportActionInfo?.(body.message);
       await this.options.send({
         requestId,
         repositoryId: id,
         generation,
         body,
       });
+    }
   }
 
   private async setup(): Promise<boolean> {
@@ -174,11 +202,12 @@ export class PanelController {
     }
 
     if (!this.options.adapter) {
+      if (this.options.setupError)
+        await this.notifications.failed('', 'setup', this.options.setupError);
       await this.send({
         kind: 'setup',
         state: 'git-disabled',
         message:
-          this.options.setupError ??
           'Enable the built-in Git extension and Git in VS Code settings, and install Git.',
         repositories: [],
       });
@@ -205,10 +234,10 @@ export class PanelController {
     const request = parseRequest(value);
 
     if (!request) {
-      await this.send({
-        kind: 'error',
-        message: 'The panel sent an invalid request.',
-      });
+      const message = 'The panel sent an invalid request.';
+
+      await this.options.reportActionError?.(message);
+      await this.send({ kind: 'error', message });
 
       return;
     }
@@ -345,14 +374,21 @@ export class PanelController {
           break;
         }
 
+        case 'invalid-date-filter':
+          await this.options.reportActionError?.(
+            'Start date must be on or before end date.',
+          );
+          break;
+
         case 'go-to':
           await this.goTo(body.input, request, (generation) => {
             ownedGeneration = generation;
           });
           break;
         case 'refresh':
-          await this.refresh();
-          break;
+          this.notifications.retry();
+
+          return await this.refresh();
         case 'select-commit':
           await this.details!.select([body.sha], body.sha, request.requestId);
           break;
@@ -377,18 +413,10 @@ export class PanelController {
         case 'action':
           await this.action(body.action, request);
           break;
-        case 'worktrees': {
-          const id = this.session.repositoryId;
-          const generation = this.session.generation;
-          const worktrees = await this.options.adapter!.worktrees(id);
+        case 'worktrees':
+          if (body.retry) this.notifications.retry('worktrees');
 
-          if (!this.session.current(id, generation)) return;
-          this.session.worktrees.clear();
-          for (const worktree of worktrees)
-            this.session.worktrees.set(worktree.id, worktree);
-          await this.send({ kind: 'worktrees', worktrees }, request.requestId);
-          break;
-        }
+          return await this.worktreeQuery.load(request.requestId);
 
         case 'open-worktree':
           await openSelectedWorktree(
@@ -403,47 +431,15 @@ export class PanelController {
         default: {
           const exhaustive: never = body;
 
-          void exhaustive;
-          throw new Error('This action is unavailable.');
+          return exhaustive;
         }
       }
     } catch (error) {
-      if (
-        request.body.kind === 'action' &&
-        (request.repositoryId !== this.session.repositoryId ||
-          ownedGeneration !== this.session.generation)
-      ) {
-        if (!this.closed) {
-          const message =
-            error instanceof Error ? error.message : String(error);
-
-          if (this.options.reportActionError)
-            await this.options.reportActionError(message);
-          else await this.send({ kind: 'error', message }, request.requestId);
-        }
-
-        return;
-      }
-
-      if (
-        request.repositoryId === this.session.repositoryId &&
-        ownedGeneration !== this.session.generation
-      )
-        return;
-      const initial =
-        request.body.kind === 'ready' ||
-        request.body.kind === 'choose-repository';
-
-      await this.send(
-        {
-          kind: 'error',
-          message:
-            error instanceof Error ? error.message : 'Git request failed.',
-        },
-        request.requestId,
-        initial ? this.session.repositoryId : request.repositoryId,
-        initial ? this.session.generation : ownedGeneration,
-      );
+      await this.notifications.requestFailed({
+        error,
+        request,
+        ownedGeneration,
+      });
     }
   }
 
@@ -465,10 +461,7 @@ export class PanelController {
         if (this.closed || this.session.repositoryId !== id) return;
         if (this.repositoryRefresh.defer(id, changed)) return;
         void this.refresh().catch((error) =>
-          this.send({
-            kind: 'error',
-            message: error instanceof Error ? error.message : 'Refresh failed.',
-          }),
+          this.notifications.readFailed('history', error, 'Refresh failed.'),
         );
       }, 50);
     };
@@ -761,16 +754,25 @@ export class PanelController {
     const generation = this.session.generation;
 
     this.refreshRestore = { repositoryId: id, selection: desired, anchor };
-    await this.reload(desired, anchor, 'refresh');
-    if (!this.session.current(id, generation)) return;
-    this.refreshRestore = null;
-    const worktrees = await this.options.adapter!.worktrees(id);
+    try {
+      await this.reload(desired, anchor, 'refresh');
+    } catch (error) {
+      if (this.session.current(id, generation))
+        await this.notifications.readFailed(
+          'history',
+          error,
+          'Refresh failed.',
+          'refresh',
+          id,
+          generation,
+        );
+
+      return;
+    }
 
     if (!this.session.current(id, generation)) return;
-    this.session.worktrees.clear();
-    for (const worktree of worktrees)
-      this.session.worktrees.set(worktree.id, worktree);
-    await this.send({ kind: 'worktrees', worktrees });
+    this.refreshRestore = null;
+    await this.worktreeQuery.load();
   }
 
   dispose(): void {

@@ -11,9 +11,6 @@ const file = {
   oldPath: 'a.ts',
   newPath: 'a.ts',
 };
-const nodes = [
-  { kind: 'file' as const, id: 'file', name: 'a.ts', change: file },
-];
 
 afterEach(() => vi.useRealTimers());
 
@@ -21,7 +18,7 @@ test('a pointer click requests its preview immediately', () => {
   vi.useFakeTimers();
   const onOpen = vi.fn();
 
-  render(<FileTree nodes={nodes} selectedPath={null} onOpen={onOpen} />);
+  render(<FileTree files={[file]} selectedPath={null} onOpen={onOpen} />);
   fireEvent.click(screen.getByRole('treeitem'), { detail: 1 });
   expect(onOpen).toHaveBeenCalledExactlyOnceWith('file', true);
   vi.advanceTimersByTime(1000);
@@ -31,7 +28,7 @@ test('a pointer click requests its preview immediately', () => {
 test('double-click promotes the preview; Enter opens a regular diff directly', () => {
   const onOpen = vi.fn();
 
-  render(<FileTree nodes={nodes} selectedPath={null} onOpen={onOpen} />);
+  render(<FileTree files={[file]} selectedPath={null} onOpen={onOpen} />);
   const row = screen.getByRole('treeitem');
 
   fireEvent.click(row, { detail: 1 });

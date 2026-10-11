@@ -170,12 +170,10 @@ export function CommitDetails({
             </div>
           </section>
         </>
-      ) : (
+      ) : data.error ? null : (
         <p className={styles.empty}>
           {data.selectedSha
-            ? data.error
-              ? 'Could not load this commit.'
-              : 'Loading commit…'
+            ? 'Loading commit…'
             : 'Select a commit to see its details and changed files.'}
         </p>
       )}

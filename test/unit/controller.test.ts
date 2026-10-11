@@ -1,4 +1,4 @@
-import { assert, expect, test } from 'vitest';
+import { assert, expect, test, vi } from 'vitest';
 
 import type { FileChange, HistoryPage } from '../../src/shared/model';
 import { a, b, fixture, page } from '../fixtures/controller';
@@ -263,8 +263,9 @@ test('user filter intent survives a concurrent repository refresh', async (t) =>
   });
 });
 
-test('conflict result remains visible after operation refresh', async (t) => {
-  const f = fixture();
+test('conflict results notify natively with Source Control recovery', async (t) => {
+  const reportActionError = vi.fn(async () => {});
+  const f = fixture(true, true, { reportActionError });
 
   t.onTestFinished(() => f.controller.dispose());
   f.adapter.operate = async () => ({
@@ -277,4 +278,8 @@ test('conflict result remains visible after operation refresh', async (t) => {
     f.request({ kind: 'action', action: { kind: 'fetch-all' } }),
   );
   expect(f.sent.at(-1)?.body.kind).toBe('operation');
+  expect(reportActionError).toHaveBeenCalledExactlyOnceWith(
+    'Resolve through Source Control',
+    true,
+  );
 });

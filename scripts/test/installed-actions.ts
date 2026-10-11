@@ -51,6 +51,7 @@ export async function runInstalledActions({
     join(profile, 'User/settings.json'),
     JSON.stringify({
       'window.dialogStyle': 'custom',
+      'window.menuStyle': 'custom',
       'git.autofetch': false,
       'git.confirmSync': false,
     }),
@@ -73,10 +74,16 @@ export async function runInstalledActions({
       const fs = require('node:fs');
       let result;
       try {
+        fs.writeFileSync(${JSON.stringify(progressPath)}, 'selected-file rollback scenarios');
+        const rollbacks = await require(${JSON.stringify(resolve('dist/test/vscode/acceptance/rollback.scenario.cjs'))}).run();
+        fs.writeFileSync(${JSON.stringify(progressPath)}, 'selected-file discard scenarios');
+        const discards = await require(${JSON.stringify(resolve('dist/test/vscode/acceptance/discard-changes.scenario.cjs'))}).run();
         fs.writeFileSync(${JSON.stringify(progressPath)}, 'branch update scenarios');
         const updates = await require(${JSON.stringify(resolve('dist/test/vscode/acceptance/branch-update.scenario.cjs'))}).run();
         fs.writeFileSync(${JSON.stringify(progressPath)}, 'branch integration and worktree scenarios');
         const passed = [
+          ...rollbacks,
+          ...discards,
           ...updates,
           ...await require(${JSON.stringify(resolve('dist/test/vscode/acceptance/branch-actions.scenario.cjs'))}).run(),
         ];
@@ -109,7 +116,6 @@ export async function runInstalledActions({
   child.once('error', (error) => {
     startupError = error;
   });
-  // A passing Windows run takes about 110 seconds for all fifteen Git scenarios.
   // Allow startup and slower runners without extending individual UI assertions.
   const deadline = Date.now() + 300000;
 
@@ -132,11 +138,9 @@ export async function runInstalledActions({
       if (result) {
         if (result.kind === 'failed') throw new Error(result.message);
         for (const name of result.passed) console.log(`Passed: ${name}`);
-        if (result.passed.length !== 15)
-          throw new Error(
-            'Expected all fifteen installed branch action cases.',
-          );
-        console.log('15 installed branch action cases passed.');
+        if (result.passed.length !== 19)
+          throw new Error('Expected all nineteen installed action cases.');
+        console.log('19 installed action cases passed.');
 
         return;
       }
@@ -150,9 +154,7 @@ export async function runInstalledActions({
       return 'driver activation';
     });
 
-    throw new Error(
-      `Installed branch action tests timed out during ${progress}.`,
-    );
+    throw new Error(`Installed action tests timed out during ${progress}.`);
   } finally {
     child.kill();
   }

@@ -42,6 +42,7 @@ export async function run(): Promise<string[]> {
       await f.runGit(['update-ref', refId, f.incoming]);
       await f.access.repository(f.id).status();
       await vscode.commands.executeCommand('notifications.clearAll');
+      await vscode.commands.executeCommand('notifications.hideList');
       await vscode.commands.executeCommand(`${LOG_VIEW_ID}.focus`);
       await expect
         .poll(async () => {
@@ -93,6 +94,8 @@ export async function run(): Promise<string[]> {
             : 'Rebase "main" on "feature"? This rewrites its local commits.';
         const notice = page.getByRole('dialog', { name: `Info: ${message}` });
 
+        await page.bringToFront();
+        await vscode.commands.executeCommand('notifications.showList');
         await expect(notice).toBeVisible();
         await expect(page.locator('.monaco-dialog-box:visible')).toHaveCount(0);
         await notice

@@ -156,7 +156,8 @@
     "vscode.git"
   ],
   "activationEvents": [
-    "onView:gitUI.log"
+    "onView:gitUI.log",
+    "onView:gitUI.changes"
   ],
   "categories": [
     "SCM Providers"
@@ -178,6 +179,13 @@
           "name": "Git UI",
           "type": "webview"
         }
+      ],
+      "scm": [
+        {
+          "id": "gitUI.changes",
+          "name": "Git UI Changes",
+          "type": "webview"
+        }
       ]
     },
     "commands": [
@@ -193,7 +201,7 @@
       },
       {
         "command": "gitUI.create-worktree",
-        "title": "New Worktree from Selected Branch…",
+        "title": "New Worktree from Selected Branch\u2026",
         "enablement": "refKind != tag"
       },
       {
@@ -208,11 +216,11 @@
       },
       {
         "command": "gitUI.create-branch",
-        "title": "New Branch from Here…"
+        "title": "New Branch from Here\u2026"
       },
       {
         "command": "gitUI.rename-branch",
-        "title": "Rename…",
+        "title": "Rename\u2026",
         "enablement": "refKind == local"
       },
       {
@@ -240,25 +248,25 @@
       },
       {
         "command": "gitUI.edit-commit-message",
-        "title": "Edit Commit Message…",
+        "title": "Edit Commit Message\u2026",
         "enablement": "commitCanEdit"
       },
       {
         "command": "gitUI.squash-commits",
-        "title": "Squash Commits…",
+        "title": "Squash Commits\u2026",
         "enablement": "commitCanSquash"
       },
       {
         "command": "gitUI.branch-from-commit",
-        "title": "New Branch…"
+        "title": "New Branch\u2026"
       },
       {
         "command": "gitUI.tag-from-commit",
-        "title": "New Tag…"
+        "title": "New Tag\u2026"
       },
       {
         "command": "gitUI.drop-commits",
-        "title": "Drop Commits…",
+        "title": "Drop Commits\u2026",
         "enablement": "commitCanDrop"
       },
       {
@@ -275,6 +283,130 @@
         "command": "gitUI.delete-worktrees",
         "title": "Delete",
         "enablement": "worktreeCanDelete"
+      },
+      {
+        "command": "gitUI.refresh-changes",
+        "title": "Refresh Changes",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "gitUI.check-all",
+        "title": "Check All Files",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
+      },
+      {
+        "command": "gitUI.uncheck-all",
+        "title": "Uncheck All Files",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
+      },
+      {
+        "command": "gitUI.commit-checked",
+        "title": "Commit Checked Files",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasChecked",
+        "icon": "$(check)"
+      },
+      {
+        "command": "gitUI.stash-checked",
+        "title": "Stash Checked Files",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasChecked",
+        "icon": "$(archive)"
+      },
+      {
+        "command": "gitUI.show-changes",
+        "title": "Stash Changes\u2026",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy",
+        "icon": "$(archive)"
+      },
+      {
+        "command": "gitUI.open-working-change",
+        "title": "Show Changes",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
+      },
+      {
+        "command": "gitUI.open-index-change",
+        "title": "Show Staged Changes",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
+      },
+      {
+        "command": "gitUI.open-stash-change",
+        "title": "Open Saved Changes",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
+      },
+      {
+        "command": "gitUI.apply-stash",
+        "title": "Apply Stash",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
+      },
+      {
+        "command": "gitUI.apply-stash-files",
+        "title": "Apply Selected Files",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
+      },
+      {
+        "command": "gitUI.delete-stash",
+        "title": "Delete Stash\u2026",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
+      },
+      {
+        "command": "gitUI.open-working-file",
+        "title": "Open File",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
+      },
+      {
+        "command": "gitUI.discard-working-change",
+        "title": "Discard Changes",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
+      },
+      {
+        "command": "gitUI.commit-selected",
+        "title": "Commit Selected Files\u2026",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
+      },
+      {
+        "command": "gitUI.stash-selected",
+        "title": "Stash Selected Files\u2026",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
+      },
+      {
+        "command": "gitUI.copy-relative-path",
+        "title": "Copy Relative Path",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
+      },
+      {
+        "command": "gitUI.rollback-selected",
+        "title": "Rollback\u2026",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
+      },
+      {
+        "command": "gitUI.rename-stash",
+        "title": "Rename Stash\u2026",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
+      },
+      {
+        "command": "gitUI.delete-stash-files",
+        "title": "Delete Selected Files\u2026",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
       }
     ],
     "menus": {
@@ -378,6 +510,71 @@
           "command": "gitUI.delete-worktrees",
           "when": "webviewId == gitUI.log && webviewSection == worktree",
           "group": "1_worktree@3"
+        },
+        {
+          "command": "gitUI.open-working-change",
+          "when": "webviewId == gitUI.changes && webviewSection == working-change",
+          "group": "1_inspect@1"
+        },
+        {
+          "command": "gitUI.open-index-change",
+          "when": "webviewId == gitUI.changes && webviewSection == working-change && staged",
+          "group": "1_inspect@2"
+        },
+        {
+          "command": "gitUI.apply-stash",
+          "when": "webviewId == gitUI.changes && webviewSection == stash",
+          "group": "1_restore@1"
+        },
+        {
+          "command": "gitUI.delete-stash",
+          "when": "webviewId == gitUI.changes && webviewSection == stash",
+          "group": "2_manage@1"
+        },
+        {
+          "command": "gitUI.open-stash-change",
+          "when": "webviewId == gitUI.changes && webviewSection == stash-file",
+          "group": "1_inspect@1"
+        },
+        {
+          "command": "gitUI.apply-stash-files",
+          "when": "webviewId == gitUI.changes && webviewSection == stash-file",
+          "group": "1_restore@1"
+        },
+        {
+          "command": "gitUI.open-working-file",
+          "when": "webviewId == gitUI.changes && webviewSection == working-change",
+          "group": "1_inspect@3"
+        },
+        {
+          "command": "gitUI.commit-selected",
+          "when": "webviewId == gitUI.changes && webviewSection == working-change && changeSelectionCount > 0 && !conflict",
+          "group": "2_modify@1"
+        },
+        {
+          "command": "gitUI.stash-selected",
+          "when": "webviewId == gitUI.changes && webviewSection == working-change && changeSelectionCount > 0 && !conflict",
+          "group": "2_modify@2"
+        },
+        {
+          "command": "gitUI.copy-relative-path",
+          "when": "webviewId == gitUI.changes && changeSelectionCount > 0",
+          "group": "3_copy@1"
+        },
+        {
+          "command": "gitUI.rollback-selected",
+          "when": "webviewId == gitUI.changes && webviewSection == working-change && changeSelectionCount > 0 && !conflict",
+          "group": "2_modify@3"
+        },
+        {
+          "command": "gitUI.rename-stash",
+          "when": "webviewId == gitUI.changes && webviewSection == stash",
+          "group": "2_manage@0"
+        },
+        {
+          "command": "gitUI.delete-stash-files",
+          "when": "webviewId == gitUI.changes && webviewSection == stash-file && changeSelectionCount > 0",
+          "group": "2_manage@1"
         }
       ],
       "commandPalette": [
@@ -460,6 +657,69 @@
         {
           "command": "gitUI.delete-worktrees",
           "when": "false"
+        },
+        {
+          "command": "gitUI.open-working-change",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.open-index-change",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.open-stash-change",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.apply-stash",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.apply-stash-files",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.delete-stash",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.open-working-file",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.discard-working-change",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.commit-selected",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.stash-selected",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.copy-relative-path",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.rollback-selected",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.rename-stash",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.delete-stash-files",
+          "when": "false"
+        }
+      ],
+      "scm/resourceState/context": [
+        {
+          "command": "gitUI.show-changes",
+          "when": "scmProvider == git",
+          "group": "3_git_ui@1"
         }
       ]
     }

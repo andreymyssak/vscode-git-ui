@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { expect, onTestFinished, test } from 'vitest';
 
 import type { FileIconTheme } from '../../src/shared/file-icons';
-import { buildFileTree } from '../../src/webview/pages/log/model/file-tree';
+import type { FileChange } from '../../src/shared/model';
 import { FileTree } from '../../src/webview/pages/log/ui/details/FileTree';
 import { createBrowserBridge } from '../../src/webview/shared/api/vscode-bridge';
 import { FileIconThemeProvider } from '../../src/webview/shared/ui/file-icon/FileIconTheme';
@@ -23,14 +23,14 @@ const theme: FileIconTheme = {
   },
   languages: { fileNames: {}, extensions: {} },
 };
-const files = buildFileTree([
+const files = [
   {
     id: 'file',
     status: 'modified',
     oldPath: 'src/file.ts',
     newPath: 'src/file.ts',
   },
-]);
+] satisfies FileChange[];
 
 test('active icon changes update images while preserving the selected file and collapsed folder', async () => {
   const target = new EventTarget();
@@ -43,7 +43,7 @@ test('active icon changes update images while preserving the selected file and c
   const { container } = render(
     <FileIconThemeProvider bridge={bridge}>
       <FileTree
-        nodes={files}
+        files={files}
         selectedPath="src/file.ts"
         onOpen={() => undefined}
       />
@@ -106,7 +106,7 @@ test('obsolete stylesheet loads cannot replace the newest theme and unmount remo
   onTestFinished(() => bridge.dispose());
   const { container, unmount } = render(
     <FileIconThemeProvider bridge={bridge}>
-      <FileTree nodes={files} selectedPath={null} onOpen={() => undefined} />
+      <FileTree files={files} selectedPath={null} onOpen={() => undefined} />
     </FileIconThemeProvider>,
   );
   const send = (uri: string, stylesheet: string | null) =>
@@ -153,7 +153,7 @@ test('a theme without folder icons follows Explorer while unavailable themes kee
   onTestFinished(() => bridge.dispose());
   const { container } = render(
     <FileIconThemeProvider bridge={bridge}>
-      <FileTree nodes={files} selectedPath={null} onOpen={() => undefined} />
+      <FileTree files={files} selectedPath={null} onOpen={() => undefined} />
     </FileIconThemeProvider>,
   );
   const folderIcon = container.querySelector('[data-file-icon="folder"]');
@@ -191,7 +191,7 @@ test('the None theme suppresses file icons instead of substituting generic icons
   onTestFinished(() => bridge.dispose());
   const { container } = render(
     <FileIconThemeProvider bridge={bridge}>
-      <FileTree nodes={files} selectedPath={null} onOpen={() => undefined} />
+      <FileTree files={files} selectedPath={null} onOpen={() => undefined} />
     </FileIconThemeProvider>,
   );
 
@@ -234,7 +234,7 @@ test('a declared but unavailable folder asset uses the generic folder fallback',
   onTestFinished(() => bridge.dispose());
   const { container } = render(
     <FileIconThemeProvider bridge={bridge}>
-      <FileTree nodes={files} selectedPath={null} onOpen={() => undefined} />
+      <FileTree files={files} selectedPath={null} onOpen={() => undefined} />
     </FileIconThemeProvider>,
   );
 

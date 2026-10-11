@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 
-import { buildFileTree } from '../../src/webview/pages/log/model/file-tree';
+import { buildFileTree } from '../../src/webview/shared/ui/file-tree/model';
 
 test('file hierarchy preserves opaque IDs ordering and duplicate basenames', () => {
   const files = [
@@ -23,15 +23,18 @@ test('file hierarchy preserves opaque IDs ordering and duplicate basenames', () 
       newPath: 'long/new.txt',
     },
   ];
-  const tree = buildFileTree(files);
+  const tree = buildFileTree({
+    files,
+    pathOf: (file) => file.newPath ?? file.oldPath ?? 'File',
+  });
 
   expect(tree[0]?.kind).toBe('folder');
   expect(tree[0]?.name).toBe('long');
   if (tree[0]?.kind !== 'folder') throw new Error('Missing folder');
   expect(tree[0].children[0]?.name).toBe('folder');
-  expect(tree[0].children[1]?.id).toBe('c');
+  expect(tree[0].children[1]?.path).toBe('long/new.txt');
   if (tree[0].children[1]?.kind !== 'file') throw new Error('Missing file');
-  expect(tree[0].children[1].change).toBe(files[2]);
+  expect(tree[0].children[1].file).toBe(files[2]);
   expect(tree[1]?.name).toBe('other');
 });
 test('file hierarchy compacts single-child folders and sorts folders and files naturally', () => {
@@ -48,7 +51,10 @@ test('file hierarchy compacts single-child folders and sorts folders and files n
     oldPath: path,
     newPath: path,
   }));
-  const tree = buildFileTree(files);
+  const tree = buildFileTree({
+    files,
+    pathOf: (file) => file.newPath ?? file.oldPath ?? 'File',
+  });
 
   expect(tree.map((node) => [node.kind, node.name])).toStrictEqual([
     ['folder', 'a/only/deep'],
@@ -59,8 +65,8 @@ test('file hierarchy compacts single-child folders and sorts folders and files n
 
   if (folder.kind !== 'folder' || !('files' in folder))
     throw new Error('Missing folder count');
-  expect(folder.id).toBe('folder:a/only/deep/');
-  expect(folder.files).toBe(3);
+  expect(folder.path).toBe('a/only/deep');
+  expect(folder.files).toHaveLength(3);
   expect(folder.children.map((node) => node.name)).toStrictEqual([
     'a2.ts',
     'a10.ts',
@@ -69,6 +75,32 @@ test('file hierarchy compacts single-child folders and sorts folders and files n
   const first = folder.children[0]!;
 
   if (first.kind !== 'file') throw new Error('Missing changed file');
-  expect(first.change).toBe(files[3]);
-  expect(first.id).toBe('opaque-3');
+  expect(first.file).toBe(files[3]);
+  expect(first.file.id).toBe('opaque-3');
+});
+
+test('flat grouping retains full paths and duplicate filenames while sorting naturally', () => {
+  const files = ['src/file10.ts', 'other/file2.ts', 'src/file2.ts'].map(
+    (path) => ({ path }),
+  );
+  const tree = buildFileTree({
+    files,
+    pathOf: (file) => file.path,
+    groupByDirectory: false,
+  });
+
+  expect(tree.map((node) => node.name)).toEqual([
+    'file2.ts',
+    'file2.ts',
+    'file10.ts',
+  ]);
+  expect(tree.map((node) => node.path)).toEqual([
+    'other/file2.ts',
+    'src/file2.ts',
+    'src/file10.ts',
+  ]);
+  for (const node of tree) {
+    expect(node.kind).toBe('file');
+    if (node.kind === 'file') expect(files).toContain(node.file);
+  }
 });

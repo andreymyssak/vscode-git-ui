@@ -48,7 +48,10 @@ mkdirSync(untrustedWorkspace, { recursive: true });
 mkdirSync(join(nativeProfile, 'User'));
 writeFileSync(
   join(nativeProfile, 'User/settings.json'),
-  JSON.stringify({ 'window.menuStyle': 'custom' }),
+  JSON.stringify({
+    'window.menuStyle': 'custom',
+    'window.dialogStyle': 'custom',
+  }),
 );
 mkdirSync(resolve(untrustedProfile, 'User'), { recursive: true });
 writeFileSync(
@@ -93,10 +96,14 @@ export default defineConfig([
     mocha: nativeMocha,
     files: [
       'dist/test/vscode/package.test.cjs',
+      'dist/test/vscode/changes-stashes.test.cjs',
+      'dist/test/vscode/stash-editing.test.cjs',
+      'dist/test/vscode/change-menus.test.cjs',
       'dist/test/vscode/commit-menu.test.cjs',
       'dist/test/vscode/history-editing.test.cjs',
       'dist/test/vscode/branch-restore.test.cjs',
       'dist/test/vscode/notifications.test.cjs',
+      'dist/test/vscode/log-notifications.test.cjs',
       'dist/test/vscode/history-events.test.cjs',
       'dist/test/vscode/file-activation.test.cjs',
       'dist/test/vscode/file-latency.test.cjs',
