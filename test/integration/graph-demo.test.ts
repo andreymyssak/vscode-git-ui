@@ -127,3 +127,42 @@ test('the demo generator ignores inherited Git routing and leaves another reposi
   expect(output.commits).toBe(153);
   expect(output.mergeCommits).toBe(25);
 });
+
+test('incoming maintenance keeps every revision, parent, author and timestamp', async () => {
+  const git = async (...args: string[]) =>
+    (await execute('git', args, { cwd: output.root })).stdout.trim();
+  const lines = (
+    await git(
+      'log',
+      '--reverse',
+      '--format=%H%x00%P%x00%at%x00%s%x00%an%x00%ae',
+      'main..origin/main',
+    )
+  ).split('\n');
+
+  expect(lines).toHaveLength(105);
+  let previous = await git('rev-parse', 'main');
+  let previousTime: number | undefined;
+
+  for (const [index, line] of lines.entries()) {
+    const [sha, parent, timestamp, message, author, email] = line.split('\0');
+    const time = Number(timestamp);
+
+    assert.ok(sha);
+    expect(parent).toBe(previous);
+    expect(message).toBe(`Incoming maintenance ${index + 1}`);
+    expect(author).toBe('John Smith');
+    expect(email).toBe('john.smith@example.test');
+    expect(Number.isInteger(time)).toBe(true);
+    if (previousTime !== undefined) expect(time).toBe(previousTime + 60);
+    previous = sha;
+    previousTime = time;
+  }
+
+  expect(await git('show', 'origin/main~104:maintenance.txt')).toBe(
+    'Maintenance revision 1',
+  );
+  expect(await git('show', 'origin/main:maintenance.txt')).toBe(
+    'Maintenance revision 105',
+  );
+});

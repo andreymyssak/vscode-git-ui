@@ -191,14 +191,45 @@ await ref(
     [['archive/notes.md', 'Archive notes.\n']],
   ),
 );
-let incoming = main;
+// Import the repetitive linear history in one process instead of five per commit.
+// The owned remote-tracking ref has the same final identity as the later fetch.
+const maintenance: string[] = [];
+const data = (text: string) => `data ${Buffer.byteLength(text)}\n${text}\n`;
 
-for (let index = 0; index < 105; index++)
-  incoming = await commit(
-    `Incoming maintenance ${index + 1}`,
-    [incoming],
-    [['maintenance.txt', `Maintenance revision ${index + 1}\n`]],
+for (let index = 0; index < 105; index++) {
+  const blob = index * 2 + 1;
+  const revision = blob + 1;
+
+  time += 60000;
+  const date = `${Math.floor(time / 1000)} +0000`;
+
+  maintenance.push(
+    `blob\nmark :${blob}\n` +
+      data(`Maintenance revision ${index + 1}\n`) +
+      `commit refs/remotes/origin/main\nmark :${revision}\n` +
+      `author ${env.GIT_AUTHOR_NAME} <${env.GIT_AUTHOR_EMAIL}> ${date}\n` +
+      `committer ${env.GIT_COMMITTER_NAME} <${env.GIT_COMMITTER_EMAIL}> ${date}\n` +
+      data(`Incoming maintenance ${index + 1}\n`) +
+      `from ${index === 0 ? main : `:${index * 2}`}\n` +
+      `M 100644 :${blob} maintenance.txt\n\n`,
   );
+}
+
+const incoming = await new Promise<string>((resolveImport, rejectImport) => {
+  const child = execFile(
+    'git',
+    ['fast-import', '--quiet', '--done'],
+    { cwd: root, env },
+    (error, stdout) => {
+      if (error) rejectImport(new Error(error.message, { cause: error }));
+      else resolveImport(stdout.trim());
+    },
+  );
+
+  child.stdin?.on('error', rejectImport);
+  child.stdin?.end(maintenance.join('') + 'get-mark :210\ndone\n');
+});
+
 await git('init', '--bare', remote);
 await git('remote', 'add', 'origin', remote);
 // Seed the owned bare remote directly; the demo generator never pushes.
