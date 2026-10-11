@@ -147,10 +147,14 @@ describe('native parent comparisons', () => {
         .evaluate((node) =>
           node.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })),
         );
-      const emptyRow = frame.locator(`[data-commit-row][data-sha="${empty}"]`);
+      // History can retain visible rows while restoring the prior selection.
+      const emptyRow = frame.locator(
+        `#history-pane[aria-busy="false"] [data-commit-row][data-sha="${empty}"]`,
+      );
 
       await expect(emptyRow).toBeVisible();
       await emptyRow.evaluate((node) => (node as HTMLElement).click());
+      await expect(emptyRow).toHaveAttribute('aria-selected', 'true');
       const emptyGroup = frame.locator(`[data-parent="${api}"]`);
 
       await expect(emptyGroup.locator('summary').first()).toContainText(
