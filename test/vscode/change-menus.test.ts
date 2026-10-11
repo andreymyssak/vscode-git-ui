@@ -72,6 +72,14 @@ async function runContextAction(
 ) {
   const target = row(frame, path);
 
+  await target.focus();
+  await expect
+    .poll(() =>
+      target.evaluate(
+        (element) => document.hasFocus() && document.activeElement === element,
+      ),
+    )
+    .toBe(true);
   await target.press('Shift+F10');
   const menuItem = frame
     .page()
@@ -89,25 +97,51 @@ async function runContextAction(
     .toEqual({ visible: true, enabled: true })
     .catch(async (error: unknown) => {
       await writeFile(
-        '.artifacts/change-menu-diagnostic.json',
+        join(
+          process.env.GIT_UI_TEST_ARTIFACTS ?? '.artifacts',
+          'change-menu-diagnostic.json',
+        ),
         JSON.stringify({
           path,
           action,
           bounds: await target.boundingBox(),
           menus: await frame.page().getByRole('menuitem').allTextContents(),
           context: await target.getAttribute('data-vscode-context'),
+          focus: await frame.evaluate(() => ({
+            focused: document.hasFocus(),
+            active: document.activeElement?.outerHTML.slice(0, 500),
+            menuVisible: document.body.classList.contains(
+              'vscode-context-menu-visible',
+            ),
+          })),
           text: await frame.page().locator('body').innerText(),
         }),
       );
-      await frame
-        .page()
-        .screenshot({ path: '.artifacts/change-menu-failure.png' });
+      await frame.page().screenshot({
+        path: join(
+          process.env.GIT_UI_TEST_ARTIFACTS ?? '.artifacts',
+          'change-menu-failure.png',
+        ),
+      });
       throw error;
     });
   const encoded = await target.getAttribute('data-vscode-context');
 
   assert.ok(encoded);
   await frame.page().keyboard.press('Escape');
+  await expect(frame.page().getByRole('menuitem')).toHaveCount(0);
+  // Native menu dismissal restores focus across two nested iframes asynchronously.
+  // Finish that restoration before another menu or command can change focus.
+  await expect
+    .poll(() =>
+      frame.evaluate(() => ({
+        focused: document.hasFocus(),
+        menuVisible: document.body.classList.contains(
+          'vscode-context-menu-visible',
+        ),
+      })),
+    )
+    .toEqual({ focused: true, menuVisible: false });
   // Check rendering and invoke the contributed command with that exact context.
   // VS Code's temporary custom-menu mouseup guard is unrelated to command routing.
   await vscode.commands.executeCommand(

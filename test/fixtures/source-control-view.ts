@@ -65,6 +65,9 @@ export async function sourceControlFrame(): Promise<Frame> {
     activeFrame.getByRole('tab', { name: 'Commit', exact: true }),
   ).toHaveAttribute('aria-selected', 'true');
   await activeFrame.getByRole('tab', { name: 'Commit', exact: true }).focus();
+  await expect
+    .poll(() => activeFrame.evaluate(() => document.hasFocus()))
+    .toBe(true);
 
   return activeFrame;
 }
