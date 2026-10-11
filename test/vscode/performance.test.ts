@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { writeFile } from 'node:fs/promises';
 import { cpus, platform, release } from 'node:os';
+import { join } from 'node:path';
 
 import type { Frame } from '@playwright/test';
 import { expect } from '@playwright/test';
@@ -16,6 +17,7 @@ import { nativeBrowser } from '../fixtures/native-panel';
 describe('large native history', () => {
   it('30k commits with merges keep 200-item pages, bounded rows and responsive loading', async () => {
     const fixture = await createLargeHistory();
+    const artifacts = process.env.GIT_UI_TEST_ARTIFACTS ?? '.artifacts';
     let adapter: GitAdapter | undefined;
     let frame: Frame | undefined;
 
@@ -170,7 +172,7 @@ describe('large native history', () => {
           .toHaveCSS('height', `${(index + 1) * 200 * 22}px`)
           .catch(async (error: unknown) => {
             await writeFile(
-              '.artifacts/native-history-failure.json',
+              join(artifacts, 'native-history-failure.json'),
               JSON.stringify(
                 await frame!.evaluate(() => ({
                   messages: Reflect.get(window, 'historyMessages'),
@@ -231,7 +233,7 @@ describe('large native history', () => {
         : 0;
 
       await writeFile(
-        '.artifacts/performance.json',
+        join(artifacts, 'performance.json'),
         JSON.stringify(
           {
             date: new Date().toISOString().slice(0, 10),
