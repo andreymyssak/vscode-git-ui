@@ -103,3 +103,18 @@ describe('commit jump readiness', () => {
     queue.dispose();
   });
 });
+
+it('drops a source that expired while waiting for the Log ready handshake', async () => {
+  const queue = new CommitJumpQueue();
+  let current = true;
+  const delivered: unknown[] = [];
+  const pending = queue.enqueue(older, () => current);
+
+  current = false;
+  queue.attach(async (target) => {
+    delivered.push(target);
+  });
+  await pending;
+  expect(delivered).toEqual([]);
+  queue.dispose();
+});

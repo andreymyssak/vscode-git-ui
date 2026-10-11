@@ -49,15 +49,20 @@ export class GitViewProvider implements vscode.WebviewViewProvider {
   private focusSequence = 0;
   private viewCleanup: (() => void) | null = null;
 
-  async revealCommit(target: CommitJump): Promise<void> {
+  async revealCommit(
+    target: CommitJump,
+    isCurrent = () => true,
+  ): Promise<void> {
+    if (!isCurrent()) return;
     const sequence = ++this.focusSequence;
-    const pending = this.jumps.enqueue(target);
+    const current = () => sequence === this.focusSequence && isCurrent();
+    const pending = this.jumps.enqueue(target, current);
 
     void pending.catch(() => {});
     try {
       await vscode.commands.executeCommand(`${LOG_VIEW_ID}.focus`);
     } catch (error) {
-      if (sequence !== this.focusSequence) return;
+      if (!current()) return;
       this.jumps.detach(error);
     }
 
@@ -283,31 +288,6 @@ export class GitViewProvider implements vscode.WebviewViewProvider {
             )) === action
           );
         },
-        navigationProgress: async (work) => {
-          await vscode.window.withProgress(
-            {
-              location: vscode.ProgressLocation.Notification,
-              title: 'Finding commit',
-              cancellable: true,
-            },
-            async (progress, token) => {
-              const abort = new AbortController();
-              const cancellation = token.onCancellationRequested(() =>
-                abort.abort(),
-              );
-
-              try {
-                await work(abort.signal, (count) =>
-                  progress.report({ message: `${count} commits checked` }),
-                );
-              } catch (error) {
-                if (!abort.signal.aborted) throw error;
-              } finally {
-                cancellation.dispose();
-              }
-            },
-          );
-        },
         initialRepositoryId,
         setupError,
       });
@@ -361,7 +341,9 @@ export class GitViewProvider implements vscode.WebviewViewProvider {
         controller === result &&
         parseRequest(message)?.body.kind === 'ready'
       )
-        this.jumps.attach((target) => result.revealCommit(target));
+        this.jumps.attach((target, current) =>
+          result.revealCommit(target, current),
+        );
     };
 
     const messages = webview.onDidReceiveMessage((message: unknown) => {

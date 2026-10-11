@@ -8,37 +8,12 @@ import * as vscode from 'vscode';
 import { getGitApi, type GitAPI } from '../../src/extension/git/api';
 import { commandId, LOG_VIEW_ID } from '../../src/shared/extension-identity';
 import {
-  nativeBrowser,
-  nativePanel,
-  selectNativeRepository,
-} from '../fixtures/native-panel';
+  annotationTexts,
+  nativeHover,
+  workbench,
+} from '../fixtures/native-blame';
+import { nativePanel, selectNativeRepository } from '../fixtures/native-panel';
 import { createFixture } from '../fixtures/repository';
-
-async function workbench(): Promise<Page> {
-  const browser = await nativeBrowser();
-  const page = browser
-    .contexts()
-    .flatMap((context) => context.pages())
-    .find((candidate) => candidate.url().includes('/workbench/workbench.html'));
-
-  assert.ok(page);
-
-  return page;
-}
-
-async function annotationTexts(page: Page): Promise<string[]> {
-  return page
-    .locator('.monaco-editor .view-line span')
-    .evaluateAll((spans) =>
-      spans
-        .map((span) => getComputedStyle(span, '::before').content)
-        .filter(
-          (content) =>
-            content.includes('Fixture') ||
-            content.includes('Not committed yet'),
-        ),
-    );
-}
 
 async function annotateMenu(editor: Locator, line = '1'): Promise<void> {
   await editor
@@ -55,60 +30,6 @@ async function annotateMenu(editor: Locator, line = '1'): Promise<void> {
   await editor.page().keyboard.press('End');
   await editor.page().keyboard.press('Enter');
   await expect(item).toBeHidden();
-}
-
-async function nativeHover(
-  editor: Locator,
-  text: string,
-  occurrence = 0,
-): Promise<Locator> {
-  await expect
-    .poll(() =>
-      editor
-        .locator('.view-line span')
-        .evaluateAll(
-          (spans, { text, occurrence }) =>
-            spans.filter((span) =>
-              getComputedStyle(span, '::before').content.includes(text),
-            )[occurrence] !== undefined,
-          { text, occurrence },
-        ),
-    )
-    .toBe(true);
-  const point = await editor.locator('.view-line span').evaluateAll(
-    (spans, { wanted, occurrence }) => {
-      const span = spans.filter((value) =>
-        getComputedStyle(value, '::before').content.includes(wanted),
-      )[occurrence];
-
-      if (!span) return null;
-      const rect = span.getBoundingClientRect();
-
-      return {
-        x: rect.left + 8,
-        y: rect.top + rect.height / 2,
-        codeX:
-          rect.left + parseFloat(getComputedStyle(span, '::before').width) + 8,
-      };
-    },
-    { wanted: text, occurrence },
-  );
-
-  assert.ok(point, `No rendered annotation containing ${text}`);
-  await editor.page().mouse.click(point.codeX, point.y);
-  await editor.page().mouse.move(0, 0);
-  await editor.page().mouse.move(point.x, point.y, { steps: 5 });
-  const hover = editor
-    .page()
-    .locator('.monaco-hover:visible')
-    .filter({
-      hasText: text === 'Not committed yet' ? text : 'Open Commit in Git UI',
-    })
-    .last();
-
-  await expect(hover).toBeVisible();
-
-  return hover;
 }
 
 async function selectedCommit(id: string, sha: string): Promise<void> {
@@ -293,7 +214,7 @@ describe('native Git UI blame', () => {
       await annotateMenu(working);
       await expect
         .poll(() => annotationTexts(page!))
-        .toContain('"Not committed yet"');
+        .toContain('Not committed yet');
       const uncommitted = await nativeHover(working, 'Not committed yet');
 
       await expect(
@@ -569,7 +490,7 @@ describe('native Git UI blame', () => {
       await fixture.runGit([
         'commit',
         '--author',
-        'Fixture With a Very Long Name <long@example.test>',
+        'Fixture ExtremelyLongSurname <long@example.test>',
         '-m',
         'Long author layout',
       ]);

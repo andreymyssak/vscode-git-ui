@@ -26,6 +26,7 @@ export function FileTree({ files, selectedPath, onOpen }: Props) {
       role="group"
       depth={1}
       selectedPath={selectedPath}
+      revealSelected
       pathOf={(file) => file.newPath ?? file.oldPath ?? 'File'}
       fileKey={(file) => file.id}
       decoration={decoration}

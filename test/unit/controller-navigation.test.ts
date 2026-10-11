@@ -554,3 +554,64 @@ test('a later user query cancels a slow host jump', async (t) => {
     f.sent.filter(({ body }) => body.kind === 'history').at(-1)?.body,
   ).toMatchObject({ scope: { kind: 'all' }, text: 'new query' });
 });
+
+for (const boundary of ['resolve', 'history', 'changes'] as const)
+  test(`a source cancelled during ${boundary} cannot publish a late host jump`, async (t) => {
+    const f = fixture();
+
+    t.onTestFinished(() => f.controller.dispose());
+    await f.controller.selectRepository('one');
+    let current = true;
+    let release = () => {};
+
+    let enter = () => {};
+
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      enter = resolve;
+    });
+    const hold = async () => {
+      enter();
+      await gate;
+    };
+
+    f.adapter.resolve = async () => {
+      if (boundary === 'resolve') await hold();
+
+      return { kind: 'commit', commit: page([b]).commits[0]! };
+    };
+
+    const history = f.adapter.history;
+    const changes = f.adapter.changes;
+
+    f.adapter.history = async (...args) => {
+      if (boundary === 'history') await hold();
+
+      return history(...args);
+    };
+
+    f.adapter.changes = async (...args) => {
+      if (boundary === 'changes') await hold();
+
+      return changes(...args);
+    };
+
+    const pending = f.controller.revealCommit(
+      { repositoryId: 'one', sha: b },
+      () => current,
+    );
+
+    t.onTestFinished(async () => {
+      release();
+      await pending;
+    });
+    await started;
+    current = false;
+    f.sent.length = 0;
+    release();
+    await pending;
+    expect(f.sent).toEqual([]);
+    expect(f.writes).toEqual([]);
+  });

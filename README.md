@@ -41,7 +41,7 @@ After installing Git UI, open a Git repository in VS Code. Show the bottom panel
 
 In Source Control, **Git UI Changes** has **Commit** and **Stashes** tabs. Check the files you want to save, then enter a message and commit, or use the toolbar to stash them. The Stashes tab shows saved Git stashes and their files. Clicking a file opens its diff in the editor. You can hide the built-in Changes view if you prefer Git UI.
 
-Right-click a line number or the editor and choose **Annotate with Git Blame**. Hover an annotation, then choose **Open Commit in Git UI** to select that commit and its changed files. The same action works in historical file comparisons. Choose **Close Git Blame** to hide the annotations.
+Right-click a line number or the editor and choose **Annotate with Git Blame**. Compact date and author labels appear before the code in the normal editor, with colors showing the age of each change. Hover for full commit details, or click a label to select its exact commit in Git UI and reveal the originating file in its changed-files list. You can trace older commits from either side of a historical file comparison. **Close Git Blame** removes the annotations. VS Code places them after line numbers, and wrapped code continues beneath them.
 
 ## Your repositories stay yours
 

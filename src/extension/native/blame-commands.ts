@@ -16,6 +16,8 @@ const menuArgument = z.object({
 const commitArgument = z.object({
   documentUri: z.string().min(1),
   sha: z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i),
+  filePath: z.string().min(1).optional(),
+  snapshotId: z.string().uuid().optional(),
 });
 const cancelled = (error: unknown) =>
   error instanceof Error && error.name === 'AbortError';
@@ -54,7 +56,9 @@ function commandEditor(value: unknown): vscode.TextEditor {
 
 export function registerBlame(
   context: Pick<vscode.ExtensionContext, 'subscriptions'>,
-  options: { revealCommit(target: CommitJump): Promise<void> },
+  options: {
+    revealCommit(target: CommitJump, isCurrent?: () => boolean): Promise<void>;
+  },
 ): void {
   let annotations: BlameAnnotations | null = null;
   let adapter: Promise<GitAdapter> | null = null;
@@ -101,6 +105,16 @@ export function registerBlame(
         getAccess: getGitApi,
         readBlame: async (query, signal) =>
           (await readAdapter()).blame(query, signal),
+        openCommit: async (target, isCurrent) => {
+          await openCommit(
+            {
+              documentUri: target.documentUri.toString(),
+              sha: target.sha,
+              filePath: target.filePath,
+            },
+            isCurrent,
+          );
+        },
       });
       context.subscriptions.push(annotations.onDidChangeEnabled(updateEnabled));
     }
@@ -130,6 +144,50 @@ export function registerBlame(
     }
   };
 
+  const openCommit = (
+    value: unknown,
+    sourceCurrent?: () => boolean,
+  ): Promise<boolean> => {
+    const request = ++commitRequest;
+    const parsed = commitArgument.safeParse(value);
+    const source =
+      sourceCurrent ??
+      (parsed.success && parsed.data.snapshotId
+        ? (annotations?.hoverCurrent(parsed.data.snapshotId) ?? (() => false))
+        : () => true);
+    const isCurrent = () => !disposed && request === commitRequest && source();
+
+    return run(async () => {
+      if (!parsed.success)
+        throw new Error('This blame commit link is invalid.');
+      const uri = vscode.Uri.parse(parsed.data.documentUri, true);
+      const file = blameFileUri(uri);
+
+      if (!file) throw new Error('This blame document is not a Git file.');
+      const access = await getGitApi();
+
+      if (!isCurrent()) return;
+      const found = access.api.getRepository(file);
+
+      if (!found) throw new Error('The source repository is no longer open.');
+      const repositoryId = found.rootUri.toString();
+
+      await access.repository(repositoryId).getCommit(parsed.data.sha);
+      if (!isCurrent()) return;
+      access.repository(repositoryId);
+      await options.revealCommit(
+        {
+          repositoryId,
+          sha: parsed.data.sha,
+          ...(parsed.data.filePath === undefined
+            ? {}
+            : { filePath: parsed.data.filePath }),
+        },
+        isCurrent,
+      );
+    }, isCurrent);
+  };
+
   context.subscriptions.push(
     vscode.commands.registerCommand(
       commandId('annotate-blame'),
@@ -138,56 +196,20 @@ export function registerBlame(
     ),
     vscode.commands.registerCommand(
       commandId('close-blame'),
-      (value: unknown) =>
-        run(() => {
-          const editor = commandEditor(value);
-
-          annotations?.close(editor);
-        }),
-    ),
-    vscode.commands.registerCommand(
-      commandId('open-blame-commit'),
-      (value: unknown) => {
-        const request = ++commitRequest;
-        const isCurrent = () => !disposed && request === commitRequest;
-
-        return run(async () => {
-          const parsed = commitArgument.safeParse(value);
-
-          if (!parsed.success)
-            throw new Error('This blame commit link is invalid.');
-          const uri = vscode.Uri.parse(parsed.data.documentUri, true);
-          const file = blameFileUri(uri);
-
-          if (!file) throw new Error('This blame document is not a Git file.');
-          const access = await getGitApi();
-
-          if (!isCurrent()) return;
-          const found = access.api.getRepository(file);
-
-          if (!found)
-            throw new Error('The source repository is no longer open.');
-          const repositoryId = found.rootUri.toString();
-          const repository = access.repository(repositoryId);
-
-          await repository.getCommit(parsed.data.sha);
-          if (!isCurrent()) return;
-          access.repository(repositoryId);
-          await options.revealCommit({ repositoryId, sha: parsed.data.sha });
-        }, isCurrent);
-      },
+      (value: unknown) => run(() => annotations?.close(commandEditor(value))),
     ),
     vscode.languages.registerHoverProvider(
       [{ scheme: 'file' }, { scheme: 'git' }],
       {
-        async provideHover(document, position, token) {
+        provideHover: async (document, position, token) => {
           try {
-            return (
-              (await annotations?.provideHover(document, position, token)) ??
-              null
-            );
+            return await annotations?.provideHover(document, position, token);
           } catch (error) {
-            if (!token.isCancellationRequested && !cancelled(error))
+            if (
+              !disposed &&
+              !token.isCancellationRequested &&
+              !cancelled(error)
+            )
               await showOperationError(
                 error instanceof Error ? error.message : String(error),
               );
@@ -196,6 +218,10 @@ export function registerBlame(
           }
         },
       },
+    ),
+    vscode.commands.registerCommand(
+      commandId('open-blame-commit'),
+      (value: unknown) => openCommit(value),
     ),
     vscode.window.onDidChangeActiveTextEditor(updateEnabled),
     vscode.workspace.onDidChangeConfiguration((event) => {

@@ -1,6 +1,5 @@
 import type { Disposable } from 'vscode';
 
-import { extensionIdentity } from '../../shared/extension-identity';
 import { normalizeHistoryFilters } from '../../shared/history-filters';
 import type {
   PanelBody,
@@ -9,12 +8,7 @@ import type {
   Result,
   UserAction,
 } from '../../shared/messages';
-import type {
-  HistoryInput,
-  RepositoryInfo,
-  ScrollAnchor,
-  Selection,
-} from '../../shared/model';
+import type { HistoryInput, ScrollAnchor, Selection } from '../../shared/model';
 import type { GitAdapter } from '../git/adapter';
 import type { ActionPrompts } from './actions';
 import {
@@ -25,14 +19,14 @@ import {
 } from './actions';
 import { type AuthorPicker, chooseHistoryAuthors } from './authors';
 import type { CommitJump } from './commit-jump';
-import { CommitNavigation } from './commit-navigation';
+import { CommitNavigation, unavailableNavigation } from './commit-navigation';
 import { PanelDetails } from './details';
 import { PanelHistory } from './history';
 import type { NavigationPrompts } from './navigate';
 import { PanelNavigator } from './navigate';
 import { comparisonSource, PanelNotifications } from './notifications';
 import { parseRequest } from './protocol';
-import { type FileHandle, QuerySession } from './queries';
+import { type FileHandle, getRepository, QuerySession } from './queries';
 import { DeferredRepositoryRefresh } from './repository-refresh';
 import { reconcileSelection } from './selection';
 import {
@@ -144,7 +138,8 @@ export class PanelController {
             repository: (id) => this.repository(id),
             send: (body, requestId) => this.send(body, requestId),
             setup: () => this.setup(),
-            selectRepository: (id) => this.selectRepository(id, false),
+            selectRepository: (id, current) =>
+              this.selectRepository(id, false, current),
             closed: () => this.closed,
           })
         : null;
@@ -240,16 +235,8 @@ export class PanelController {
     return true;
   }
 
-  private repository(id: string): RepositoryInfo {
-    const repository = this.options.adapter
-      ?.repositories()
-      .find((repo) => repo.id === id);
-
-    if (!repository)
-      throw new Error('Repository is no longer available. Refresh the view.');
-
-    return repository;
-  }
+  private readonly repository = (id: string) =>
+    getRepository(this.options.adapter, id);
 
   async handle(value: unknown): Promise<void> {
     if (this.closed) return;
@@ -280,6 +267,7 @@ export class PanelController {
           'refresh',
           'select-commit',
           'select-commits',
+          'open-file',
         ].includes(kind))
     )
       this.commitNavigation?.cancel();
@@ -490,9 +478,13 @@ export class PanelController {
     }
   }
 
-  async selectRepository(id: string, cancelNavigation = true): Promise<void> {
+  async selectRepository(
+    id: string,
+    cancelNavigation = true,
+    current = () => true,
+  ): Promise<void> {
     if (cancelNavigation) this.commitNavigation?.cancel();
-    if (!(await this.setup())) return;
+    if (!current() || !(await this.setup()) || !current()) return;
     this.repository(id);
     this.refreshRestore = null;
     if (this.session.repositoryId)
@@ -515,15 +507,18 @@ export class PanelController {
     };
 
     this.subscription = this.options.adapter!.subscribe(id, changed);
-    await this.historyQuery!.load(this.input, 'select-repository', null);
+    await this.historyQuery!.load(
+      this.input,
+      'select-repository',
+      null,
+      false,
+      current,
+    );
   }
 
-  async revealCommit(target: CommitJump): Promise<void> {
-    if (!this.commitNavigation)
-      throw new Error(
-        `${extensionIdentity.displayName} is unavailable for commit navigation.`,
-      );
-    await this.commitNavigation.revealCommit(target);
+  async revealCommit(target: CommitJump, current = () => true): Promise<void> {
+    if (!this.commitNavigation) throw unavailableNavigation();
+    await this.commitNavigation.revealCommit(target, current);
   }
 
   private async action(

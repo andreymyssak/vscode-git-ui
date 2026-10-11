@@ -1,17 +1,24 @@
+import { randomUUID } from 'node:crypto';
+
 import * as vscode from 'vscode';
 
 import type { GitApiAccess, GitCommit } from '../git/api';
 import type { BlameLine, BlameQuery, BlameResult } from '../git/blame-model';
+import { BlameReadCache } from './blame-cache';
 import { resolveBlameDocument } from './blame-document';
 import { createBlameHover, formatBlameLabel } from './blame-presentation';
 import { matchesBlameText } from './blame-snapshot';
 import { showOperationError, showOperationInfo } from './operation-feedback';
 
 interface Snapshot {
+  id: string;
   access: GitApiAccess;
   query: BlameQuery;
   version: number;
   lines: readonly BlameLine[];
+  width: number;
+  oldest: number;
+  newest: number;
 }
 
 interface Session {
@@ -31,16 +38,13 @@ export class BlameAnnotations implements vscode.Disposable {
   readonly onDidChangeEnabled = this.enabledChanged.event;
   private readonly decoration = vscode.window.createTextEditorDecorationType({
     before: {
-      color: new vscode.ThemeColor('git.blame.editorDecorationForeground'),
-      width: '25ch',
-      margin: '0 1.5ch 0 0',
+      margin: '0 0.8em 0 0',
     },
     rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed,
   });
 
   private readonly sessions = new Map<vscode.TextEditor, Session>();
-  private readonly immutable = new Map<string, readonly BlameLine[]>();
-  private readonly commits = new Map<string, Promise<GitCommit>>();
+  private readonly cache: BlameReadCache;
   private readonly listeners: vscode.Disposable[];
   private disposed = false;
 
@@ -51,9 +55,48 @@ export class BlameAnnotations implements vscode.Disposable {
         query: BlameQuery,
         signal?: AbortSignal,
       ) => Promise<BlameResult>;
+      openCommit: (
+        target: { documentUri: vscode.Uri; sha: string; filePath: string },
+        isCurrent: () => boolean,
+      ) => Promise<void>;
     },
   ) {
+    this.cache = new BlameReadCache(options.readBlame);
     this.listeners = [
+      vscode.window.onDidChangeTextEditorSelection((event) => {
+        const session = this.sessions.get(event.textEditor);
+        const selection = event.selections[0];
+        const snapshot = session?.snapshot;
+        const line = snapshot?.lines[selection?.active.line ?? -1];
+
+        if (!session || !snapshot || !selection) return;
+        if (
+          event.kind === vscode.TextEditorSelectionChangeKind.Mouse &&
+          selection.isEmpty &&
+          selection.active.character === 0 &&
+          line?.kind === 'committed'
+        ) {
+          const current = () =>
+            this.liveSnapshot(session, snapshot) &&
+            vscode.window.visibleTextEditors.includes(session.editor);
+
+          void this.options
+            .openCommit(
+              {
+                documentUri: session.editor.document.uri,
+                sha: line.sha,
+                filePath: line.originalPath,
+              },
+              current,
+            )
+            .catch((error: unknown) => {
+              if (current() && !cancelled(error))
+                void showOperationError(
+                  error instanceof Error ? error.message : String(error),
+                );
+            });
+        }
+      }),
       vscode.workspace.onDidChangeTextDocument(({ document }) => {
         for (const session of this.sessions.values())
           if (session.editor.document === document) this.schedule(session);
@@ -61,11 +104,6 @@ export class BlameAnnotations implements vscode.Disposable {
       vscode.workspace.onDidCloseTextDocument((document) => {
         for (const session of this.sessions.values())
           if (session.editor.document === document) this.close(session.editor);
-      }),
-      vscode.window.onDidChangeTextEditorVisibleRanges(({ textEditor }) => {
-        const session = this.sessions.get(textEditor);
-
-        if (session) this.render(session);
       }),
       vscode.window.onDidChangeVisibleTextEditors((editors) => {
         for (const editor of editors) {
@@ -89,7 +127,7 @@ export class BlameAnnotations implements vscode.Disposable {
         if (event.affectsConfiguration('git.enabled')) {
           for (const editor of this.sessions.keys()) this.close(editor);
         } else if (event.affectsConfiguration('git.blame.ignoreWhitespace')) {
-          this.immutable.clear();
+          this.cache.invalidate();
           for (const session of this.sessions.values()) this.schedule(session);
         }
       }),
@@ -162,24 +200,6 @@ export class BlameAnnotations implements vscode.Disposable {
     );
   }
 
-  private cache(key: string, lines: readonly BlameLine[]): void {
-    if (lines.length > 100_000) return;
-    this.immutable.delete(key);
-    this.immutable.set(key, lines);
-    while (
-      this.immutable.size > 8 ||
-      [...this.immutable.values()].reduce(
-        (sum, value) => sum + value.length,
-        0,
-      ) > 100_000
-    ) {
-      const oldest = this.immutable.keys().next().value;
-
-      if (oldest === undefined) break;
-      this.immutable.delete(oldest);
-    }
-  }
-
   private async refresh(session: Session, interactive: boolean): Promise<void> {
     session.abort.abort();
     const abort = new AbortController();
@@ -212,27 +232,19 @@ export class BlameAnnotations implements vscode.Disposable {
         session.repositoryId = query.repositoryId;
         const repository = access.repository(query.repositoryId);
         const status = repository.state.onDidChange(() => {
-          for (const key of this.immutable.keys())
-            if (key.startsWith(query.repositoryId + '\0'))
-              this.immutable.delete(key);
-          this.schedule(session);
+          if (query.source.kind === 'contents') this.schedule(session);
         });
         const closed = access.api.onDidCloseRepository((value) => {
-          if (value.rootUri.toString() === query.repositoryId)
+          if (value.rootUri.toString() === query.repositoryId) {
+            this.cache.invalidate(query.repositoryId);
             this.close(session.editor);
+          }
         });
 
         session.repository = vscode.Disposable.from(status, closed);
       }
 
-      const key =
-        query.source.kind === 'revision'
-          ? `${query.repositoryId}\0${query.source.sha}\0${query.source.path}\0${query.ignoreWhitespace}`
-          : null;
-      const cached = key ? this.immutable.get(key) : undefined;
-      const result = cached
-        ? { kind: 'blame' as const, lines: cached }
-        : await this.options.readBlame(query, abort.signal);
+      const result = await this.cache.read(query, abort.signal);
 
       if (!this.current(session, abort, version)) return;
       if (result.kind === 'no-history') {
@@ -247,8 +259,30 @@ export class BlameAnnotations implements vscode.Disposable {
         throw new Error(
           'The displayed file does not match its Git blame snapshot.',
         );
-      if (key) this.cache(key, result.lines);
-      session.snapshot = { access, query, version, lines: result.lines };
+      let width = 1;
+      let oldest = Infinity;
+      let newest = -Infinity;
+
+      for (const line of result.lines) {
+        width = Math.max(width, Array.from(formatBlameLabel(line)).length);
+        if (line.kind === 'committed') {
+          const time = Date.parse(line.authorDate);
+
+          oldest = Math.min(oldest, time);
+          newest = Math.max(newest, time);
+        }
+      }
+
+      session.snapshot = {
+        id: randomUUID(),
+        access,
+        query,
+        version,
+        lines: result.lines,
+        width,
+        oldest,
+        newest,
+      };
       this.render(session);
     } catch (error) {
       if (cancelled(error) || !this.current(session, abort, version)) return;
@@ -266,22 +300,52 @@ export class BlameAnnotations implements vscode.Disposable {
     if (!snapshot || snapshot.version !== session.editor.document.version)
       return;
     const decorations: vscode.DecorationOptions[] = [];
-    const visible = new Set<number>();
+    const { width, oldest, newest } = snapshot;
 
-    for (const range of session.editor.visibleRanges)
-      for (let index = range.start.line; index <= range.end.line; index++)
-        visible.add(index);
-    for (const index of visible) {
-      const line = snapshot.lines[index];
-
-      if (!line) continue;
+    // Include offscreen headings and clipped edge rows so layout stays
+    // stable on scroll. Cursor movement and navigation leave colors unchanged.
+    for (const [index, line] of snapshot.lines.entries()) {
       decorations.push({
         range: new vscode.Range(index, 0, index, 0),
-        renderOptions: { before: { contentText: formatBlameLabel(line) } },
+        renderOptions: {
+          before: {
+            contentText: formatBlameLabel(line).padEnd(width),
+            width: `${width + 1}ch`,
+            color: new vscode.ThemeColor('editorCodeLens.foreground'),
+            textDecoration: `none; border-right: 1px solid var(--vscode-panel-border); padding-right: 0.6em; white-space: pre; overflow: hidden; text-overflow: ellipsis; vertical-align: top; cursor: ${line.kind === 'committed' ? 'pointer' : 'text'}`,
+            backgroundColor:
+              line.kind === 'committed'
+                ? `hsla(${210 - 170 * (newest === oldest ? 0 : (Date.parse(line.authorDate) - oldest) / (newest - oldest))}, 65%, 55%, 0.14)`
+                : new vscode.ThemeColor('editor.lineHighlightBackground'),
+          },
+        },
       });
     }
 
     session.editor.setDecorations(this.decoration, decorations);
+  }
+
+  private liveSnapshot(session: Session, snapshot: Snapshot): boolean {
+    return (
+      !this.disposed &&
+      session.snapshot === snapshot &&
+      this.sessions.get(session.editor) === session &&
+      session.editor.document.version === snapshot.version &&
+      !session.editor.document.isClosed
+    );
+  }
+
+  hoverCurrent(snapshotId: string): () => boolean {
+    const session = [...this.sessions.values()].find(
+      (candidate) => candidate.snapshot?.id === snapshotId,
+    );
+    const snapshot = session?.snapshot;
+
+    if (!session || !snapshot) return () => false;
+
+    return () =>
+      this.liveSnapshot(session, snapshot) &&
+      vscode.window.visibleTextEditors.includes(session.editor);
   }
 
   async provideHover(
@@ -290,11 +354,16 @@ export class BlameAnnotations implements vscode.Disposable {
     token: vscode.CancellationToken,
   ): Promise<vscode.Hover | null> {
     if (position.character !== 0 || token.isCancellationRequested) return null;
-    const session = [...this.sessions.values()].find(
+    const sessions = [...this.sessions.values()].filter(
       (candidate) =>
         candidate.editor.document === document &&
-        candidate.snapshot?.version === document.version,
+        candidate.snapshot?.version === document.version &&
+        vscode.window.visibleTextEditors.includes(candidate.editor),
     );
+    const session =
+      sessions.find(
+        (candidate) => candidate.editor === vscode.window.activeTextEditor,
+      ) ?? sessions[0];
     const snapshot = session?.snapshot;
     const line = snapshot?.lines[position.line];
 
@@ -302,41 +371,32 @@ export class BlameAnnotations implements vscode.Disposable {
     let commit: GitCommit | null = null;
 
     if (line.kind === 'committed') {
-      const key = `${snapshot.query.repositoryId}\0${line.sha}`;
-      let read = this.commits.get(key);
-
-      if (!read) {
-        read = snapshot.access
-          .repository(snapshot.query.repositoryId)
-          .getCommit(line.sha);
-        this.commits.set(key, read);
-        if (this.commits.size > 64) {
-          const oldest = this.commits.keys().next().value;
-
-          if (oldest !== undefined) this.commits.delete(oldest);
-        }
-      }
-
       try {
-        commit = await read;
+        commit = await this.cache.commit(
+          snapshot.access,
+          snapshot.query.repositoryId,
+          line.sha,
+        );
       } catch (error) {
-        this.commits.delete(key);
-        if (token.isCancellationRequested || session.snapshot !== snapshot)
+        if (
+          token.isCancellationRequested ||
+          !this.liveSnapshot(session, snapshot)
+        )
           return null;
         throw error;
       }
     }
 
-    if (
-      token.isCancellationRequested ||
-      session.snapshot !== snapshot ||
-      document.version !== snapshot.version ||
-      !this.sessions.has(session.editor)
-    )
+    if (token.isCancellationRequested || !this.liveSnapshot(session, snapshot))
       return null;
 
     return new vscode.Hover(
-      createBlameHover({ line, documentUri: document.uri, commit }),
+      createBlameHover({
+        line,
+        documentUri: document.uri,
+        commit,
+        snapshotId: snapshot.id,
+      }),
       new vscode.Range(position.line, 0, position.line, 1),
     );
   }
@@ -346,8 +406,7 @@ export class BlameAnnotations implements vscode.Disposable {
     for (const editor of this.sessions.keys()) this.close(editor);
     for (const listener of this.listeners) listener.dispose();
     this.decoration.dispose();
-    this.immutable.clear();
-    this.commits.clear();
+    this.cache.dispose();
     this.enabledChanged.dispose();
   }
 }

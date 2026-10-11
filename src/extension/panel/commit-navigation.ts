@@ -18,7 +18,7 @@ interface CommitNavigationPorts {
   repository(id: string): RepositoryInfo;
   send(body: PanelBody, requestId: string): Promise<void>;
   setup(): Promise<boolean>;
-  selectRepository(id: string): Promise<void>;
+  selectRepository(id: string, current: () => boolean): Promise<void>;
   closed(): boolean;
 }
 
@@ -38,7 +38,13 @@ export class CommitNavigation {
     input: string,
     request: Pick<Request<RequestBody>, 'repositoryId' | 'requestId'>,
     assigned: (generation: number) => void,
-    options: { confirmScopeChange: boolean } = { confirmScopeChange: true },
+    options: {
+      confirmScopeChange: boolean;
+      isCurrent?: () => boolean;
+      filePath?: string;
+    } = {
+      confirmScopeChange: true,
+    },
   ): Promise<void> {
     const id = request.repositoryId;
 
@@ -92,13 +98,30 @@ export class CommitNavigation {
           commit.parents[0] ?? null,
           epoch,
           request.requestId,
+          isLatest,
         );
+        if (options.filePath)
+          await this.revealFile({
+            sha: commit.sha,
+            parents: commit.parents.length ? commit.parents : [null],
+            path: options.filePath,
+            epoch,
+            requestId: request.requestId,
+            current: () =>
+              this.ports.session.current(id, generation) &&
+              this.ports.session.detailEpoch === epoch &&
+              isLatest(),
+          });
       },
       options,
     );
   }
 
-  async revealCommit(target: CommitJump): Promise<void> {
+  async revealCommit(
+    target: CommitJump,
+    sourceCurrent = () => true,
+  ): Promise<void> {
+    if (!sourceCurrent()) return;
     if (this.ports.closed())
       throw new DOMException(
         `${extensionIdentity.displayName} was closed.`,
@@ -110,22 +133,27 @@ export class CommitNavigation {
     const revision = ++this.navigationRevision;
 
     this.ports.navigator.cancel();
-    if (!(await this.ports.setup()))
-      throw new Error(
-        `${extensionIdentity.displayName} is unavailable for commit navigation.`,
-      );
+    if (!(await this.ports.setup())) throw unavailableNavigation();
     const current = () =>
-      !this.ports.closed() && revision === this.navigationRevision;
+      !this.ports.closed() &&
+      revision === this.navigationRevision &&
+      sourceCurrent();
 
     if (!current()) return;
     this.ports.repository(target.repositoryId);
     await this.ports.send({ kind: 'focus-log' }, 'commit-jump');
     if (!current()) return;
     if (this.ports.session.repositoryId !== target.repositoryId) {
-      await this.ports.selectRepository(target.repositoryId);
+      await this.ports.selectRepository(target.repositoryId, current);
     } else if (first) {
       this.ports.session.begin(target.repositoryId);
-      await this.ports.history.load(this.ports.getInput(), 'commit-jump', null);
+      await this.ports.history.load(
+        this.ports.getInput(),
+        'commit-jump',
+        null,
+        false,
+        current,
+      );
     }
 
     if (!current()) return;
@@ -133,7 +161,70 @@ export class CommitNavigation {
       target.sha,
       { repositoryId: target.repositoryId, requestId: 'commit-jump' },
       () => {},
-      { confirmScopeChange: false },
+      {
+        confirmScopeChange: false,
+        isCurrent: current,
+        ...(target.filePath === undefined ? {} : { filePath: target.filePath }),
+      },
     );
   }
+
+  private async revealFile({
+    sha,
+    parents,
+    path,
+    epoch,
+    requestId,
+    current,
+  }: {
+    sha: string;
+    parents: readonly (string | null)[];
+    path: string;
+    epoch: number;
+    requestId: string;
+    current: () => boolean;
+  }): Promise<void> {
+    for (const [index, parentSha] of parents.entries()) {
+      if (!current()) return;
+      if (index > 0)
+        await this.ports.details.files(
+          sha,
+          parentSha,
+          epoch,
+          requestId,
+          current,
+        );
+      if (!current()) return;
+      const files = [...this.ports.session.files.values()].filter(
+        (handle) => handle.sha === sha && handle.parentSha === parentSha,
+      );
+      const handle =
+        files.find(({ file }) => file.newPath === path) ??
+        files.find(({ file }) => file.oldPath === path);
+
+      if (!handle) continue;
+      this.ports.session.selection = {
+        sha,
+        parentSha,
+        filePath: handle.file.newPath ?? handle.file.oldPath,
+      };
+      this.ports.session.anchor = { sha, offset: 0 };
+      await this.ports.send(
+        {
+          kind: 'selection',
+          ...this.ports.session.selection,
+          anchor: this.ports.session.anchor,
+        },
+        requestId,
+      );
+
+      return;
+    }
+  }
+}
+
+export function unavailableNavigation(): Error {
+  return new Error(
+    `${extensionIdentity.displayName} is unavailable for commit navigation.`,
+  );
 }

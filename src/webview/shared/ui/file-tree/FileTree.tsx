@@ -47,6 +47,7 @@ interface Props<T> {
     onChange(this: void, path: string, collapsed: boolean): void;
   };
   selectedPath?: string | null;
+  revealSelected?: boolean;
   reveal?: { path: string; sequence: number } | null;
   snapshot?: string;
   root?: string;
@@ -288,6 +289,15 @@ export function FileTree<T>(props: Props<T>) {
     [associations.folderNames, associations.folderNamesExpanded].some(
       (map) => Object.keys(map).length > 0,
     );
+
+  useEffect(() => {
+    if (!props.revealSelected || !props.selectedPath) return;
+    const row = [
+      ...(treeRef.current?.querySelectorAll<HTMLElement>('[data-path]') ?? []),
+    ].find((row) => row.dataset.path === props.selectedPath);
+
+    row?.scrollIntoView?.({ block: 'nearest' });
+  }, [props.files, props.selectedPath, props.revealSelected]);
 
   useEffect(() => {
     if (!props.reveal || revealedSequence.current === props.reveal.sequence)

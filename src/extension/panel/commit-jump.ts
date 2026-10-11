@@ -1,10 +1,12 @@
 export interface CommitJump {
   repositoryId: string;
   sha: string;
+  filePath?: string;
 }
 
 interface PendingJump {
   target: CommitJump;
+  isCurrent(): boolean;
   resolve(): void;
   reject(error: unknown): void;
   timer: ReturnType<typeof setTimeout>;
@@ -16,11 +18,15 @@ const cancellation = () =>
 
 export class CommitJumpQueue {
   private pending: PendingJump | null = null;
-  private reveal: ((target: CommitJump) => Promise<void>) | null = null;
+  private reveal:
+    ((target: CommitJump, isCurrent: () => boolean) => Promise<void>) | null =
+    null;
+
   private closed = false;
 
-  enqueue(target: CommitJump): Promise<void> {
+  enqueue(target: CommitJump, isCurrent = () => true): Promise<void> {
     if (this.closed) return Promise.reject(cancellation());
+    if (!isCurrent()) return Promise.resolve();
     if (this.pending) {
       clearTimeout(this.pending.timer);
       this.pending.resolve();
@@ -29,12 +35,19 @@ export class CommitJumpQueue {
     return new Promise<void>((resolve, reject) => {
       const pending: PendingJump = {
         target,
+        isCurrent,
         resolve,
         reject,
         started: false,
         timer: setTimeout(() => {
           if (this.pending !== pending) return;
           this.pending = null;
+          if (!isCurrent()) {
+            resolve();
+
+            return;
+          }
+
           reject(
             new Error(
               `${extensionIdentity.displayName} did not become ready for commit navigation.`,
@@ -48,7 +61,9 @@ export class CommitJumpQueue {
     });
   }
 
-  attach(reveal: (target: CommitJump) => Promise<void>): void {
+  attach(
+    reveal: (target: CommitJump, isCurrent: () => boolean) => Promise<void>,
+  ): void {
     if (this.closed) return;
     this.reveal = reveal;
     this.flush();
@@ -68,10 +83,23 @@ export class CommitJumpQueue {
       const reveal = this.reveal;
 
       if (!pending || !reveal || pending.started || this.closed) return;
+      if (!pending.isCurrent()) {
+        clearTimeout(pending.timer);
+        if (this.finish(pending)) pending.resolve();
+
+        return;
+      }
+
       pending.started = true;
       clearTimeout(pending.timer);
       void Promise.resolve()
-        .then(() => reveal(pending.target))
+        .then(() =>
+          reveal(
+            pending.target,
+            () =>
+              !this.closed && this.pending === pending && pending.isCurrent(),
+          ),
+        )
         .then(
           () => {
             if (this.finish(pending)) pending.resolve();
