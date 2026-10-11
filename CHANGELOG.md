@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.0](https://github.com/andreymyssak/vscode-git-ui/compare/v0.2.0...v0.3.0) (2026-10-11)
+
+### Features
+
+- add Git Blame annotations in the editor with authors, dates, and links to commits and changed files ([8e13cc7](https://github.com/andreymyssak/vscode-git-ui/commit/8e13cc7f21aaba3c22f5cf1cc1030dd54df31eda))
+
 ## [0.2.0](https://github.com/andreymyssak/vscode-git-ui/compare/v0.1.3...v0.2.0) (2026-10-11)
 
 ### Features
