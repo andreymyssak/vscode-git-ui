@@ -16,6 +16,8 @@ import type {
 } from '../../shared/model';
 import { operationDialogs } from '../native/dialogs';
 import { getGitApi } from './api';
+import { createBlameQueries } from './blame';
+import type { BlameQuery, BlameResult } from './blame-model';
 import { createChangeQueries } from './changes';
 import { GitCli } from './cli';
 import type { CommitSuffixSnapshot } from './commit-suffix';
@@ -34,6 +36,7 @@ import { SquashRecovery } from './squash-recovery';
 import { readWorktrees } from './worktrees';
 
 export interface GitAdapter {
+  blame(query: BlameQuery, signal?: AbortSignal): Promise<BlameResult>;
   invalidateHistory(repositoryId: string): void;
   authors(
     repositoryId: string,
@@ -116,6 +119,7 @@ export async function createGitAdapter(
   const operate = createOperations(access, cli, dialogs, services);
 
   return {
+    blame: createBlameQueries(access, cli),
     invalidateHistory: (id) => history.invalidate(id),
     authors: (id, signal) => history.authors(id, signal),
     repositories: () => access.repositories(),
