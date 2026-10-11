@@ -17,7 +17,9 @@ Release tooling recommends the version from [Conventional Commit messages](../CO
 
 Generate release entries with release-it's `conventionalcommits` preset. Publish the generated version section from `CHANGELOG.md` unchanged. The preset includes features, fixes, performance improvements, reverts, and breaking changes. Routine maintenance commits are omitted; a maintenance-only release can have no entries.
 
-Review commit messages before merging because their descriptions become public release entries. Add no manual introductions, feature summaries, or validation paragraphs to release notes.
+Review the final commit or squash subjects before merging using the [commit-message guidance](../CONTRIBUTING.md#write-commit-messages). Then read the entries from `release:preview` as public release text. Each entry must identify the feature and its concrete capabilities, or the behavior a fix corrects, without relying on a commit body or PR description. Add no manual introductions, feature summaries, or validation paragraphs to release notes.
+
+With explicit approval, correct the wording of an existing entry in `CHANGELOG.md` and update the matching GitHub release from that section. Keep descriptions supported by the original changes and preserve their commit links.
 
 To choose a version, use `npm run release:prepare -- 1.0.0`. For the first release, `npm run release:prepare -- --no-increment` keeps the current version and prepares its notes.
 

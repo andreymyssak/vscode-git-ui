@@ -26,7 +26,8 @@ Use [testing](docs/testing.md#choose-affected-checks) to choose additional brows
 Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/). Start with a type, an optional scope in parentheses, and a short description of the change:
 
 ```text
-feat(worktrees): add worktree creation
+feat: add Git UI Changes with file checkboxes, an inline commit editor, and browsable stashes
+feat(stashes): restore selected files without deleting the stash
 fix(graph): keep commit selection after refresh
 docs: clarify installation steps
 refactor(git): extract branch deletion
@@ -38,7 +39,15 @@ For a breaking change, add `!` after the type or scope, or a `BREAKING CHANGE:` 
 
 Release tooling uses these messages to recommend versions: `fix`, `perf`, and `revert` for patch, `feat` for minor, and breaking changes for major. Version bumps and changelog updates belong to [release preparation](docs/releasing.md).
 
-Subjects for `feat`, `fix`, `perf`, and `revert` appear in public release notes. Describe the change users will see. Keep implementation details in the commit body. Routine maintenance commits are omitted. Breaking changes appear regardless of commit type.
+Subjects for `feat`, `fix`, `perf`, and `revert` appear in public release notes. Ordinary release entries use the subject, not explanatory paragraphs in the commit body. Routine maintenance commits are omitted. Breaking changes appear regardless of commit type.
+
+Write each subject for someone who has not read the PR:
+
+- Name the feature, view, or command users can find, and say what it lets them do. For a new view, make clear that the view was added.
+- Use concrete actions such as selecting files, previewing diffs, or restoring a stashed file. Words such as "manage" or "improve" need enough detail to explain the change.
+- For a fix, describe the affected behavior and when it failed. Keep internal module names, implementation details, and validation results in the body.
+
+When squash merging, write and review the final squash subject as the public release entry. Essential feature details must be in that subject; a detailed PR description or commit body cannot make up for a vague subject. Use separate commits or PRs for independent features that deserve separate release entries.
 
 ## Open a pull request
 
