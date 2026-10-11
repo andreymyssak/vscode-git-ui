@@ -24,6 +24,15 @@ function canRewriteLoadedRange(
   )
     return false;
 
+  const head = commits.find((commit) => commit.sha === repository.headSha);
+
+  if (
+    !head ||
+    head.parents.length !== 1 ||
+    !fullIdentity.test(head.parents[0]!)
+  )
+    return false;
+
   const loaded = new Map(commits.map((commit) => [commit.sha, commit]));
   const visited = new Set<string>();
   let current = repository.headSha;

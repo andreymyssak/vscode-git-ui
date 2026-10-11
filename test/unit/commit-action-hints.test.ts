@@ -3,6 +3,7 @@ import { expect, test } from 'vitest';
 import type { CommitRecord, Reference } from '../../src/shared/model';
 import {
   canDropLoadedRange,
+  canEditLoadedCommit,
   canSquashLoadedRange,
 } from '../../src/webview/pages/log/model/commit-action-hints';
 
@@ -126,4 +127,35 @@ test('older and separated selections advertise squash on the loaded linear histo
     expect(
       canSquashLoadedRange({ ...eligible, commitRange: range(shas) }),
     ).toBe(true);
+});
+
+test('a merge at HEAD does not repeatedly scan all loaded history for visible row edit hints', () => {
+  let inspected = 0;
+  const loaded = Array.from({ length: 2000 }, (_, index) => {
+    const sha = index.toString(16).padStart(40, '0');
+
+    return {
+      ...commits[0]!,
+      get sha() {
+        inspected++;
+
+        return sha;
+      },
+      parents: index === 0 ? [b, c] : [c],
+    };
+  });
+  const headSha = loaded[0]!.sha;
+  const data = {
+    ...eligible,
+    repository: { ...repository, headSha },
+    commits: loaded,
+  };
+  const visible = loaded.slice(0, 80).map((commit) => commit.sha);
+
+  inspected = 0;
+  expect(visible.map((sha) => canEditLoadedCommit(data, sha))).toEqual([
+    true,
+    ...Array<boolean>(79).fill(false),
+  ]);
+  expect(inspected).toBeLessThanOrEqual(loaded.length + visible.length * 4);
 });

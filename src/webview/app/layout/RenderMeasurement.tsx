@@ -14,6 +14,17 @@ export function RenderMeasurement({ snapshot }: { snapshot: ViewState }) {
     performance.measure(RENDER_MEASUREMENT, {
       start,
       end: performance.now(),
+      detail: {
+        repositoryId: snapshot.repository?.id ?? null,
+        generation: snapshot.generation,
+        loading: snapshot.loading,
+        count: snapshot.commits.length,
+        firstSha: snapshot.commits[0]?.sha ?? null,
+        lastSha: snapshot.commits.at(-1)?.sha ?? null,
+        nextCursor: snapshot.nextCursor,
+        scrollTop: snapshot.scrollTop,
+        selectedSha: snapshot.selectedSha,
+      },
     });
   }, [snapshot, start]);
 

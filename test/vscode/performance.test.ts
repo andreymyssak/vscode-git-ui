@@ -70,9 +70,11 @@ describe('large native history', () => {
       );
       await frame.evaluate(() => {
         const times: number[] = [];
+        const samples: unknown[] = [];
         const messages: unknown[] = [];
 
         Reflect.set(window, 'renderTimes', times);
+        Reflect.set(window, 'renderSamples', samples);
         Reflect.set(window, 'historyMessages', messages);
         const recordMessage = (event: MessageEvent) => {
           const message = event.data as {
@@ -81,7 +83,7 @@ describe('large native history', () => {
             body?: {
               kind?: string;
               message?: string;
-              page?: { commits: unknown[] };
+              page?: { commits: { sha: string }[] };
               append?: boolean;
               anchor?: unknown;
               sha?: string | null;
@@ -98,10 +100,13 @@ describe('large native history', () => {
             ].includes(message.body?.kind ?? '')
           )
             messages.push({
+              time: performance.now(),
               generation: message.generation,
               requestId: message.requestId,
               kind: message.body?.kind,
               count: message.body?.page?.commits.length,
+              firstSha: message.body?.page?.commits[0]?.sha,
+              lastSha: message.body?.page?.commits.at(-1)?.sha,
               append: message.body?.append,
               anchor: message.body?.anchor,
               sha: message.body?.sha,
@@ -110,14 +115,28 @@ describe('large native history', () => {
         };
 
         window.addEventListener('message', recordMessage);
-        const observer = new PerformanceObserver((list) => {
-          for (const entry of list.getEntries())
-            if (entry.name === 'git-ui-native.render')
+        const record = (entries: readonly PerformanceEntry[]) => {
+          for (const entry of entries)
+            if (entry.name === 'git-ui-native.render') {
               times.push(entry.duration);
-        });
+              samples.push({
+                start: entry.startTime,
+                duration: entry.duration,
+                snapshot: (entry as PerformanceMeasure).detail,
+              });
+            }
+        };
+
+        const observer = new PerformanceObserver((list) =>
+          record(list.getEntries()),
+        );
 
         observer.observe({ entryTypes: ['measure'] });
+        Reflect.set(window, 'drainPerformanceObservation', () =>
+          record(observer.takeRecords()),
+        );
         Reflect.set(window, 'stopPerformanceObservation', () => {
+          record(observer.takeRecords());
           window.removeEventListener('message', recordMessage);
           observer.disconnect();
         });
@@ -192,17 +211,25 @@ describe('large native history', () => {
         };
       });
 
-      assert.ok(loading.elapsed <= 100);
-      assert.ok(loading.text?.includes('Loading'));
       await expect(frame.locator('#status')).not.toContainText('Loading');
-      const times = await frame.evaluate(
-        () => Reflect.get(window, 'renderTimes') as number[],
-      );
+      const measurements = await frame.evaluate(() => {
+        const drain = Reflect.get(
+          window,
+          'drainPerformanceObservation',
+        ) as () => void;
 
-      assert.ok(times.length > 0, 'capture at least one post-data render');
-      const maxRenderMs = Math.max(...times);
+        drain();
 
-      assert.ok(maxRenderMs <= 100, `Post-data render ${maxRenderMs} ms`);
+        return {
+          times: Reflect.get(window, 'renderTimes') as number[],
+          samples: Reflect.get(window, 'renderSamples') as unknown[],
+          messages: Reflect.get(window, 'historyMessages') as unknown[],
+        };
+      });
+      const maxRenderMs = measurements.times.length
+        ? Math.max(...measurements.times)
+        : 0;
+
       await writeFile(
         '.artifacts/performance.json',
         JSON.stringify(
@@ -220,11 +247,20 @@ describe('large native history', () => {
             gitPageMs,
             loadingResponseMs: loading.elapsed,
             maxPostDataRenderMs: maxRenderMs,
+            renderSamples: measurements.samples,
+            historyMessages: measurements.messages,
           },
           null,
           2,
         ),
       );
+      assert.ok(loading.elapsed <= 100);
+      assert.ok(loading.text?.includes('Loading'));
+      assert.ok(
+        measurements.times.length > 0,
+        'capture at least one post-data render',
+      );
+      assert.ok(maxRenderMs <= 100, `Post-data render ${maxRenderMs} ms`);
     } finally {
       try {
         if (frame && !frame.isDetached()) {
@@ -234,6 +270,7 @@ describe('large native history', () => {
 
             stop?.();
             Reflect.deleteProperty(window, 'stopPerformanceObservation');
+            Reflect.deleteProperty(window, 'drainPerformanceObservation');
           });
           const search = frame.getByRole('searchbox', {
             name: 'Text or hash',
