@@ -50,7 +50,14 @@ export function sourceControlCommandId(kind: SourceControlActionKind): string {
 }
 
 export function commandId(
-  kind: BranchActionKind | CommitActionKind | WorktreeActionKind,
+  kind:
+    | BranchActionKind
+    | CommitActionKind
+    | WorktreeActionKind
+    | 'annotate-blame'
+    | 'close-blame'
+    | 'open-blame-commit'
+    | 'blame-enabled',
 ): string {
   return `${extensionIdentity.commandNamespace}.${kind}`;
 }
