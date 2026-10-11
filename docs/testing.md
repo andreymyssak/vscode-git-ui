@@ -17,6 +17,8 @@ Vitest runs unit, integration and component projects together with `npm run test
 
 Browser tests load the compiled UI in Chromium with a simulated VS Code connection. `scripts/test/browser-test-server.ts` prepares the test pages; Playwright checks layout and interactions.
 
+Failed browser tests retain their trace and screenshot under `test-results/`, also uploaded by CI. Open a trace with `npx playwright show-trace <trace.zip>` to inspect the failing interaction.
+
 VS Code tests run inside the desktop editor using Microsoft's `@vscode/test-cli` and `@vscode/test-electron`. Installed-extension tests install the built VSIX into an isolated profile, then run selected VS Code suites and acceptance scenarios. `scripts/test/installed-actions.ts` tests branch actions, notifications and user choices against that installed copy.
 
 CI runs code/local tests, browser tests, native VS Code tests, and installed-package tests in parallel groups on macOS and Windows. A shared build prepares the VSIX and compiled tests once. VS Code jobs use stable. Each job reports its checks and saves results; the overall summary includes every group and fails if a required check fails or does not run.

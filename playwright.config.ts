@@ -7,6 +7,8 @@ export default defineConfig({
   use: {
     baseURL: 'http://127.0.0.1:4173',
     viewport: { width: 1280, height: 720 },
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
   },
   webServer: {
     command: 'node scripts/test/browser-test-server.ts',
