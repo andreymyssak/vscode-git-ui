@@ -65,7 +65,7 @@ describe('native Blame editor', () => {
       await expect(file).toHaveAttribute('aria-selected', 'true');
       await expect(file).toBeInViewport();
       assert.equal((await fixture.runGit(['rev-parse', 'HEAD'])).trim(), head);
-      assert.equal(editor.document.uri.fsPath, path);
+      assert.equal(editor.document.uri.fsPath, vscode.Uri.file(path).fsPath);
     } finally {
       await vscode.commands.executeCommand('workbench.action.closeAllEditors');
       await fixture.dispose();
