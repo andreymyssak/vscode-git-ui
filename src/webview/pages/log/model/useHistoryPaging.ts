@@ -7,27 +7,46 @@ export function useHistoryPaging(
   viewportHeight: number,
   onIntent: (intent: LogIntent) => void,
 ) {
-  const ownership = useRef({ key: '', requested: new Set<string>() });
+  const ownership = useRef<{
+    key: string;
+    attempt: {
+      cursor: string;
+      kind: 'requested' | 'loading' | 'settled';
+    } | null;
+  }>({ key: '', attempt: null });
 
   useEffect(() => {
     const key = `${data.repository?.id ?? ''}:${data.generation}`;
 
     if (ownership.current.key !== key)
-      ownership.current = { key, requested: new Set() };
+      ownership.current = { key, attempt: null };
     const cursor = data.nextCursor;
+    const current = ownership.current;
+    const nearEnd =
+      viewportHeight > 0 &&
+      data.scrollTop + viewportHeight >=
+        data.commits.length * 22 - Math.max(66, viewportHeight);
+
+    if (current.attempt?.cursor === cursor) {
+      if (data.loading) current.attempt.kind = 'loading';
+      else if (current.attempt.kind === 'loading')
+        current.attempt.kind = 'settled';
+      // A deliberate new boundary crossing can retry a settled page. Merely
+      // remaining near the end after a failure must not start a retry loop.
+      if (!nearEnd && current.attempt.kind === 'settled')
+        current.attempt = null;
+    }
 
     if (
       !cursor ||
       data.loading ||
       !data.repository ||
       !data.commits.length ||
-      viewportHeight <= 0 ||
-      data.scrollTop + viewportHeight <
-        data.commits.length * 22 - Math.max(66, viewportHeight) ||
-      ownership.current.requested.has(cursor)
+      !nearEnd ||
+      current.attempt?.cursor === cursor
     )
       return;
-    ownership.current.requested.add(cursor);
+    current.attempt = { cursor, kind: 'requested' };
     onIntent({
       kind: 'request',
       body: {

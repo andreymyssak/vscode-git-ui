@@ -115,8 +115,9 @@ export function createChangeQueries(
   cli: GitCli,
 ): (id: string, sha: string, parent: string | null) => Promise<FileChange[]> {
   const cache = new ComparisonCache<FileChange[]>();
+  const pending = new Map<string, Promise<FileChange[]>>();
 
-  return async (id, sha, parent) => {
+  const load = async (id: string, sha: string, parent: string | null) => {
     const repo = access.repository(id);
     const key = JSON.stringify([id, sha, parent]);
     const cached = cache.get(key);
@@ -167,5 +168,22 @@ export function createChangeQueries(
     cache.set(key, structuredClone(files));
 
     return files;
+  };
+
+  return async (id, sha, parent) => {
+    access.repository(id);
+    const key = JSON.stringify([id, sha, parent]);
+    let work = pending.get(key);
+
+    if (!work) {
+      work = load(id, sha, parent);
+      pending.set(key, work);
+    }
+
+    try {
+      return structuredClone(await work);
+    } finally {
+      if (pending.get(key) === work) pending.delete(key);
+    }
   };
 }
