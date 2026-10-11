@@ -266,6 +266,7 @@ test('deep reference paths retain readable names and horizontal scrolling', asyn
   page,
 }) => {
   await page.setViewportSize({ width: 620, height: 280 });
+  await expect(page.locator('#branch-pane')).toHaveCSS('width', '150px');
   await updateReferences(page, ['main', 'feature/team/epic/deep-reference']);
   await page.getByRole('searchbox', { name: 'Branch or tag' }).fill('feature');
   const leaf = page.getByRole('treeitem', {

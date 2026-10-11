@@ -129,7 +129,7 @@ async function runContextAction(
 
   assert.ok(encoded);
   await frame.page().keyboard.press('Escape');
-  await expect(frame.page().getByRole('menuitem')).toHaveCount(0);
+  await expect(frame.page().getByRole('menu')).toHaveCount(0);
   // Native menu dismissal restores focus across two nested iframes asynchronously.
   // Finish that restoration before another menu or command can change focus.
   await expect
