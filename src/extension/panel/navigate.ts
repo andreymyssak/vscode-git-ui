@@ -37,11 +37,16 @@ export class PanelNavigator {
     private readonly prompts: NavigationPrompts,
   ) {}
 
+  cancel(): void {
+    this.navigationSequence++;
+  }
+
   async navigate(
     id: string,
     input: string,
     query: HistoryInput,
     apply: (result: NavigationResult, isLatest: () => boolean) => Promise<void>,
+    options: { confirmScopeChange: boolean } = { confirmScopeChange: true },
   ): Promise<void> {
     const generation = this.session.generation;
     const sequence = ++this.navigationSequence;
@@ -117,7 +122,11 @@ export class PanelNavigator {
         let nextInput = query;
 
         if (replace) {
-          if (!(await this.prompts.offerNavigation?.(decision)) || !current())
+          if (
+            (options.confirmScopeChange &&
+              !(await this.prompts.offerNavigation?.(decision))) ||
+            !current()
+          )
             return;
           nextInput = { scope: decision.scope, text: '', cursor: null };
           page = allPage ?? (await scan(nextInput));

@@ -94,6 +94,7 @@ const bodies = {
     filters,
     preserve: true,
   },
+  'focus-log': { kind: 'focus-log' },
   history: {
     kind: 'history',
     page: {

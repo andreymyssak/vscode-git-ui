@@ -529,3 +529,12 @@ test('presentation changes retain selected commits, filters and generation witho
   expect(f.requests).toHaveLength(requests);
   f.unmount();
 });
+
+test('host commit navigation activates Log from Worktrees', () => {
+  const controller = scrollController();
+
+  act(() => controller.result.current.setActiveView('worktrees'));
+  expect(controller.result.current.state.activeView).toBe('worktrees');
+  act(() => controller.deliver({ kind: 'focus-log' }));
+  expect(controller.result.current.state.activeView).toBe('log');
+});

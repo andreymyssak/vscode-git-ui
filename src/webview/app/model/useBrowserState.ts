@@ -278,6 +278,16 @@ export function useBrowserState(bridge: BrowserBridge): BrowserController {
   useEffect(() => {
     const stop = bridge.subscribe((message) => {
       const before = store.getState();
+
+      if (
+        message.body.kind === 'focus-log' &&
+        message.generation >= before.generation &&
+        (!before.repository || message.repositoryId === before.repository.id)
+      ) {
+        restorePending.current = false;
+        worktreesPending.current = false;
+      }
+
       const ownsCompletion =
         restorePending.current &&
         message.requestId === restoreAttempt.current?.requestId &&

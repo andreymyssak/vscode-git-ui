@@ -2,7 +2,10 @@ import { randomBytes } from 'node:crypto';
 
 import * as vscode from 'vscode';
 
-import { extensionIdentity } from '../../shared/extension-identity';
+import {
+  extensionIdentity,
+  LOG_VIEW_ID,
+} from '../../shared/extension-identity';
 import type {
   BranchActionKind,
   CommitActionKind,
@@ -31,6 +34,7 @@ import {
   showOperationInfo,
 } from '../native/operation-feedback';
 import { openWorktree } from '../native/worktrees';
+import { type CommitJump, CommitJumpQueue } from './commit-jump';
 import { PanelController } from './controller';
 import { attachFileIcons } from './file-icon-host';
 import {
@@ -41,6 +45,30 @@ import {
 } from './protocol';
 
 export class GitViewProvider implements vscode.WebviewViewProvider {
+  private readonly jumps = new CommitJumpQueue();
+  private focusSequence = 0;
+  private viewCleanup: (() => void) | null = null;
+
+  async revealCommit(target: CommitJump): Promise<void> {
+    const sequence = ++this.focusSequence;
+    const pending = this.jumps.enqueue(target);
+
+    void pending.catch(() => {});
+    try {
+      await vscode.commands.executeCommand(`${LOG_VIEW_ID}.focus`);
+    } catch (error) {
+      if (sequence !== this.focusSequence) return;
+      this.jumps.detach(error);
+    }
+
+    await pending;
+  }
+
+  dispose(): void {
+    this.jumps.dispose();
+    this.viewCleanup?.();
+  }
+
   private menuAction:
     ((kind: BranchActionKind, value: unknown) => Promise<void>) | null = null;
 
@@ -326,27 +354,39 @@ export class GitViewProvider implements vscode.WebviewViewProvider {
     };
 
     this.worktreeMenuAction = worktreeMenuAction;
+    const handleMessage = async (result: PanelController, message: unknown) => {
+      await result.handle(message);
+      if (
+        !closed &&
+        controller === result &&
+        parseRequest(message)?.body.kind === 'ready'
+      )
+        this.jumps.attach((target) => result.revealCommit(target));
+    };
+
     const messages = webview.onDidReceiveMessage((message: unknown) => {
       if (parseRequest(message)?.body.kind === 'ready') fileIcons.ready();
       initializing ??= initialize();
       void initializing
-        .then((result) => result.handle(message))
-        .catch((error) =>
+        .then((result) => handleMessage(result, message))
+        .catch((error) => {
+          this.jumps.detach(error);
           vscode.window.showErrorMessage(
             error instanceof Error
               ? error.message
               : `${extensionIdentity.displayName} initialization failed.`,
             'Dismiss',
-          ),
-        );
+          );
+        });
     });
     const trust = vscode.workspace.onDidGrantWorkspaceTrust(() => {
+      this.jumps.detach();
       controller?.dispose();
       controller = null;
       initializing = initialize();
       void initializing
         .then((result) =>
-          result.handle({
+          handleMessage(result, {
             requestId: 'trust',
             repositoryId: '',
             generation: 0,
@@ -359,12 +399,13 @@ export class GitViewProvider implements vscode.WebviewViewProvider {
     });
     const settings = vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration('git.enabled')) {
+        this.jumps.detach();
         controller?.dispose();
         controller = null;
         initializing = initialize();
         void initializing
           .then((result) =>
-            result.handle({
+            handleMessage(result, {
               requestId: 'settings',
               repositoryId: '',
               generation: 0,
@@ -377,8 +418,14 @@ export class GitViewProvider implements vscode.WebviewViewProvider {
       }
     });
 
-    view.onDidDispose(() => {
+    const cleanup = () => {
+      if (closed) return;
       closed = true;
+      if (this.viewCleanup === cleanup) {
+        this.jumps.detach();
+        this.viewCleanup = null;
+      }
+
       if (this.menuAction === menuAction) this.menuAction = null;
       if (this.commitMenuAction === commitMenuAction)
         this.commitMenuAction = null;
@@ -389,6 +436,10 @@ export class GitViewProvider implements vscode.WebviewViewProvider {
       messages.dispose();
       trust.dispose();
       settings.dispose();
-    });
+      viewDisposed?.dispose();
+    };
+
+    this.viewCleanup = cleanup;
+    const viewDisposed = view.onDidDispose(cleanup);
   }
 }

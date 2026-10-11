@@ -308,6 +308,8 @@ export function reduceView(state: ViewState, event: ViewEvent): ViewState {
           return generation === state.generation && state.restoring
             ? { ...state, loading: false, restoring: false }
             : state;
+        case 'focus-log':
+          return { ...state, activeView: 'log' };
         case 'notice':
           return state;
         case 'references':

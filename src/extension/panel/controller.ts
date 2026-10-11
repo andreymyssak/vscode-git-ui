@@ -1,5 +1,6 @@
 import type { Disposable } from 'vscode';
 
+import { extensionIdentity } from '../../shared/extension-identity';
 import { normalizeHistoryFilters } from '../../shared/history-filters';
 import type {
   PanelBody,
@@ -23,6 +24,8 @@ import {
   publishOperationResult,
 } from './actions';
 import { type AuthorPicker, chooseHistoryAuthors } from './authors';
+import type { CommitJump } from './commit-jump';
+import { CommitNavigation } from './commit-navigation';
 import { PanelDetails } from './details';
 import { PanelHistory } from './history';
 import type { NavigationPrompts } from './navigate';
@@ -72,6 +75,7 @@ export class PanelController {
 
   private subscription: Disposable | null = null;
   private closed = false;
+  private readonly commitNavigation: CommitNavigation | null;
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly repositoryRefresh = new DeferredRepositoryRefresh();
   private refreshRestore: {
@@ -126,6 +130,24 @@ export class PanelController {
             ),
         })
       : null;
+    this.commitNavigation =
+      this.navigator && this.historyQuery && this.details
+        ? new CommitNavigation({
+            session: this.session,
+            navigator: this.navigator,
+            history: this.historyQuery,
+            details: this.details,
+            getInput: () => this.input,
+            setInput: (input) => {
+              this.input = input;
+            },
+            repository: (id) => this.repository(id),
+            send: (body, requestId) => this.send(body, requestId),
+            setup: () => this.setup(),
+            selectRepository: (id) => this.selectRepository(id, false),
+            closed: () => this.closed,
+          })
+        : null;
     this.repositorySubscription =
       options.adapter?.subscribeRepositories(() => {
         void this.repositoriesChanged().catch((error) =>
@@ -243,6 +265,27 @@ export class PanelController {
     }
 
     let ownedGeneration = request.generation;
+
+    if (
+      this.commitNavigation?.hostNavigation &&
+      (request.body.kind === 'restore' || request.body.kind === 'ready')
+    )
+      return;
+    const kind = request.body.kind;
+
+    if (
+      kind === 'choose-repository' ||
+      (kind === 'history' && request.body.cursor === null) ||
+      (this.session.current(request.repositoryId, request.generation) &&
+        [
+          'restore',
+          'go-to',
+          'refresh',
+          'select-commit',
+          'select-commits',
+        ].includes(kind))
+    )
+      this.commitNavigation?.cancel();
 
     try {
       const body = request.body;
@@ -381,9 +424,13 @@ export class PanelController {
           break;
 
         case 'go-to':
-          await this.goTo(body.input, request, (generation) => {
-            ownedGeneration = generation;
-          });
+          await this.commitNavigation!.goTo(
+            body.input,
+            request,
+            (generation) => {
+              ownedGeneration = generation;
+            },
+          );
           break;
         case 'refresh':
           this.notifications.retry();
@@ -443,7 +490,8 @@ export class PanelController {
     }
   }
 
-  async selectRepository(id: string): Promise<void> {
+  async selectRepository(id: string, cancelNavigation = true): Promise<void> {
+    if (cancelNavigation) this.commitNavigation?.cancel();
     if (!(await this.setup())) return;
     this.repository(id);
     this.refreshRestore = null;
@@ -470,63 +518,12 @@ export class PanelController {
     await this.historyQuery!.load(this.input, 'select-repository', null);
   }
 
-  private async goTo(
-    input: string,
-    request: PanelRequest,
-    assigned: (generation: number) => void,
-  ): Promise<void> {
-    const id = request.repositoryId;
-
-    await this.navigator!.navigate(
-      id,
-      input,
-      this.input,
-      async ({ commit, page, input: nextInput, replace }, isLatest) => {
-        let generation = this.session.generation;
-
-        if (replace) {
-          this.input = nextInput;
-          this.session.begin(id);
-          generation = this.session.generation;
-          assigned(this.session.generation);
-          await this.send(
-            {
-              kind: 'loading',
-              scope: this.input.scope,
-              text: '',
-              repository: this.repository(id),
-              filters: normalizeHistoryFilters(this.input.filters),
-            },
-            request.requestId,
-          );
-        }
-
-        if (!this.session.current(id, generation) || !isLatest()) return;
-        if (page) {
-          await this.historyQuery!.publish(
-            page,
-            this.input,
-            request.requestId,
-            !replace,
-          );
-        }
-
-        if (!this.session.current(id, generation) || !isLatest()) return;
-        this.session.commits.set(commit.sha, commit);
-        const epoch = this.session.select(commit.sha);
-
-        await this.send({ kind: 'reveal', sha: commit.sha }, request.requestId);
-        if (!this.session.current(id, generation) || !isLatest()) return;
-        await this.send({ kind: 'details', commit }, request.requestId);
-        if (!this.session.current(id, generation) || !isLatest()) return;
-        await this.details!.files(
-          commit.sha,
-          commit.parents[0] ?? null,
-          epoch,
-          request.requestId,
-        );
-      },
-    );
+  async revealCommit(target: CommitJump): Promise<void> {
+    if (!this.commitNavigation)
+      throw new Error(
+        `${extensionIdentity.displayName} is unavailable for commit navigation.`,
+      );
+    await this.commitNavigation.revealCommit(target);
   }
 
   private async action(

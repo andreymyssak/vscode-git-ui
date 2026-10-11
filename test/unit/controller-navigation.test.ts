@@ -1,4 +1,4 @@
-import { assert, expect, test } from 'vitest';
+import { assert, expect, onTestFinished, test } from 'vitest';
 
 import type { PanelBody, Result } from '../../src/shared/messages';
 import { a, b, fixture, page } from '../fixtures/controller';
@@ -225,4 +225,292 @@ test('declining navigation retains the query, selected file and scroll anchor th
   });
   expect(f.writes).toStrictEqual([]);
   f.controller.dispose();
+});
+
+test('a host commit jump selects its source repository and publishes changed files without writes', async (t) => {
+  const f = fixture();
+
+  t.onTestFinished(() => f.controller.dispose());
+  f.adapter.resolve = async () => ({
+    kind: 'commit',
+    commit: page([b]).commits[0]!,
+  });
+  await f.controller.selectRepository('one');
+  f.sent.length = 0;
+  await f.controller.revealCommit({ repositoryId: 'two', sha: b });
+  expect(f.sent.filter(({ body }) => body.kind === 'reveal')).toMatchObject([
+    { repositoryId: 'two', body: { sha: b } },
+  ]);
+  expect(f.sent.filter(({ body }) => body.kind === 'details')).toMatchObject([
+    { repositoryId: 'two', body: { commit: { sha: b } } },
+  ]);
+  expect(f.sent.find(({ body }) => body.kind === 'files')).toMatchObject({
+    repositoryId: 'two',
+    body: { sha: b, files: [{ id: `two-${b}` }] },
+  });
+  expect(f.writes).toEqual([]);
+});
+
+test('a host commit jump finds a later page and preserves its query', async (t) => {
+  const f = fixture();
+
+  t.onTestFinished(() => f.controller.dispose());
+  f.adapter.resolve = async () => ({
+    kind: 'commit',
+    commit: page([b]).commits[0]!,
+  });
+  f.adapter.history = async (_id, input) =>
+    input.cursor === 'later'
+      ? page([b])
+      : { ...page([a]), nextCursor: 'later' };
+  await f.controller.selectRepository('one');
+  f.sent.length = 0;
+  await f.controller.revealCommit({ repositoryId: 'one', sha: b });
+  expect(f.sent.find(({ body }) => body.kind === 'reveal')?.body).toEqual({
+    kind: 'reveal',
+    sha: b,
+  });
+  expect(
+    f.sent.filter(({ body }) => body.kind === 'history').at(-1)?.body,
+  ).toMatchObject({
+    scope: { kind: 'head' },
+    text: '',
+    page: { commits: [{ sha: a }, { sha: b }] },
+  });
+});
+
+test.each([false, true])(
+  'host navigation automatically widens excluded history; unreachable=%s',
+  async (unreachable) => {
+    const f = fixture(true, true, {
+      offerNavigation: async () =>
+        assert.fail('Host navigation must not ask to clear filters'),
+    });
+
+    onTestFinished(() => f.controller.dispose());
+    f.adapter.resolve = async () => ({
+      kind: 'commit',
+      commit: page([b]).commits[0]!,
+    });
+    f.adapter.history = async (_id, input) =>
+      input.scope.kind === 'commit' ||
+      (!unreachable && input.scope.kind === 'all')
+        ? page([a, b])
+        : page([a]);
+    await f.controller.selectRepository('one');
+    await f.controller.handle(
+      f.request({
+        kind: 'history',
+        scope: { kind: 'head' },
+        text: 'excluded',
+        cursor: null,
+        filters: {
+          regex: false,
+          matchCase: false,
+          author: {
+            kind: 'selected',
+            identities: [{ name: 'Other', email: 'other@example.test' }],
+          },
+          date: '24h',
+        },
+      }),
+    );
+    f.sent.length = 0;
+    await f.controller.revealCommit({ repositoryId: 'one', sha: b });
+    expect(
+      f.sent.filter(({ body }) => body.kind === 'loading').at(-1)?.body,
+    ).toMatchObject({
+      scope: unreachable ? { kind: 'commit', sha: b } : { kind: 'all' },
+      text: '',
+      filters: { author: { kind: 'all' }, date: 'all' },
+    });
+    expect(f.sent.find(({ body }) => body.kind === 'reveal')?.body).toEqual({
+      kind: 'reveal',
+      sha: b,
+    });
+  },
+);
+
+test('a subsequent user selection cancels a slow host jump', async (t) => {
+  const f = fixture();
+
+  t.onTestFinished(() => f.controller.dispose());
+  let release = () => {};
+
+  let enter = () => {};
+
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const started = new Promise<void>((resolve) => {
+    enter = resolve;
+  });
+
+  f.adapter.resolve = async () => {
+    enter();
+    await gate;
+
+    return { kind: 'commit', commit: page([b]).commits[0]! };
+  };
+
+  await f.controller.selectRepository('one');
+  f.sent.length = 0;
+  const pending = f.controller.revealCommit({ repositoryId: 'one', sha: b });
+
+  await started;
+  await f.controller.handle(
+    f.request({ kind: 'select-commit', sha: a }, 'one', 2),
+  );
+  release();
+  await pending;
+  expect(f.sent.filter(({ body }) => body.kind === 'reveal')).toEqual([]);
+  expect(
+    f.sent.filter(({ body }) => body.kind === 'details').at(-1)?.body,
+  ).toMatchObject({ commit: { sha: a } });
+});
+
+test('late saved-state restoration cannot reset a host jump', async (t) => {
+  const f = fixture();
+
+  t.onTestFinished(() => f.controller.dispose());
+  let release = () => {};
+
+  let enter = () => {};
+
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const started = new Promise<void>((resolve) => {
+    enter = resolve;
+  });
+
+  f.adapter.resolve = async () => {
+    enter();
+    await gate;
+
+    return { kind: 'commit', commit: page([b]).commits[0]! };
+  };
+
+  await f.controller.selectRepository('one');
+  f.sent.length = 0;
+  const pending = f.controller.revealCommit({ repositoryId: 'one', sha: b });
+
+  await started;
+  await f.controller.handle(
+    f.request(
+      {
+        kind: 'restore',
+        scope: { kind: 'head' },
+        text: 'old saved filter',
+        selection: null,
+        anchor: null,
+      },
+      'one',
+      1,
+    ),
+  );
+  release();
+  await pending;
+  expect(f.sent.filter(({ body }) => body.kind === 'error')).toEqual([]);
+  expect(f.sent.find(({ body }) => body.kind === 'reveal')?.body).toEqual({
+    kind: 'reveal',
+    sha: b,
+  });
+});
+
+test('the newest host target wins while another repository is still loading', async (t) => {
+  const f = fixture();
+
+  t.onTestFinished(() => f.controller.dispose());
+  let release = () => {};
+
+  let enter = () => {};
+
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const started = new Promise<void>((resolve) => {
+    enter = resolve;
+  });
+
+  f.adapter.resolve = async (_id, sha) => ({
+    kind: 'commit',
+    commit: page([sha]).commits[0]!,
+  });
+  f.adapter.history = async (id) => {
+    if (id === 'two') {
+      enter();
+      await gate;
+    }
+
+    return page([a, b]);
+  };
+
+  await f.controller.selectRepository('one');
+  f.sent.length = 0;
+  const older = f.controller.revealCommit({ repositoryId: 'two', sha: b });
+
+  t.onTestFinished(async () => {
+    release();
+    await older;
+  });
+  await started;
+  await f.controller.revealCommit({ repositoryId: 'one', sha: a });
+  release();
+  await older;
+  expect(f.sent.filter(({ body }) => body.kind === 'reveal')).toMatchObject([
+    { repositoryId: 'one', body: { sha: a } },
+  ]);
+  expect(f.writes).toEqual([]);
+});
+
+test('a later user query cancels a slow host jump', async (t) => {
+  const f = fixture();
+
+  t.onTestFinished(() => f.controller.dispose());
+  let release = () => {};
+
+  let enter = () => {};
+
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const started = new Promise<void>((resolve) => {
+    enter = resolve;
+  });
+
+  f.adapter.resolve = async () => {
+    enter();
+    await gate;
+
+    return { kind: 'commit', commit: page([b]).commits[0]! };
+  };
+
+  await f.controller.selectRepository('one');
+  f.sent.length = 0;
+  const pending = f.controller.revealCommit({ repositoryId: 'one', sha: b });
+
+  t.onTestFinished(async () => {
+    release();
+    await pending;
+  });
+  await started;
+  await f.controller.handle(
+    f.request(
+      {
+        kind: 'history',
+        scope: { kind: 'all' },
+        text: 'new query',
+        cursor: null,
+      },
+      'one',
+      2,
+    ),
+  );
+  release();
+  await pending;
+  expect(f.sent.filter(({ body }) => body.kind === 'reveal')).toEqual([]);
+  expect(
+    f.sent.filter(({ body }) => body.kind === 'history').at(-1)?.body,
+  ).toMatchObject({ scope: { kind: 'all' }, text: 'new query' });
 });
