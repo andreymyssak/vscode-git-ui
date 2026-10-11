@@ -62,45 +62,43 @@ export async function annotationPoint(
   text: string,
   occurrence = 0,
 ) {
+  const readPoint = () =>
+    editor.locator('.view-line span').evaluateAll(
+      (spans, { wanted, occurrence }) => {
+        const span = spans.filter((value) =>
+          getComputedStyle(value, '::before').content.includes(wanted),
+        )[occurrence];
+
+        if (!span) return null;
+        const rect = span.getBoundingClientRect();
+        const before = getComputedStyle(span, '::before');
+
+        return {
+          x: rect.left + 8,
+          y: rect.top + rect.height / 2,
+          codeX:
+            rect.left +
+            parseFloat(before.width) +
+            parseFloat(before.paddingRight) +
+            parseFloat(before.borderRightWidth) +
+            parseFloat(before.marginRight) +
+            16,
+        };
+      },
+      { wanted: text, occurrence },
+    );
+  const captured: { point: Awaited<ReturnType<typeof readPoint>> } = {
+    point: null,
+  };
+
   await expect
-    .poll(() =>
-      editor
-        .locator('.view-line span')
-        .evaluateAll(
-          (spans, { text, occurrence }) =>
-            spans.filter((span) =>
-              getComputedStyle(span, '::before').content.includes(text),
-            )[occurrence] !== undefined,
-          { text, occurrence },
-        ),
-    )
-    .toBe(true);
-  const point = await editor.locator('.view-line span').evaluateAll(
-    (spans, { wanted, occurrence }) => {
-      const span = spans.filter((value) =>
-        getComputedStyle(value, '::before').content.includes(wanted),
-      )[occurrence];
+    .poll(async () => {
+      captured.point = await readPoint();
 
-      if (!span) return null;
-      const rect = span.getBoundingClientRect();
-      const before = getComputedStyle(span, '::before');
+      return captured.point;
+    })
+    .not.toBeNull();
+  assert.ok(captured.point, `No rendered annotation containing ${text}`);
 
-      return {
-        x: rect.left + 8,
-        y: rect.top + rect.height / 2,
-        codeX:
-          rect.left +
-          parseFloat(before.width) +
-          parseFloat(before.paddingRight) +
-          parseFloat(before.borderRightWidth) +
-          parseFloat(before.marginRight) +
-          16,
-      };
-    },
-    { wanted: text, occurrence },
-  );
-
-  assert.ok(point, `No rendered annotation containing ${text}`);
-
-  return point;
+  return captured.point;
 }
