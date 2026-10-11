@@ -211,10 +211,16 @@ export function FileTree<T>(props: Props<T>) {
       });
   };
 
+  const rowKey = (node: FileTreeNode<T>) =>
+    JSON.stringify(
+      node.kind === 'folder'
+        ? ['folder', node.path]
+        : ['file', props.fileKey(node.file)],
+    );
   const visible = new Map<string, FileTreeNode<T>>();
   const visit = (items: FileTreeNode<T>[]) => {
     for (const node of items) {
-      visible.set(node.path, node);
+      visible.set(rowKey(node), node);
       if (node.kind === 'folder' && !isCollapsed(node.path))
         visit(node.children);
     }
@@ -226,8 +232,8 @@ export function FileTree<T>(props: Props<T>) {
     node: FileTreeNode<T>,
     selected = rowSelection.selected,
   ) => {
-    const targets = selected.has(node.path)
-      ? [...visible.values()].filter((item) => selected.has(item.path))
+    const targets = selected.has(rowKey(node))
+      ? [...visible.values()].filter((item) => selected.has(rowKey(item)))
       : [node];
     const keys = new Set(
       targets.flatMap((item) =>
@@ -251,8 +257,8 @@ export function FileTree<T>(props: Props<T>) {
 
   const prepareContext = (node: FileTreeNode<T>, target: HTMLElement) => {
     const selected =
-      props.multiSelect && !rowSelection.selected.has(node.path)
-        ? rowSelection.select(node.path)
+      props.multiSelect && !rowSelection.selected.has(rowKey(node))
+        ? rowSelection.select(rowKey(node))
         : rowSelection.selected;
     const context = contextFor(node, selected);
 
@@ -262,7 +268,9 @@ export function FileTree<T>(props: Props<T>) {
   };
 
   const current =
-    active !== null && visible.has(active) ? active : nodes[0]?.path;
+    active !== null && visible.has(active)
+      ? active
+      : nodes[0] && rowKey(nodes[0]);
   const theme = useContext(FileIconThemeContext);
   const associations = theme?.associations;
   const hasFiles =
@@ -290,7 +298,8 @@ export function FileTree<T>(props: Props<T>) {
 
     if (!row) return;
     revealedSequence.current = props.reveal.sequence;
-    if (props.multiSelect) rowSelection.select(props.reveal.path);
+    if (props.multiSelect && row.dataset.treeRowKey)
+      rowSelection.select(row.dataset.treeRowKey);
     row.focus();
     row.scrollIntoView?.({ block: 'nearest' });
   }, [
@@ -302,6 +311,7 @@ export function FileTree<T>(props: Props<T>) {
   ]);
 
   const draw = (node: FileTreeNode<T>, depth: number): ReactNode => {
+    const key = rowKey(node);
     const root = node.kind === 'folder' && node.path === '';
     const files = node.kind === 'folder' ? node.files : [node.file];
     const count = files.filter((file) =>
@@ -435,7 +445,7 @@ export function FileTree<T>(props: Props<T>) {
     );
     const rowProps = {
       role: 'treeitem',
-      tabIndex: current === node.path ? 0 : -1,
+      tabIndex: current === key ? 0 : -1,
       className: clsx(
         styles.row,
         node.kind === 'file' && styles.leaf,
@@ -448,10 +458,10 @@ export function FileTree<T>(props: Props<T>) {
             ? node.path || node.name
             : `${node.name} ${fileCountLabel(files.length)}`,
       'aria-selected': props.multiSelect
-        ? rowSelection.selected.has(node.path)
+        ? rowSelection.selected.has(key)
         : node.kind === 'file' && props.selectedPath !== undefined
           ? props.selectedPath === node.path
-          : active === node.path,
+          : active === key,
       'aria-description':
         decoration?.description ?? folderDecoration?.description,
       'aria-level': depth + 1,
@@ -466,18 +476,19 @@ export function FileTree<T>(props: Props<T>) {
       'aria-disabled': props.selection ? disabled : undefined,
       'data-file': node.kind === 'file' ? props.fileKey(node.file) : undefined,
       'data-tree-path': node.path,
+      'data-tree-row-key': key,
       'data-path': node.kind === 'file' ? node.path : undefined,
       'data-root': root ? true : undefined,
       'data-snapshot': node.kind === 'file' ? props.snapshot : undefined,
       'data-status': decoration?.kind ?? folderDecoration?.kind,
       'data-vscode-context': contextFor(node),
       style: { '--tree-depth': depth } satisfies CSSProperties,
-      onFocus: () => setActive(node.path),
+      onFocus: () => setActive(key),
       onClick: (event: React.MouseEvent<HTMLElement>) => {
         event.preventDefault();
         event.currentTarget.focus();
         if (props.multiSelect) {
-          rowSelection.select(node.path, event);
+          rowSelection.select(key, event);
           if (event.shiftKey || event.metaKey || event.ctrlKey) return;
         }
 
@@ -513,7 +524,7 @@ export function FileTree<T>(props: Props<T>) {
 
     return node.kind === 'folder' ? (
       <details
-        key={node.path}
+        key={key}
         data-folder={node.name}
         open={open}
         style={{ '--tree-depth': depth } satisfies CSSProperties}
@@ -524,7 +535,7 @@ export function FileTree<T>(props: Props<T>) {
         </div>
       </details>
     ) : (
-      <div key={node.path} {...rowProps}>
+      <div key={key} {...rowProps}>
         {row}
       </div>
     );
@@ -546,14 +557,14 @@ export function FileTree<T>(props: Props<T>) {
           ? undefined
           : (event) => {
               const next = navigateFileTree(event);
-              const path = next?.dataset.treePath;
+              const key = next?.dataset.treeRowKey;
 
               if (
                 props.multiSelect &&
-                path !== undefined &&
+                key !== undefined &&
                 (event.shiftKey || !(event.metaKey || event.ctrlKey))
               )
-                rowSelection.select(path, event);
+                rowSelection.select(key, event);
             }
       }
     >

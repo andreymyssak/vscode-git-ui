@@ -9,6 +9,7 @@ import {
   validateSelection,
 } from './selected-changes';
 import type { WorkingFile } from './working-changes';
+import { pathsOverlap } from './working-paths';
 
 export interface RollbackPlan {
   selection: SelectionSnapshot & { head: string };
@@ -87,6 +88,16 @@ export async function rollbackSelected(
   beforeWrite: () => void = () => undefined,
 ): Promise<void> {
   await validateSelection(cli, id, plan.selection);
+  if (
+    plan.newFiles.some(
+      (file) =>
+        file.identity !== null &&
+        plan.tracked.some((path) => pathsOverlap(file.path, path)),
+    )
+  )
+    throw new Error(
+      'New files block restoring the original paths. Move or delete those files before using Rollback; they were kept.',
+    );
   beforeWrite();
   try {
     if (plan.tracked.length) {

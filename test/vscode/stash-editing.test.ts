@@ -114,6 +114,7 @@ it('silently stashes as Changes without using or clearing the commit draft, then
     });
 
     await expect(file).toBeVisible();
+    await expect(file.getByRole('checkbox')).toBeEnabled();
     await file.click({ button: 'right' });
     await expect(
       page.getByRole('menuitem', { name: /Apply Selected Files/ }),

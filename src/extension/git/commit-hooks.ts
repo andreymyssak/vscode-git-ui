@@ -84,6 +84,7 @@ export async function withCheckedCommitHooks(
   const originals = await originalHooks(resolve(root, configured));
   const directory = await mkdtemp(join(tmpdir(), 'git-ui-commit-hooks-'));
   const record = join(directory, 'created-commit');
+  const scopeScript = join(directory, 'check-scope.cjs');
   const git = quote(shellPath(cli.executablePath));
   const stateGuard = [
     `actual_head=$(${git} rev-parse --verify HEAD 2>/dev/null || :)`,
@@ -94,7 +95,7 @@ export async function withCheckedCommitHooks(
     'fi',
   ].join('\n');
   const scopeGuard = [
-    `${git} diff-index --cached --quiet --no-ext-diff ${quote(target.base)} -- . ${target.paths.map((path) => quote(`:(top,exclude,literal)${path}`)).join(' ')}`,
+    `ELECTRON_RUN_AS_NODE=1 ${quote(shellPath(process.execPath))} ${quote(shellPath(scopeScript))}`,
     'result=$?',
     'if [ "$result" -ne 0 ]; then',
     '  printf "%s\\n" "A Git hook staged unchecked files. The checked-file commit was cancelled; review the hook and selection." >&2',
@@ -111,6 +112,17 @@ export async function withCheckedCommitHooks(
   };
 
   try {
+    // Git pathspec exclusions recurse into directories. Compare NUL-separated
+    // changed leaf paths exactly, including both sides of renames.
+    await writeFile(
+      scopeScript,
+      [
+        "const { execFileSync } = require('node:child_process');",
+        `const selected = new Set(${JSON.stringify(target.paths)});`,
+        `const changed = execFileSync(${JSON.stringify(cli.executablePath)}, ${JSON.stringify(['diff-index', '--cached', '--name-only', '--no-renames', '--no-ext-diff', '-z', target.base, '--'])}, { maxBuffer: 32 * 1024 * 1024 });`,
+        "if (changed.toString('utf8').split('\\0').some(path => path && !selected.has(path))) process.exit(1);",
+      ].join('\n'),
+    );
     for (const name of new Set([
       ...originals.keys(),
       ...guardedHooks,

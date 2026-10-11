@@ -624,6 +624,14 @@ export class SourceControlService implements vscode.Disposable {
         await this.refresh();
       }
 
+      // Native menus must be enabled before the webview exposes editable rows.
+      await Promise.resolve(
+        vscode.commands.executeCommand(
+          'setContext',
+          'gitUI.sourceControlBusy',
+          false,
+        ),
+      ).catch(() => undefined);
       this.model.busy = false;
       this.publish();
     }

@@ -1,9 +1,7 @@
-import { lstat } from 'node:fs/promises';
-import { join } from 'node:path';
-
-import type { GitCli, PrivateIndex } from './cli';
+import type { GitCli } from './cli';
 import { captureSelection, type SelectionSnapshot } from './selected-changes';
 import type { WorkingFile } from './working-changes';
+import { stageWorkingFiles } from './working-paths';
 
 export const MAX_SELECTED_PATCH_BYTES = 256 * 1024;
 
@@ -11,49 +9,6 @@ export interface SelectedPatch {
   readonly snapshot: SelectionSnapshot;
   readonly files: readonly WorkingFile[];
   readonly text: string;
-}
-
-async function stageWorkingPaths(
-  cli: GitCli,
-  id: string,
-  index: PrivateIndex,
-  paths: readonly string[],
-  signal?: AbortSignal,
-): Promise<void> {
-  const tracked = new Set((await index.run(['ls-files', '-z'])).split('\0'));
-  const root = (
-    await cli.run(id, ['rev-parse', '--show-toplevel'], signal)
-  ).trim();
-  const applicable: string[] = [];
-
-  for (const path of paths) {
-    signal?.throwIfAborted();
-    if (tracked.has(path)) applicable.push(path);
-    else {
-      try {
-        await lstat(join(root, path));
-        applicable.push(path);
-      } catch (error) {
-        // A staged addition already deleted from the working tree has no
-        // content in either HEAD or the selected final working snapshot.
-        if (!(
-          error instanceof Error &&
-          'code' in error &&
-          error.code === 'ENOENT'
-        ))
-          throw error;
-      }
-    }
-  }
-
-  if (applicable.length) {
-    await index.run(
-      ['add', '--all', '--pathspec-from-file=-', '--pathspec-file-nul'],
-      applicable.map((path) => `:(literal)${path}\0`).join(''),
-    );
-  }
-
-  signal?.throwIfAborted();
 }
 
 function omitBinaryPayload(bytes: Buffer): string {
@@ -127,7 +82,12 @@ export async function readSelectedPatch(
     );
     const base = snapshot.head ?? (await index.run(['write-tree'])).trim();
 
-    await stageWorkingPaths(cli, id, index, snapshot.paths, signal);
+    await stageWorkingFiles(
+      index,
+      (await cli.run(id, ['rev-parse', '--show-toplevel'], signal)).trim(),
+      snapshot.paths,
+      signal,
+    );
     const tree = (await index.run(['write-tree'])).trim();
     const output = await cli
       .runBytes(

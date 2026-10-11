@@ -1,11 +1,16 @@
 import { createHash } from 'node:crypto';
-import { lstat, readFile, readlink, unlink } from 'node:fs/promises';
-import { isAbsolute, join } from 'node:path';
+import { readFile, readlink, rmdir, unlink } from 'node:fs/promises';
+import { dirname, isAbsolute, join } from 'node:path';
 
 import type { CommitMode } from '../../shared/source-control';
 import type { GitCli } from './cli';
 import { withCheckedCommitHooks } from './commit-hooks';
 import { readWorkingChanges, type WorkingFile } from './working-changes';
+import {
+  pathsOverlap,
+  stageWorkingFiles,
+  workingPathStat,
+} from './working-paths';
 import { requireNoGitOperation } from './working-tree-state';
 
 export interface SelectionSnapshot {
@@ -22,10 +27,6 @@ async function headOf(cli: GitCli, id: string): Promise<string | null> {
 
     return null;
   }
-}
-
-function missing(error: unknown): boolean {
-  return error instanceof Error && 'code' in error && error.code === 'ENOENT';
 }
 
 async function indexState(cli: GitCli, id: string): Promise<Buffer> {
@@ -84,23 +85,29 @@ async function fingerprint(
 
   hash.update(JSON.stringify([id, root, branch, head, paths]));
   hash.update(await indexState(cli, id));
+  hash.update(
+    JSON.stringify(
+      (await readWorkingChanges(cli, id)).filter((file) =>
+        [file.path, file.originalPath].some((path) =>
+          paths.some((selected) => pathsOverlap(path, selected)),
+        ),
+      ),
+    ),
+  );
   for (const path of paths) {
     const absolute = join(root, path);
+    const stat = await workingPathStat(root, path);
 
-    try {
-      const stat = await lstat(absolute);
-
-      hash.update(JSON.stringify([path, stat.mode]));
-      if (stat.isSymbolicLink()) hash.update(await readlink(absolute));
-      else if (stat.isFile()) hash.update(await readFile(absolute));
-      else
-        throw new Error(
-          'Checked directories or submodules are not supported. Select ordinary changed files.',
-        );
-    } catch (error) {
-      if (!missing(error)) throw error;
+    if (!stat) {
       hash.update(JSON.stringify([path, 'missing']));
+      continue;
     }
+
+    hash.update(JSON.stringify([path, stat.mode]));
+    if (stat.isSymbolicLink()) hash.update(await readlink(absolute));
+    else if (stat.isFile()) hash.update(await readFile(absolute));
+    else if (stat.isDirectory()) hash.update('deleted leaf');
+    else throw new Error('Select ordinary changed files.');
   }
 
   return hash.digest('hex');
@@ -143,15 +150,31 @@ export async function captureSelection(
             file.path === entry.path &&
             file.originalPath === entry.originalPath,
         ) &&
-        [entry.path, entry.originalPath].some((path) => paths.includes(path)),
+        [entry.path, entry.originalPath].some((path) =>
+          paths.some((selected) => pathsOverlap(path, selected)),
+        ),
     )
   ) {
     throw new Error(
-      'The checked rename overlaps an unchecked changed file. Check both entries before committing or stashing them.',
+      'Checked paths overlap unchecked changes. Check all rename or file/directory replacement entries before continuing.',
     );
   }
 
   const head = await headOf(cli, id);
+  const root = (await cli.run(id, ['rev-parse', '--show-toplevel'])).trim();
+
+  for (const path of paths)
+    if (
+      (await workingPathStat(root, path))?.isDirectory() &&
+      !files.some(
+        (file) =>
+          (file.path === path && file.status.includes('D')) ||
+          (file.originalPath === path && file.path !== path),
+      )
+    )
+      throw new Error(
+        'Checked directories or submodules are not supported. Select ordinary changed files.',
+      );
 
   if (mode.kind === 'amend' && head !== mode.headSha)
     throw new Error(
@@ -231,9 +254,10 @@ export async function commitSelected(
     const baseTree = (await index.run(['write-tree'])).trim();
 
     if (snapshot.paths.length)
-      await index.run(
-        ['add', '--all', '--pathspec-from-file=-', '--pathspec-file-nul'],
-        pathspec(snapshot.paths),
+      await stageWorkingFiles(
+        index,
+        (await cli.run(id, ['rev-parse', '--show-toplevel'])).trim(),
+        snapshot.paths,
       );
     const tree = (await index.run(['write-tree'])).trim();
 
@@ -350,12 +374,9 @@ export async function stashSelected(
     const existing: string[] = [];
 
     for (const path of snapshot.paths) {
-      try {
-        await lstat(join(root, path));
-        existing.push(path);
-      } catch (error) {
-        if (!missing(error)) throw error;
-      }
+      const stat = await workingPathStat(root, path);
+
+      if (stat?.isFile() || stat?.isSymbolicLink()) existing.push(path);
     }
 
     const tracked = snapshot.paths.filter(
@@ -364,11 +385,7 @@ export async function stashSelected(
         (basePaths.has(path) && existing.includes(path)),
     );
 
-    if (tracked.length)
-      await index.run(
-        ['add', '--all', '--pathspec-from-file=-', '--pathspec-file-nul'],
-        pathspec(tracked),
-      );
+    if (tracked.length) await stageWorkingFiles(index, root, tracked);
     const workTree = (await index.run(['write-tree'])).trim();
     const untracked = existing.filter(
       (path) => !basePaths.has(path) && !indexedPaths.has(path),
@@ -408,6 +425,38 @@ export async function stashSelected(
     try {
       await validateSelection(cli, id, snapshot);
       const restore = snapshot.paths.filter((path) => basePaths.has(path));
+      const remove = existing.filter((path) => !basePaths.has(path));
+
+      for (const path of remove) await unlink(join(root, path));
+      for (const path of remove) {
+        for (
+          let parent = dirname(path);
+          parent !== '.';
+          parent = dirname(parent)
+        ) {
+          try {
+            await rmdir(join(root, parent));
+          } catch (error) {
+            if (
+              error instanceof Error &&
+              'code' in error &&
+              error.code === 'ENOENT'
+            )
+              continue;
+            if (
+              error instanceof Error &&
+              'code' in error &&
+              ['ENOTEMPTY', 'EEXIST', 'ENOTDIR'].includes(String(error.code))
+            )
+              break;
+            throw error;
+          }
+        }
+      }
+
+      for (const path of restore)
+        if ((await workingPathStat(root, path))?.isDirectory())
+          await rmdir(join(root, path));
 
       if (restore.length)
         await index.run(
@@ -420,8 +469,6 @@ export async function stashSelected(
           ],
           pathspec(restore),
         );
-      for (const path of existing.filter((path) => !basePaths.has(path)))
-        await unlink(join(root, path));
       await reconcile(cli, id, snapshot.paths, head, previousIndex);
     } catch (error) {
       throw new Error(

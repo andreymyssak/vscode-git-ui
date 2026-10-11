@@ -207,3 +207,56 @@ test('additive keyboard ranges retain earlier disjoint highlighted rows', () => 
       .map((row) => row.getAttribute('aria-label')),
   ).toEqual(['src/a.ts', 'src/c.ts', 'z.ts']);
 });
+
+test('a replacement folder and deleted file have independent highlights and context targets', () => {
+  const files = ['sample.txt', 'sample.txt/child.txt'].map((path) => ({
+    path,
+    originalPath: path,
+    status: 'M',
+  }));
+  const { container } = render(
+    <ChangeTree
+      files={files}
+      label="Changes"
+      checked={new Set()}
+      collapsed={[]}
+      disabled={false}
+      fileKey={(file) => file.path}
+      folderKey={(path) => path}
+      onCollapse={() => undefined}
+      onCheck={() => undefined}
+      onOpen={() => undefined}
+      context={(file, selected = [file]) =>
+        JSON.stringify({ paths: selected.map((item) => item.path) })
+      }
+      folderContext={(_, selected) =>
+        JSON.stringify({ paths: selected.map((item) => item.path) })
+      }
+      decoration={() => ({
+        kind: 'modified',
+        badge: 'M',
+        description: 'Modified',
+      })}
+    />,
+  );
+  const folder = container.querySelector(
+    '[data-folder="sample.txt"] > summary',
+  );
+  const file = container.querySelector('[data-file="sample.txt"]');
+
+  expect(folder).not.toBeNull();
+  expect(file).not.toBeNull();
+  if (!folder || !file) throw new Error('Missing replacement rows');
+  fireEvent.contextMenu(folder);
+  expect(
+    JSON.parse(folder.getAttribute('data-vscode-context') ?? '{}').paths,
+  ).toEqual(['sample.txt/child.txt']);
+  expect(folder).toHaveAttribute('aria-selected', 'true');
+  expect(file).toHaveAttribute('aria-selected', 'false');
+  fireEvent.contextMenu(file);
+  expect(
+    JSON.parse(file.getAttribute('data-vscode-context') ?? '{}').paths,
+  ).toEqual(['sample.txt']);
+  expect(folder).toHaveAttribute('aria-selected', 'false');
+  expect(file).toHaveAttribute('aria-selected', 'true');
+});
