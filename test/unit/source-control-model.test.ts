@@ -30,11 +30,13 @@ function working(path: string): WorkingFile {
 }
 
 function fixture(saved: unknown = undefined) {
-  let value = saved;
+  const values = new Map<string, unknown>([
+    ['gitUI.sourceControlDrafts', saved],
+  ]);
   const storage = {
-    get: () => value,
-    update: (_key: string, next: unknown) => {
-      value = next;
+    get: (key = 'gitUI.sourceControlDrafts') => values.get(key),
+    update: (key: string, next: unknown) => {
+      values.set(key, next);
 
       return Promise.resolve();
     },
@@ -262,5 +264,162 @@ test('reload of the same stash preserves loaded saved files without accepting fo
   });
   expect(() => model.requireStash(first.id, 'c'.repeat(40))).toThrow(
     'stash is unavailable',
+  );
+});
+
+test('stash rewrites preserve view identity across refreshes, repository reopening and host recreation', async () => {
+  const { model, first, second, storage } = fixture();
+  const stash: Stash = {
+    sha: 'b'.repeat(40),
+    base: 'a'.repeat(40),
+    selector: 'stash@{0}',
+    message: 'Saved work',
+    date: '2026-10-10T10:00:00+00:00',
+  };
+
+  model.updateStashes(first.id, { kind: 'ready', items: [stash] });
+  const previous = model.requireStash(first.id, stash.sha);
+  const renamed = { ...stash, sha: 'c'.repeat(40), message: 'Renamed' };
+
+  await model.rememberStashRewrite(first.id, previous, renamed.sha);
+  // A refresh started before the write can finish with the old object.
+  model.updateStashes(first.id, { kind: 'ready', items: [stash] });
+  model.updateStashes(first.id, { kind: 'ready', items: [renamed] });
+  const current = model.requireStash(first.id, renamed.sha);
+
+  expect(current.viewId).toBe(stash.sha);
+  expect(current.files).toBeNull();
+  const edited = { ...renamed, sha: 'd'.repeat(40) };
+
+  await model.rememberStashRewrite(first.id, current, edited.sha);
+  model.updateStashes(first.id, { kind: 'ready', items: [edited] });
+  expect(model.requireStash(first.id, edited.sha).viewId).toBe(stash.sha);
+  model.updateStashes(second.id, { kind: 'ready', items: [edited] });
+  expect(model.requireStash(second.id, edited.sha).viewId).toBe(edited.sha);
+  model.updateRepositories([second]);
+  model.updateRepositories([first, second]);
+  model.updateStashes(first.id, { kind: 'ready', items: [edited] });
+  expect(model.requireStash(first.id, edited.sha).viewId).toBe(stash.sha);
+  const reopened = new SourceControlModel(storage);
+
+  reopened.updateRepositories([first]);
+  reopened.updateStashes(first.id, { kind: 'ready', items: [edited] });
+  expect(reopened.requireStash(first.id, edited.sha).viewId).toBe(stash.sha);
+});
+
+test('recovering original and intermediate Git stash objects keeps each card distinct', async () => {
+  const { model, first, storage } = fixture();
+  const original: Stash = {
+    sha: 'b'.repeat(40),
+    base: 'a'.repeat(40),
+    selector: 'stash@{0}',
+    message: 'Original',
+    date: '2026-10-10T10:00:00+00:00',
+  };
+  const renamed = { ...original, sha: 'c'.repeat(40), message: 'Renamed' };
+  const edited = { ...renamed, sha: 'd'.repeat(40) };
+
+  model.updateStashes(first.id, { kind: 'ready', items: [original] });
+  await model.rememberStashRewrite(
+    first.id,
+    model.requireStash(first.id, original.sha),
+    renamed.sha,
+  );
+  model.updateStashes(first.id, { kind: 'ready', items: [renamed] });
+  await model.rememberStashRewrite(
+    first.id,
+    model.requireStash(first.id, renamed.sha),
+    edited.sha,
+  );
+  const recovered = [original, renamed, edited];
+
+  model.updateStashes(first.id, { kind: 'ready', items: recovered });
+  const ids = recovered.map(
+    (stash) => model.requireStash(first.id, stash.sha).viewId,
+  );
+
+  expect(new Set(ids).size).toBe(3);
+  expect(model.requireStash(first.id, edited.sha).viewId).toBe(original.sha);
+  const reopened = new SourceControlModel(storage);
+
+  reopened.updateRepositories([first]);
+  reopened.updateStashes(first.id, { kind: 'ready', items: recovered });
+  expect(
+    recovered.map((stash) => reopened.requireStash(first.id, stash.sha).viewId),
+  ).toEqual(ids);
+});
+
+test('invalid persisted stash identities and duplicate owners cannot merge cards', async () => {
+  const { first, storage } = fixture();
+  const stash: Stash = {
+    sha: 'b'.repeat(40),
+    base: 'a'.repeat(40),
+    selector: 'stash@{0}',
+    message: 'Saved work',
+    date: '2026-10-10T10:00:00+00:00',
+  };
+  const other = { ...stash, sha: 'c'.repeat(40), selector: 'stash@{1}' };
+
+  await storage.update('gitUI.stashViewIdentities', [
+    null,
+    { repositoryId: first.id, sha: stash.sha, viewId: '' },
+    { repositoryId: first.id, sha: 'invalid', viewId: stash.sha },
+    { repositoryId: null, sha: stash.sha, viewId: stash.sha },
+    { repositoryId: first.id, sha: stash.sha, viewId: `${stash.sha}:1` },
+    { repositoryId: first.id, sha: other.sha, viewId: `${stash.sha}:1` },
+  ]);
+  const reopened = new SourceControlModel(storage);
+
+  reopened.updateRepositories([first]);
+  reopened.updateStashes(first.id, { kind: 'ready', items: [stash, other] });
+  expect(reopened.requireStash(first.id, stash.sha).viewId).toBe(
+    `${stash.sha}:1`,
+  );
+  expect(reopened.requireStash(first.id, other.sha).viewId).toBe(other.sha);
+});
+
+test('a recovered card keeps its identity when another rewrite reuses an absent Git object', async () => {
+  const { model, first, storage } = fixture();
+  const original: Stash = {
+    sha: 'b'.repeat(40),
+    base: 'a'.repeat(40),
+    selector: 'stash@{0}',
+    message: 'Original',
+    date: '2026-10-10T10:00:00+00:00',
+  };
+  const renamedSha = 'c'.repeat(40);
+  const other = { ...original, sha: 'd'.repeat(40), selector: 'stash@{1}' };
+
+  model.updateStashes(first.id, { kind: 'ready', items: [original] });
+  await model.rememberStashRewrite(
+    first.id,
+    model.requireStash(first.id, original.sha),
+    renamedSha,
+  );
+  // The renamed object was deleted; Git recovered the original alongside other work.
+  model.updateStashes(first.id, { kind: 'ready', items: [original, other] });
+  const recoveredId = model.requireStash(first.id, original.sha).viewId;
+
+  await model.rememberStashRewrite(
+    first.id,
+    model.requireStash(first.id, other.sha),
+    renamedSha,
+  );
+  const rewritten = { ...other, sha: renamedSha };
+
+  model.updateStashes(first.id, {
+    kind: 'ready',
+    items: [original, rewritten],
+  });
+  expect(model.requireStash(first.id, original.sha).viewId).toBe(recoveredId);
+  const reopened = new SourceControlModel(storage);
+
+  reopened.updateRepositories([first]);
+  reopened.updateStashes(first.id, {
+    kind: 'ready',
+    items: [original, rewritten],
+  });
+  expect(reopened.requireStash(first.id, original.sha).viewId).toBe(
+    recoveredId,
   );
 });

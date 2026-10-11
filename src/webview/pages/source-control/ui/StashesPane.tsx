@@ -35,7 +35,7 @@ interface Props {
   ): void;
 }
 
-type Selection = { sha: string } & (
+type Selection = { viewId: string } & (
   { kind: 'stash' } | { kind: 'files'; keys: string[] }
 );
 
@@ -60,7 +60,7 @@ export function StashesPane(props: Props) {
   const [selection, setSelection] = useState<Selection | null>(null);
   const stashes = props.repository.stashes;
   const items = stashes.kind === 'ready' ? stashes.items : [];
-  const selectedStash = items.find((item) => item.sha === selection?.sha);
+  const selectedStash = items.find((item) => item.viewId === selection?.viewId);
   const selectedFiles =
     selection?.kind === 'files' && selectedStash?.files?.kind === 'ready'
       ? selectedStash.files.items
@@ -82,7 +82,7 @@ export function StashesPane(props: Props) {
           directoryKeys.add(
             folderKey(
               props.repository.info.id,
-              `stash:${stash.sha}:${file.snapshot}`,
+              `stash:${stash.viewId}:${file.snapshot}`,
               parts.slice(0, index).join('/'),
             ),
           );
@@ -93,7 +93,7 @@ export function StashesPane(props: Props) {
     const prefixes = items.flatMap((stash) =>
       snapshots.map(
         (snapshot) =>
-          `${JSON.stringify([props.repository.info.id, `stash:${stash.sha}:${snapshot}`]).slice(0, -1)},`,
+          `${JSON.stringify([props.repository.info.id, `stash:${stash.viewId}:${snapshot}`]).slice(0, -1)},`,
       ),
     );
 
@@ -102,7 +102,7 @@ export function StashesPane(props: Props) {
         directoryKeys.add(key);
     props.onExpandAll(
       items.map((stash) =>
-        folderKey(props.repository.info.id, 'stash', stash.sha),
+        folderKey(props.repository.info.id, 'stash', stash.viewId),
       ),
       [...directoryKeys],
       open,
@@ -149,10 +149,10 @@ export function StashesPane(props: Props) {
       <div className={styles.stashes} aria-label="Stashes">
         {items.map((stash) => (
           <StashCard
-            key={stash.sha}
+            key={stash.viewId}
             {...props}
             stash={stash}
-            selection={selection?.sha === stash.sha ? selection : null}
+            selection={selection?.viewId === stash.viewId ? selection : null}
             onSelect={setSelection}
           />
         ))}
@@ -181,7 +181,7 @@ function StashCard({
   onSelect(this: void, value: Selection): void;
 }) {
   const id = useId();
-  const key = folderKey(repository.info.id, 'stash', stash.sha);
+  const key = folderKey(repository.info.id, 'stash', stash.viewId);
   const open = expanded.includes(key);
   const files = stash.files?.kind === 'ready' ? stash.files.items : [];
   const checked = new Set(selection?.kind === 'files' ? selection.keys : []);
@@ -193,6 +193,9 @@ function StashCard({
   const formattedDate = Number.isNaN(date.getTime())
     ? stash.date
     : date.toLocaleString();
+  const shortDate = Number.isNaN(date.getTime())
+    ? 'Unknown date'
+    : `${date.toLocaleDateString(undefined, { day: '2-digit', month: '2-digit' })} ${date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false })}`;
 
   useEffect(() => {
     if (active && open && !disabled && stash.files === null)
@@ -217,7 +220,7 @@ function StashCard({
     for (const file of items)
       if (value) next.add(fileKey(file));
       else next.delete(fileKey(file));
-    onSelect({ sha: stash.sha, kind: 'files', keys: [...next] });
+    onSelect({ viewId: stash.viewId, kind: 'files', keys: [...next] });
   };
 
   return (
@@ -242,7 +245,7 @@ function StashCard({
           aria-controls={id}
           disabled={disabled}
           onClick={() => {
-            onSelect({ sha: stash.sha, kind: 'stash' });
+            onSelect({ viewId: stash.viewId, kind: 'stash' });
             onExpand(key, !open);
             if (!open && !disabled && stash.files?.kind === 'error')
               bridge.send({
@@ -260,14 +263,14 @@ function StashCard({
           >
             {title}
           </PathHint>
+          <span className={styles.stashMetadata}>
+            <span>{stash.selector}</span>
+            <time dateTime={stash.date}>{shortDate}</time>
+          </span>
         </button>
       </div>
       {open && (
         <div id={id} className={styles.stashContent}>
-          <p className={styles.stashMetadata} title={formattedDate}>
-            {stash.selector}
-            <span>{formattedDate}</span>
-          </p>
           {(!stash.files || stash.files.kind === 'loading') && (
             <p role="status" className={styles.empty}>
               Loading saved files…
@@ -299,7 +302,7 @@ function StashCard({
                 folderKey={(path) =>
                   folderKey(
                     repository.info.id,
-                    `stash:${stash.sha}:${snapshot}`,
+                    `stash:${stash.viewId}:${snapshot}`,
                     path,
                   )
                 }
@@ -307,7 +310,7 @@ function StashCard({
                 onCheck={check}
                 onOpen={(file) => {
                   if (selection?.kind !== 'files')
-                    onSelect({ sha: stash.sha, kind: 'files', keys: [] });
+                    onSelect({ viewId: stash.viewId, kind: 'files', keys: [] });
                   bridge.send({
                     kind: 'open-stash-file',
                     repositoryId: repository.info.id,

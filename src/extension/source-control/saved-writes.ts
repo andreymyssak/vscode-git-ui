@@ -105,15 +105,22 @@ export async function writeSaved(options: {
         await deleteStash(runtime.cli, id, sha);
 
         return;
-      case 'delete-stash-files':
-        await deleteStashFiles(runtime.cli, id, sha, files);
+      case 'delete-stash-files': {
+        const next = await deleteStashFiles(runtime.cli, id, sha, files);
+
+        if (next !== null) await model.rememberStashRewrite(id, stash, next);
 
         return;
-      case 'rename-stash':
+      }
+
+      case 'rename-stash': {
         if (name === null) throw new Error('Enter a stash name.');
-        await renameStash(runtime.cli, id, sha, name);
+        const next = await renameStash(runtime.cli, id, sha, name);
+
+        await model.rememberStashRewrite(id, stash, next);
 
         return;
+      }
     }
   });
 }

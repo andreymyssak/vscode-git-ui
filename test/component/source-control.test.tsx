@@ -710,6 +710,7 @@ test('stash files load on expansion, group snapshots and restore only checked id
   const user = userEvent.setup();
   const stash: StashEntry = {
     sha: 'b'.repeat(40),
+    viewId: 'b'.repeat(40),
     selector: 'stash@{0}',
     message: 'Saved work',
     date: '2026-10-10T10:00:00Z',
@@ -813,6 +814,7 @@ test('Stash toolbar expands all stashes, groups directories and keeps restoratio
   const user = userEvent.setup();
   const makeStash = (sha: string, message: string): StashEntry => ({
     sha,
+    viewId: sha,
     selector: 'stash@{0}',
     message,
     date: '2026-10-10T10:00:00Z',
@@ -1073,6 +1075,7 @@ test('restored stash expansion requests unloaded files only in the Stash tab', a
   const user = userEvent.setup();
   const stash: StashEntry = {
     sha: 'b'.repeat(40),
+    viewId: 'b'.repeat(40),
     selector: 'stash@{0}',
     message: 'Saved work',
     date: '2026-10-10T10:00:00Z',

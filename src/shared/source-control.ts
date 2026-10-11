@@ -35,6 +35,7 @@ export type Loaded<T> =
   | { kind: 'ready'; items: T[] };
 
 export interface StashEntry extends Stash {
+  viewId: string;
   files: Loaded<StashFile> | null;
 }
 

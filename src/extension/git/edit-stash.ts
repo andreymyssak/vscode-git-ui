@@ -72,7 +72,7 @@ export async function renameStash(
   id: string,
   sha: string,
   name: string,
-): Promise<void> {
+): Promise<string> {
   if (!name.trim() || /[\r\n\0]/.test(name))
     throw new Error('Enter a stash name on one line.');
   await selectedStash(cli, id, sha);
@@ -88,6 +88,8 @@ export async function renameStash(
   });
 
   await replaceStashEntry(cli, id, sha, { sha: next, message: name.trim() });
+
+  return next;
 }
 
 async function retainedTree(
@@ -192,7 +194,7 @@ export async function deleteStashFiles(
   id: string,
   sha: string,
   files: readonly StashFile[],
-): Promise<void> {
+): Promise<string | null> {
   const stash = await selectedStash(cli, id, sha);
   const [base, index, untracked] = await readObjectParents(cli, id, sha);
 
@@ -233,7 +235,7 @@ export async function deleteStashFiles(
   if (available.every((file) => paths.has(file.path))) {
     await deleteStashEntry(cli, id, sha);
 
-    return;
+    return null;
   }
 
   requireNoDirectoryConflict(original, [...working, ...extra], paths);
@@ -268,4 +270,6 @@ export async function deleteStashFiles(
   const next = await replaceTree(cli, id, sha, tree, parents);
 
   await replaceStashEntry(cli, id, sha, { sha: next, message: stash.message });
+
+  return next;
 }

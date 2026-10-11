@@ -208,6 +208,7 @@ describe('source-control boundary', () => {
                 items: [
                   {
                     sha,
+                    viewId: `${sha}:1`,
                     selector: 'stash@{0}',
                     message: 'A stash',
                     date: '2026-10-10T00:00:00Z',

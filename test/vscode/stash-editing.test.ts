@@ -64,6 +64,10 @@ it('silently stashes as Changes without using or clearing the commit draft, then
     await expect(
       stash.getByRole('treeitem', { name: 'sample.txt', exact: true }),
     ).toBeVisible();
+    await stash
+      .getByRole('treeitem', { name: 'new.txt', exact: true })
+      .getByRole('checkbox')
+      .check();
     const page = frame.page();
 
     await stash
@@ -93,9 +97,17 @@ it('silently stashes as Changes without using or clearing the commit draft, then
     });
 
     await expect(renamed).toBeVisible({ timeout: 30000 });
-    await renamed
-      .getByRole('button', { name: 'Expand My saved changes', exact: true })
-      .click();
+    await expect(
+      renamed.getByRole('button', {
+        name: 'Collapse My saved changes',
+        exact: true,
+      }),
+    ).toHaveAttribute('aria-expanded', 'true');
+    await expect(
+      renamed
+        .getByRole('treeitem', { name: 'new.txt', exact: true })
+        .getByRole('checkbox'),
+    ).toBeChecked();
     const file = renamed.getByRole('treeitem', {
       name: 'sample.txt',
       exact: true,
@@ -128,9 +140,12 @@ it('silently stashes as Changes without using or clearing the commit draft, then
     });
 
     await expect(retained).toBeVisible({ timeout: 30000 });
-    await retained
-      .getByRole('button', { name: 'Expand My saved changes', exact: true })
-      .click();
+    await expect(
+      retained.getByRole('button', {
+        name: 'Collapse My saved changes',
+        exact: true,
+      }),
+    ).toHaveAttribute('aria-expanded', 'true');
     await expect(
       retained.getByRole('treeitem', { name: 'sample.txt', exact: true }),
     ).toHaveCount(0);

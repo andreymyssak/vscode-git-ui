@@ -25,11 +25,17 @@ test('renaming an older stash keeps its position, date, snapshots and other stas
   const tree = await f.runGit(['rev-parse', `${older.sha}^{tree}`]);
   const local = await f.state();
 
-  await renameStash(f.cli, 'fixture', older.sha, 'Renamed ü stash');
+  const renamedSha = await renameStash(
+    f.cli,
+    'fixture',
+    older.sha,
+    'Renamed ü stash',
+  );
   const after = await readStashes(f.cli, 'fixture');
   const renamed = after[1];
 
   assert.ok(renamed);
+  expect(renamedSha).toBe(renamed.sha);
   expect(after).toHaveLength(2);
   expect(after[0]).toEqual(before[0]);
   expect(renamed.message).toBe('Renamed ü stash');
@@ -68,7 +74,7 @@ test('deleting saved files preserves other snapshots, local changes and stash or
   const index = await f.runGit(['ls-files', '--stage', '-z']);
   const newer = (await readStashes(f.cli, 'fixture'))[0];
 
-  await deleteStashFiles(
+  const editedSha = await deleteStashFiles(
     f.cli,
     'fixture',
     stash.sha,
@@ -78,6 +84,7 @@ test('deleting saved files preserves other snapshots, local changes and stash or
   const edited = remaining[1];
 
   assert.ok(edited);
+  expect(editedSha).toBe(edited.sha);
   expect(remaining).toHaveLength(2);
   expect(remaining[0]).toEqual(newer);
   expect(edited.message).toBe(stash.message);
@@ -109,12 +116,14 @@ test('deleting a saved rename removes both paths and deleting the final file rem
   const stash = (await readStashes(f.cli, 'fixture'))[0];
 
   assert.ok(stash);
-  await deleteStashFiles(
+  const deletedSha = await deleteStashFiles(
     f.cli,
     'fixture',
     stash.sha,
     await readStashFiles(f.cli, 'fixture', stash),
   );
+
+  expect(deletedSha).toBeNull();
   expect(await readStashes(f.cli, 'fixture')).toEqual([]);
   expect(await readFile(join(f.root, 'sample.txt'), 'utf8')).toBe('C\n');
 });

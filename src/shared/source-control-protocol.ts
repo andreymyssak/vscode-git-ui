@@ -211,6 +211,7 @@ function stash(value: unknown): value is StashEntry {
   return (
     isRecord(value) &&
     sha(value.sha) &&
+    identity(value.viewId) &&
     text(value.selector) &&
     text(value.message) &&
     text(value.date) &&

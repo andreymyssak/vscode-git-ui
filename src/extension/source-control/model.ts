@@ -28,6 +28,9 @@ export interface RepositorySession {
 }
 
 const DRAFT_KEY = 'gitUI.sourceControlDrafts';
+const STASH_VIEW_KEY = 'gitUI.stashViewIdentities';
+const gitObjectId = /^(?:[a-f\d]{40}|[a-f\d]{64})$/i;
+const stashViewId = /^(?:[a-f\d]{40}|[a-f\d]{64})(?::[1-9]\d*)?$/i;
 
 type ModelState = Omit<SourceControlState, 'hoverDelay' | 'repositories'> & {
   repositories: Omit<SourceControlRepository, 'pathLabel'>[];
@@ -37,6 +40,7 @@ type ModelState = Omit<SourceControlState, 'hoverDelay' | 'repositories'> & {
 export class SourceControlModel {
   readonly repositories = new Map<string, RepositorySession>();
   private readonly drafts = new Map<string, string>();
+  private readonly stashViewIds = new Map<string, Map<string, string>>();
   private readonly draftEditIds = new Map<string, string>();
   private readonly beforeAmend = new Map<
     string,
@@ -61,6 +65,27 @@ export class SourceControlModel {
           typeof entry.message === 'string'
         )
           this.drafts.set(entry.repositoryId, entry.message);
+
+    const views = storage.get(STASH_VIEW_KEY);
+
+    if (Array.isArray(views))
+      for (const entry of views)
+        if (
+          isRecord(entry) &&
+          typeof entry.repositoryId === 'string' &&
+          entry.repositoryId.length > 0 &&
+          entry.repositoryId.length <= 8192 &&
+          typeof entry.sha === 'string' &&
+          gitObjectId.test(entry.sha) &&
+          typeof entry.viewId === 'string' &&
+          entry.viewId.length <= 8192 &&
+          stashViewId.test(entry.viewId)
+        ) {
+          const aliases = this.stashAliases(entry.repositoryId);
+
+          if (![...aliases.values()].includes(entry.viewId))
+            aliases.set(entry.sha, entry.viewId);
+        }
   }
 
   state(): ModelState {
@@ -198,17 +223,73 @@ export class SourceControlModel {
       repo.stashes.kind === 'ready'
         ? new Map(repo.stashes.items.map((stash) => [stash.sha, stash]))
         : new Map<string, StashEntry>();
+    const aliases = this.stashAliases(id);
+    const reserved = new Set(aliases.values());
+    let allocated = false;
 
     repo.stashes =
       stashes.kind === 'ready'
         ? {
             kind: 'ready',
-            items: stashes.items.map((stash) => ({
-              ...stash,
-              files: previous.get(stash.sha)?.files ?? null,
-            })),
+            items: stashes.items.map((stash) => {
+              let viewId = aliases.get(stash.sha);
+
+              if (viewId === undefined) {
+                viewId = stash.sha;
+                // A recovered old Git object is a separate card from its rewrite.
+                for (let suffix = 1; reserved.has(viewId); suffix++)
+                  viewId = `${stash.sha}:${suffix}`;
+                reserved.add(viewId);
+                if (viewId !== stash.sha) {
+                  aliases.set(stash.sha, viewId);
+                  allocated = true;
+                }
+              }
+
+              return {
+                ...stash,
+                viewId,
+                files: previous.get(stash.sha)?.files ?? null,
+              };
+            }),
           }
         : stashes;
+    if (allocated)
+      void Promise.resolve(this.persistStashViews()).catch(() => undefined);
+  }
+
+  async rememberStashRewrite(
+    id: string,
+    stash: StashEntry,
+    nextSha: string,
+  ): Promise<void> {
+    this.requireRepository(id);
+    const aliases = this.stashAliases(id);
+
+    for (const [sha, viewId] of aliases)
+      if (viewId === stash.viewId) aliases.delete(sha);
+    aliases.set(nextSha, stash.viewId);
+    await this.persistStashViews();
+  }
+
+  private persistStashViews(): PromiseLike<void> {
+    return this.storage.update(
+      STASH_VIEW_KEY,
+      [...this.stashViewIds].flatMap(([repositoryId, entries]) =>
+        [...entries].map(([sha, viewId]) => ({ repositoryId, sha, viewId })),
+      ),
+    );
+  }
+
+  private stashAliases(id: string): Map<string, string> {
+    let aliases = this.stashViewIds.get(id);
+
+    if (aliases === undefined) {
+      aliases = new Map();
+      this.stashViewIds.set(id, aliases);
+    }
+
+    return aliases;
   }
 
   draft(id: string): string {

@@ -80,6 +80,7 @@ const state: SourceControlState = {
         items: [
           {
             sha,
+            viewId: sha,
             base: sha,
             date: '2026-10-10T00:00:00Z',
             selector: 'stash@{0}',
