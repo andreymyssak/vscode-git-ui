@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
-import type { Locator, Page } from '@playwright/test';
+import type { CDPSession, Locator, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
 import * as vscode from 'vscode';
 
@@ -65,25 +65,40 @@ async function folderBadge(label: Locator, native: boolean) {
 
 async function revealNativeLabel(page: Page, label: Locator): Promise<void> {
   const list = page.locator('.scm-view .monaco-list').first();
-  const rowIndex = await label.evaluate((element) =>
-    element.closest('.monaco-list-row')?.getAttribute('data-index'),
-  );
+  const focusedRow = list.locator('.monaco-list-row.focused');
 
-  assert.ok(rowIndex !== null && rowIndex !== undefined);
-  const index = Number(rowIndex);
-
-  assert.ok(Number.isInteger(index) && index >= 0);
-  // Keyboard focus reveals virtual rows without starting a hover on the scroll target.
+  // Walk the tree: a virtual row cannot provide its index before it is rendered.
   await page.mouse.move(0, 0);
   await list.press('Home');
-  for (let row = 0; row < index; row++) await list.press('ArrowDown');
-  await expect
-    .poll(() =>
-      label.evaluate((element) =>
-        element.closest('.monaco-list-row')?.classList.contains('focused'),
-      ),
-    )
-    .toBe(true);
+  await expect(focusedRow).toHaveCount(1);
+  while (
+    !(await label.count()) ||
+    !(await label.evaluate((element) =>
+      element.closest('.monaco-list-row')?.classList.contains('focused'),
+    ))
+  ) {
+    if ((await focusedRow.getAttribute('aria-expanded')) === 'false') {
+      await list.press('ArrowRight');
+      await expect(focusedRow).toHaveAttribute('aria-expanded', 'true');
+    }
+
+    const value = await focusedRow.getAttribute('data-index');
+
+    assert.ok(value !== null);
+    const index = Number(value);
+
+    assert.ok(Number.isInteger(index) && index >= 0);
+    await list.press('ArrowDown');
+    await expect
+      .poll(async () =>
+        (await focusedRow.count())
+          ? Number(await focusedRow.getAttribute('data-index'))
+          : -1,
+      )
+      .toBeGreaterThan(index);
+  }
+
+  await expect(label).toBeVisible();
 }
 
 describe('Source Control appearance', () => {
@@ -97,6 +112,7 @@ describe('Source Control appearance', () => {
       (repository) => repository.rootUri,
     );
     let page: Page | undefined;
+    let viewportSession: CDPSession | undefined;
     let hoverTarget: string | undefined;
     let panelWasVisible = false;
 
@@ -176,6 +192,15 @@ describe('Source Control appearance', () => {
       const frame = await sourceControlFrame();
 
       page = frame.page();
+      assert.equal(page.viewportSize(), null);
+      viewportSession = await page.context().newCDPSession(page);
+      // Hosted desktops can be too short to render all native SCM rows at once.
+      await viewportSession.send('Emulation.setDeviceMetricsOverride', {
+        width: 1024,
+        height: 600,
+        deviceScaleFactor: await page.evaluate(() => window.devicePixelRatio),
+        mobile: false,
+      });
       panelWasVisible = await page.locator('.part.panel').isVisible();
       await vscode.commands.executeCommand('workbench.action.closePanel');
       const comparisons = [];
@@ -242,9 +267,7 @@ describe('Source Control appearance', () => {
         'workbench.scm.action.setTreeViewMode',
       );
       await expect(
-        page
-          .locator('.scm-view .monaco-list-row .monaco-icon-label')
-          .getByText('modified', { exact: true }),
+        page.locator('.scm-view .monaco-list').first(),
       ).toBeVisible();
       await page.locator('.scm-view .monaco-list').first().focus();
       const native = [];
@@ -271,7 +294,6 @@ describe('Source Control appearance', () => {
           .getByText(comparison.name, { exact: true })
           .first();
 
-        await expect(nativeLabel).toBeVisible();
         await page.bringToFront();
         await page.locator('.scm-view .monaco-list').first().focus();
         await page.mouse.move(0, 0);
@@ -340,36 +362,46 @@ describe('Source Control appearance', () => {
       );
       throw error;
     } finally {
-      await page?.keyboard.press('Escape');
-      const changes = page?.getByRole('button', {
-        name: 'Changes Section',
-        exact: true,
-      });
+      try {
+        await page?.keyboard.press('Escape');
+        const changes = page?.getByRole('button', {
+          name: 'Changes Section',
+          exact: true,
+        });
 
-      if (changes && (await changes.getAttribute('aria-expanded')) === 'true')
-        await changes.locator('.twisty-container').click();
-      await vscode.commands.executeCommand(
-        'git.close',
-        vscode.Uri.file(fixture.root),
-      );
-      await fixture.dispose();
-      for (const uri of previousRepositories)
-        if (existsSync(uri.fsPath)) await access.api.openRepository(uri);
-      await vscode.commands.executeCommand(
-        sourceControlCommandId('refresh-changes'),
-      );
-      await workbench.update(
-        'hover.delay',
-        delay,
-        vscode.ConfigurationTarget.Global,
-      );
-      await workbench.update(
-        'colorTheme',
-        previousTheme,
-        vscode.ConfigurationTarget.Global,
-      );
-      if (panelWasVisible)
-        await vscode.commands.executeCommand('workbench.action.focusPanel');
+        if (changes && (await changes.getAttribute('aria-expanded')) === 'true')
+          await changes.locator('.twisty-container').click();
+        await vscode.commands.executeCommand(
+          'git.close',
+          vscode.Uri.file(fixture.root),
+        );
+        await fixture.dispose();
+        for (const uri of previousRepositories)
+          if (existsSync(uri.fsPath)) await access.api.openRepository(uri);
+        await vscode.commands.executeCommand(
+          sourceControlCommandId('refresh-changes'),
+        );
+        await workbench.update(
+          'hover.delay',
+          delay,
+          vscode.ConfigurationTarget.Global,
+        );
+        await workbench.update(
+          'colorTheme',
+          previousTheme,
+          vscode.ConfigurationTarget.Global,
+        );
+        if (panelWasVisible)
+          await vscode.commands.executeCommand('workbench.action.focusPanel');
+      } finally {
+        if (viewportSession) {
+          try {
+            await viewportSession.send('Emulation.clearDeviceMetricsOverride');
+          } finally {
+            await viewportSession.detach();
+          }
+        }
+      }
     }
   }).timeout(60000);
 });
