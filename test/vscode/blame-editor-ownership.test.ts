@@ -215,15 +215,70 @@ describe('Blame editor ownership', () => {
         .locator('.monaco-editor')
         .filter({ has: page.locator('.view-line', { hasText: /^first$/ }) })
         .last();
-      const point = await annotationPoint(native, 'Fixture');
 
-      f.editor.selection = new vscode.Selection(0, 2, 0, 2);
-      await page.mouse.click(point.codeX - 15, point.y);
-      await expect.poll(() => f.editor.selection.active.character).toBe(0);
-      assert.equal(f.navigations(), 0);
-      await f.annotations.openCurrentCommit(f.editor);
-      await f.annotations.openCurrentCommit(f.editor);
-      assert.equal(f.navigations(), 2);
+      await annotationPoint(native, 'Fixture');
+      await page.bringToFront();
+      await vscode.commands.executeCommand('cursorMove', {
+        to: 'wrappedLineStart',
+      });
+      await vscode.commands.executeCommand('cursorMove', {
+        to: 'right',
+        by: 'character',
+        value: 2,
+      });
+      await expect.poll(() => f.editor.selection.active.character).toBe(2);
+      const source = native
+        .locator('.view-line span', { hasText: /^first$/ })
+        .last();
+      const point = await source.evaluate((span) => {
+        const text = document
+          .createTreeWalker(span, NodeFilter.SHOW_TEXT)
+          .nextNode();
+
+        if (!text) throw new Error('The first source character is missing');
+        const range = document.createRange();
+
+        range.setStart(text, 0);
+        range.setEnd(text, 1);
+        const glyph = range.getBoundingClientRect();
+        const box = span.getBoundingClientRect();
+
+        return {
+          x: glyph.left - box.left + glyph.width / 4,
+          y: glyph.top - box.top + glyph.height / 2,
+          left: box.left,
+        };
+      });
+
+      await vscode.commands.executeCommand(
+        'workbench.action.toggleSidebarVisibility',
+      );
+      try {
+        await expect
+          .poll(async () => (await source.boundingBox())?.x)
+          .not.toBe(point.left);
+        await source.click({ position: { x: point.x, y: point.y } });
+        await expect.poll(() => f.editor.selection.active.character).toBe(0);
+        assert.equal(f.navigations(), 0);
+        await f.annotations.openCurrentCommit(f.editor);
+        await f.annotations.openCurrentCommit(f.editor);
+        assert.equal(f.navigations(), 2);
+      } catch (error) {
+        console.error('Blame source click failed', {
+          point,
+          selection: f.editor.selection,
+          activeDocument:
+            vscode.window.activeTextEditor?.document.uri.toString(),
+        });
+        await page
+          .screenshot({ path: '.artifacts/blame-source-click-failure.png' })
+          .catch(() => {});
+        throw error;
+      } finally {
+        await vscode.commands.executeCommand(
+          'workbench.action.toggleSidebarVisibility',
+        );
+      }
     } finally {
       await f.dispose();
     }
