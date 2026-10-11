@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-import type { StashFileKey, WorkingFile } from '../../shared/source-control';
+import type { WorkingFile } from '../../shared/source-control';
 import {
   dirtySelectedDocuments,
   messagePrompt,
@@ -14,12 +14,6 @@ import {
   commitSelected,
   stashSelected,
 } from '../git/selected-changes';
-import {
-  applyStash,
-  deleteStash,
-  restoreStashFiles,
-} from '../git/stash-operations';
-import { readStashFiles } from '../git/stashes';
 import { showOperationInfo } from '../native/operation-feedback';
 import type { SourceControlModel } from './model';
 
@@ -42,7 +36,7 @@ export function requireLiveRepository(
   return repo;
 }
 
-function requireSaved(
+export function requireSaved(
   root: vscode.Uri,
   files: readonly Pick<WorkingFile, 'path' | 'originalPath'>[],
 ): void {
@@ -121,13 +115,24 @@ export async function writeChanges(options: {
   }
 
   requireLiveRepository(runtime, model, id);
-  let message = model.draft(id);
+  let message = kind === 'commit' ? model.draft(id) : 'Changes';
 
-  if (!message.trim() && kind !== 'stash-silently' && options.nativePrompt) {
+  if (kind === 'stash') {
+    const answer = await vscode.window.showInputBox({
+      title: 'Stash Selected Files',
+      prompt: `${repo.info.label}: ${files.length} ${label} ${files.length === 1 ? 'file' : 'files'}. Stash name`,
+      value: 'Changes',
+      ignoreFocusOut: true,
+    });
+
+    if (answer === undefined) return;
+    message = answer.trim() || 'Changes';
+  }
+
+  if (!message.trim() && kind === 'commit' && options.nativePrompt) {
     const answer = await messagePrompt({
-      title:
-        kind === 'commit' ? 'Commit Selected Files' : 'Stash Selected Files',
-      prompt: `${repo.info.label}: ${files.length} ${label} ${files.length === 1 ? 'file' : 'files'}. ${kind === 'commit' ? 'Commit message' : 'Stash description'}`,
+      title: 'Commit Selected Files',
+      prompt: `${repo.info.label}: ${files.length} ${label} ${files.length === 1 ? 'file' : 'files'}. Commit message`,
       draft: message,
       onDraft: (value) => {
         model.setDraft(id, value);
@@ -142,14 +147,13 @@ export async function writeChanges(options: {
 
   const draft = model.draft(id);
 
-  if (!message.trim() && kind === 'stash-silently') message = 'Changes';
   if (!message.trim()) throw new Error('Enter a message before continuing.');
   requireSaved(root, files);
   await withRepositoryOperation(runtime.cli, id, async () => {
     requireLiveRepository(runtime, model, id);
     if (
       JSON.stringify(currentFiles()) !== selection ||
-      model.draft(id) !== draft
+      (kind === 'commit' && model.draft(id) !== draft)
     )
       throw new Error(
         `The ${label} files or message changed. Review them before continuing.`,
@@ -162,7 +166,6 @@ export async function writeChanges(options: {
 
     repo.checked.clear(files.map((file) => file.path));
     if (kind === 'commit') model.committed(id);
-    else model.setDraft(id, '');
     showOperationInfo(
       kind === 'commit'
         ? amending
@@ -170,65 +173,5 @@ export async function writeChanges(options: {
           : `Committed ${files.length} ${label} files in ${repo.info.label}, ${result.sha.slice(0, 8)}.`
         : `Stashed ${files.length} ${label} files in ${repo.info.label}.`,
     );
-  });
-}
-
-export async function restoreSaved(options: {
-  runtime: SourceControlRuntime;
-  model: SourceControlModel;
-  id: string;
-  sha: string;
-  keys: readonly StashFileKey[] | null;
-}): Promise<void> {
-  const { runtime, model, id, sha, keys } = options;
-
-  requireLiveRepository(runtime, model, id);
-  const stash = model.requireStash(id, sha);
-  const files =
-    keys === null
-      ? await readStashFiles(runtime.cli, id, stash)
-      : model.stashFiles(id, sha, keys);
-  const root = runtime.access.repository(id).rootUri;
-
-  requireLiveRepository(runtime, model, id);
-  if (!(await saveSelectedDocuments(root, files))) return;
-  requireLiveRepository(runtime, model, id);
-  await withRepositoryOperation(runtime.cli, id, async () => {
-    requireLiveRepository(runtime, model, id);
-    model.requireStash(id, sha);
-    if (
-      keys !== null &&
-      JSON.stringify(model.stashFiles(id, sha, keys)) !== JSON.stringify(files)
-    )
-      throw new Error(
-        'The saved selection changed. Refresh and select it again.',
-      );
-    requireSaved(root, files);
-    if (keys === null) await applyStash(runtime.cli, id, sha);
-    else await restoreStashFiles(runtime.cli, id, sha, files);
-  });
-}
-
-export async function removeSaved(options: {
-  runtime: SourceControlRuntime;
-  model: SourceControlModel;
-  id: string;
-  sha: string;
-}): Promise<void> {
-  const { runtime, model, id, sha } = options;
-  const repo = requireLiveRepository(runtime, model, id);
-  const stash = model.requireStash(id, sha);
-  const answer = await vscode.window.showWarningMessage(
-    `Delete stash "${stash.message}" from ${repo.info.label}? Restored files remain in the working tree.`,
-    'Delete Stash',
-    'Cancel',
-  );
-
-  if (answer !== 'Delete Stash') return;
-  requireLiveRepository(runtime, model, id);
-  await withRepositoryOperation(runtime.cli, id, async () => {
-    requireLiveRepository(runtime, model, id);
-    model.requireStash(id, sha);
-    await deleteStash(runtime.cli, id, sha);
   });
 }

@@ -30,13 +30,9 @@ import { toggleAmend } from './message-tools';
 import { SourceControlModel } from './model';
 import { SourceControlNotifications } from './notifications';
 import { rollbackChanges } from './rollback';
+import { savedWriteDescription, writeSaved } from './saved-writes';
 import type { SourceControlRuntime } from './writes';
-import {
-  removeSaved,
-  requireLiveRepository,
-  restoreSaved,
-  writeChanges,
-} from './writes';
+import { requireLiveRepository, writeChanges } from './writes';
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
@@ -432,29 +428,13 @@ export class SourceControlService implements vscode.Disposable {
           return;
         case 'restore-stash':
         case 'restore-stash-files':
+        case 'delete-stash':
+        case 'delete-stash-files':
+        case 'rename-stash':
           await this.write(
             request.repositoryId,
-            'Applying stash changes…',
-            (runtime) =>
-              restoreSaved({
-                runtime,
-                model: this.model,
-                id: request.repositoryId,
-                sha: request.sha,
-                keys:
-                  request.kind === 'restore-stash-files' ? request.files : null,
-              }),
-          );
-
-          return;
-        case 'delete-stash':
-          await this.write(request.repositoryId, 'Deleting stash…', (runtime) =>
-            removeSaved({
-              runtime,
-              model: this.model,
-              id: request.repositoryId,
-              sha: request.sha,
-            }),
+            savedWriteDescription(request),
+            (runtime) => writeSaved({ runtime, model: this.model, request }),
           );
 
           return;

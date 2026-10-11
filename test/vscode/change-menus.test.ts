@@ -246,8 +246,21 @@ describe('Changes context actions', () => {
       );
       await frame
         .getByRole('textbox', { name: 'Commit message' })
-        .fill('Stash selected files');
-      await runContextAction(frame, 'src', 'Stash Selected Files…');
+        .fill('Keep this commit draft');
+      const stashAction = runContextAction(
+        frame,
+        'src',
+        'Stash Selected Files…',
+      );
+      const name = frame.page().locator('.quick-input-widget input');
+
+      await expect(name).toBeVisible();
+      await name.fill('Stash selected files');
+      await name.press('Enter');
+      await stashAction;
+      await expect(
+        frame.getByRole('textbox', { name: 'Commit message' }),
+      ).toHaveValue('Keep this commit draft');
       await expect
         .poll(() => fixture.runGit(['stash', 'list', '--format=%s']))
         .toContain('Stash selected files');

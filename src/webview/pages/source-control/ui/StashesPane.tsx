@@ -188,7 +188,7 @@ function StashCard({
   const groups = snapshots.filter((snapshot) =>
     files.some((file) => file.snapshot === snapshot),
   );
-  const title = stash.message || stash.selector;
+  const title = stash.message.split(/[\r\n]/, 1)[0]?.trim() || 'Changes';
   const date = new Date(stash.date);
   const formattedDate = Number.isNaN(date.getTime())
     ? stash.date

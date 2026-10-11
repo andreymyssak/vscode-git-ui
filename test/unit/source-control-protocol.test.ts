@@ -63,6 +63,13 @@ describe('source-control boundary', () => {
     { kind: 'load-stash', repositoryId: 'file:///repo', sha },
     { kind: 'restore-stash', repositoryId: 'file:///repo', sha },
     { kind: 'delete-stash', repositoryId: 'file:///repo', sha },
+    { kind: 'rename-stash', repositoryId: 'file:///repo', sha },
+    {
+      kind: 'delete-stash-files',
+      repositoryId: 'file:///repo',
+      sha,
+      files: [{ path: 'a.ts', snapshot: 'working' }],
+    },
     {
       kind: 'open-stash-file',
       repositoryId: 'file:///repo',

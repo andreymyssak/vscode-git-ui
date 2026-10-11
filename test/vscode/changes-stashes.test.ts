@@ -471,7 +471,7 @@ describe('combined Commit and Stash view', () => {
       );
       await refreshed(fixture);
       await file(frame, 'chosen').getByRole('checkbox').click();
-      await message.fill('Stash example');
+      await message.fill('Keep my next commit draft');
       await frame
         .getByRole('button', { name: 'Stash Silently', exact: true })
         .click();
@@ -487,7 +487,7 @@ describe('combined Commit and Stash view', () => {
       const stash = frame.locator(`[data-stash="${stashSha}"]`);
 
       await expect(stash).toBeVisible();
-      await stash.getByRole('button', { name: /Stash example/ }).click();
+      await stash.getByRole('button', { name: /Changes/ }).click();
       const saved = file(frame, 'chosen/same.txt');
 
       await expect(saved).toBeVisible();
@@ -540,7 +540,7 @@ describe('combined Commit and Stash view', () => {
         originalIndex,
       );
       await stash
-        .getByRole('button', { name: /Stash example/ })
+        .getByRole('button', { name: /Changes/ })
         .click({ button: 'right' });
       const deletion = frame
         .page()

@@ -97,6 +97,7 @@ export default defineConfig([
     files: [
       'dist/test/vscode/package.test.cjs',
       'dist/test/vscode/changes-stashes.test.cjs',
+      'dist/test/vscode/stash-editing.test.cjs',
       'dist/test/vscode/change-menus.test.cjs',
       'dist/test/vscode/commit-menu.test.cjs',
       'dist/test/vscode/history-editing.test.cjs',

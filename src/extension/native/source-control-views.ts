@@ -36,6 +36,8 @@ const actions = [
   'apply-stash',
   'apply-stash-files',
   'delete-stash',
+  'rename-stash',
+  'delete-stash-files',
 ] satisfies SourceControlActionKind[];
 
 function resourceUri(value: unknown): vscode.Uri | null {
@@ -250,14 +252,16 @@ export class SourceControlViews
         });
       case 'apply-stash':
       case 'delete-stash':
+      case 'rename-stash':
         return parseSourceControlRequest({
-          kind: kind === 'apply-stash' ? 'restore-stash' : 'delete-stash',
+          kind: kind === 'apply-stash' ? 'restore-stash' : kind,
           repositoryId,
           sha: context.sha,
         });
       case 'apply-stash-files':
+      case 'delete-stash-files':
         return parseSourceControlRequest({
-          kind: 'restore-stash-files',
+          kind: kind === 'apply-stash-files' ? 'restore-stash-files' : kind,
           repositoryId,
           sha: context.sha,
           files: context.files,

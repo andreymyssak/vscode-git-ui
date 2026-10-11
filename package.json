@@ -395,6 +395,18 @@
         "title": "Rollback\u2026",
         "category": "Git UI",
         "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
+      },
+      {
+        "command": "gitUI.rename-stash",
+        "title": "Rename Stash\u2026",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
+      },
+      {
+        "command": "gitUI.delete-stash-files",
+        "title": "Delete Selected Files\u2026",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
       }
     ],
     "menus": {
@@ -553,6 +565,16 @@
           "command": "gitUI.rollback-selected",
           "when": "webviewId == gitUI.changes && webviewSection == working-change && changeSelectionCount > 0 && !conflict",
           "group": "2_modify@3"
+        },
+        {
+          "command": "gitUI.rename-stash",
+          "when": "webviewId == gitUI.changes && webviewSection == stash",
+          "group": "2_manage@0"
+        },
+        {
+          "command": "gitUI.delete-stash-files",
+          "when": "webviewId == gitUI.changes && webviewSection == stash-file && changeSelectionCount > 0",
+          "group": "2_manage@1"
         }
       ],
       "commandPalette": [
@@ -682,6 +704,14 @@
         },
         {
           "command": "gitUI.rollback-selected",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.rename-stash",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.delete-stash-files",
           "when": "false"
         }
       ],

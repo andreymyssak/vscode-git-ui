@@ -107,10 +107,11 @@ export type SourceControlRequest =
       path: string;
     }
   | {
-      kind: 'load-stash' | 'restore-stash' | 'delete-stash';
+      kind: 'restore-stash' | 'delete-stash' | 'rename-stash';
       repositoryId: string;
       sha: string;
     }
+  | { kind: 'load-stash'; repositoryId: string; sha: string }
   | {
       kind: 'open-stash-file';
       repositoryId: string;
@@ -118,7 +119,7 @@ export type SourceControlRequest =
       file: StashFileKey;
     }
   | {
-      kind: 'restore-stash-files';
+      kind: 'restore-stash-files' | 'delete-stash-files';
       repositoryId: string;
       sha: string;
       files: StashFileKey[];

@@ -45,7 +45,7 @@ async function optionalInfo(path: string): Promise<Stats | null> {
 
 function unsupported(detail: string): Error {
   return new Error(
-    `${detail} Delete this stash with Git after reviewing its current stash list.`,
+    `${detail} Manage this stash with Git after reviewing its current stash list.`,
   );
 }
 
@@ -116,7 +116,7 @@ async function acquireLock(path: string): Promise<OwnedLock> {
     file = await open(path, 'wx', 0o600);
   } catch (error) {
     throw new Error(
-      'Stash deletion could not acquire a Git lock. Finish other Git operations and try again; existing locks were preserved.',
+      'Stash editing could not acquire a Git lock. Finish other Git operations and try again; existing locks were preserved.',
       { cause: error },
     );
   }
@@ -131,7 +131,7 @@ async function acquireLock(path: string): Promise<OwnedLock> {
 
     if (!info.isFile() || !sameIdentity(info, opened))
       throw new Error(
-        'A stash-deletion lock changed while it was being acquired.',
+        'A stash-editing lock changed while it was being acquired.',
       );
 
     return { path, file, info: opened };
@@ -142,14 +142,14 @@ async function acquireLock(path: string): Promise<OwnedLock> {
     } catch (cleanup) {
       throw new AggregateError(
         [error, cleanup],
-        'Stash deletion could not acquire or clean up its Git lock. Review Git storage before trying again.',
+        'Stash editing could not acquire or clean up its Git lock. Review Git storage before trying again.',
         { cause: cleanup },
       );
     }
 
     if (!openedInfo)
       throw new Error(
-        'Stash deletion could not verify its newly created Git lock. Its file handle was closed and the lock was preserved; review Git storage before trying again.',
+        'Stash editing could not verify its newly created Git lock. Its file handle was closed and the lock was preserved; review Git storage before trying again.',
         { cause: error },
       );
     throw error;
@@ -161,7 +161,7 @@ async function requireOwnLock(lock: OwnedLock): Promise<void> {
 
   if (!info?.isFile() || !sameIdentity(lock.info, info))
     throw new Error(
-      'A stash-deletion lock changed. Review Git storage before trying again.',
+      'A stash-editing lock changed. Review Git storage before trying again.',
     );
 }
 
@@ -172,7 +172,7 @@ async function releaseLock(lock: OwnedLock): Promise<void> {
   if (!info) return;
   if (!info.isFile() || !sameIdentity(lock.info, info))
     throw new Error(
-      'A stash-deletion lock was replaced; the other process lock was preserved.',
+      'A stash-editing lock was replaced; the other process lock was preserved.',
     );
   await unlink(lock.path);
 }
@@ -270,25 +270,51 @@ async function requireNoPackedStash(
       .split('\n')
       .some((line) => /^\S+ refs\/stash$/.test(line))
   )
-    throw unsupported(
-      'Packed stash refs are not supported for stash deletion.',
-    );
+    throw unsupported('Packed stash refs are not supported for stash editing.');
 
   return packed;
 }
 
-/** Git's files backend protects reflog rewrites with the ref lock, then installs the log before its tip. */
+type Edit =
+  { kind: 'delete' } | { kind: 'replace'; sha: string; message: string };
+
 export async function deleteStashEntry(
   cli: Reader,
   id: string,
   sha: string,
+): Promise<void> {
+  await editStashEntry(cli, id, sha, { kind: 'delete' });
+}
+
+export async function replaceStashEntry(
+  cli: Reader,
+  id: string,
+  sha: string,
+  replacement: { sha: string; message: string },
+): Promise<void> {
+  requireStashIdentity(replacement.sha);
+  if (replacement.sha.length !== sha.length)
+    throw new Error(
+      'The replacement stash uses a different Git object format.',
+    );
+  if (!replacement.message.trim() || /[\r\n\0]/.test(replacement.message))
+    throw new Error('Enter a stash name on one line.');
+  await editStashEntry(cli, id, sha, { kind: 'replace', ...replacement });
+}
+
+/** Git's files backend protects reflog rewrites with the ref lock, then installs the log before its tip. */
+async function editStashEntry(
+  cli: Reader,
+  id: string,
+  sha: string,
+  edit: Edit,
 ): Promise<void> {
   requireStashIdentity(sha);
   const format = (await cli.run(id, ['rev-parse', '--show-ref-format'])).trim();
 
   if (format !== 'files')
     throw unsupported(
-      'Stash deletion requires Git with ordinary files-based refs.',
+      'Stash editing requires Git with ordinary files-based refs.',
     );
   const common = await commonDirectory(cli, id);
 
@@ -318,7 +344,7 @@ export async function deleteStashEntry(
 
     if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})\n$/i.test(current))
       throw unsupported(
-        'Symbolic or malformed stash refs are not supported for stash deletion.',
+        'Symbolic or malformed stash refs are not supported for stash editing.',
       );
     const tip = current.slice(0, -1).toLowerCase();
     const log = await snapshot(logPath);
@@ -326,7 +352,7 @@ export async function deleteStashEntry(
 
     if (entries.at(-1)?.sha !== tip)
       throw new Error(
-        'The stash ref and reflog differ. Review Git storage before deleting a stash.',
+        'The stash ref and reflog differ. Review Git storage before editing a stash.',
       );
     const visible = await readStashes(cli, id);
     const ordered = [...entries].reverse();
@@ -346,7 +372,23 @@ export async function deleteStashEntry(
           ? 'This stash identity occurs more than once. Delete the intended entry with Git after reviewing its stash list.'
           : 'The selected stash disappeared. Refresh and select it again.',
       );
-    const remaining = entries.filter((entry) => entry !== matches[0]);
+    if (
+      edit.kind === 'replace' &&
+      entries.some(
+        (entry) => entry !== matches[0] && entry.sha === edit.sha.toLowerCase(),
+      )
+    )
+      throw new Error(
+        'Editing this stash would create an identical saved entry. Choose a different name or review the stash list with Git.',
+      );
+    const remaining = entries.flatMap((entry) => {
+      if (entry !== matches[0]) return [entry];
+      if (edit.kind === 'delete') return [];
+      const tab = entry.line.indexOf('\t');
+      const line = `${entry.line.slice(0, tip.length + 1)}${edit.sha}${entry.line.slice(tip.length * 2 + 1, tab + 1)}${Buffer.from(edit.message, 'utf8').toString('latin1')}`;
+
+      return [{ sha: edit.sha, line }];
+    });
     const nextTip = remaining.at(-1)?.sha;
 
     if (!nextTip) await requireNoTransactionHook(cli, id);
@@ -368,16 +410,14 @@ export async function deleteStashEntry(
       !sameIdentity(commonInfo, await lstat(common))
     )
       throw new Error(
-        'The repository path changed. Refresh before deleting the stash.',
+        'The repository path changed. Refresh before editing the stash.',
       );
     await requireDirectories(common);
     await requireUnchanged(ref);
     await requireUnchanged(log);
     if (packed) await requireUnchanged(packed);
     else if (await optionalInfo(packedPath))
-      throw new Error(
-        'Packed refs changed. Refresh before deleting the stash.',
-      );
+      throw new Error('Packed refs changed. Refresh before editing the stash.');
     if (!nextTip) await requireNoTransactionHook(cli, id);
     for (const lock of owned) await requireOwnLock(lock);
     await logLock.file.close();
@@ -396,7 +436,7 @@ export async function deleteStashEntry(
     failure = {
       error: logInstalled
         ? new Error(
-            'Stash deletion stopped after updating its reflog. Review Git storage before doing anything else; the operation was not retried.',
+            'Stash editing stopped after updating its reflog. Review Git storage before doing anything else; the operation was not retried.',
             { cause: error },
           )
         : error,

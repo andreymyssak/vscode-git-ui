@@ -146,6 +146,7 @@ export function parseSourceControlRequest(
     case 'load-stash':
     case 'restore-stash':
     case 'delete-stash':
+    case 'rename-stash':
       return sha(value.sha)
         ? { kind: value.kind, repositoryId, sha: value.sha }
         : null;
@@ -154,6 +155,7 @@ export function parseSourceControlRequest(
         ? { kind: value.kind, repositoryId, sha: value.sha, file: value.file }
         : null;
     case 'restore-stash-files':
+    case 'delete-stash-files':
     case 'open-stash-files':
       return sha(value.sha) &&
         Array.isArray(value.files) &&

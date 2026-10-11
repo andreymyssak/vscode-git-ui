@@ -240,6 +240,11 @@
   min-height: 26px;
   text-align: left;
 }
+.stashToggle > :last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .stashMetadata {
   display: flex;
   gap: 8px;

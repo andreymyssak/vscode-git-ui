@@ -41,7 +41,9 @@ export type SourceControlActionKind =
   | 'open-stash-change'
   | 'apply-stash'
   | 'apply-stash-files'
-  | 'delete-stash';
+  | 'delete-stash'
+  | 'rename-stash'
+  | 'delete-stash-files';
 
 export function sourceControlCommandId(kind: SourceControlActionKind): string {
   return `${extensionIdentity.commandNamespace}.${kind}`;
