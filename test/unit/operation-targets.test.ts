@@ -1,3 +1,5 @@
+import { tmpdir } from 'node:os';
+
 import { expect, test } from 'vitest';
 
 import type {
@@ -45,6 +47,7 @@ function fixture(dialog: OperationDialogs['remoteCheckout']) {
     access,
     {
       run: async (_id, args) => {
+        if (args.includes('--git-common-dir')) return tmpdir();
         calls.push([...args]);
 
         return '';

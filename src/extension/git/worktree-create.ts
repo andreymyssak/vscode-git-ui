@@ -6,6 +6,7 @@ import { hasErrorCode } from '../../shared/validation';
 import type { GitRepository } from './api';
 import type { GitCli } from './cli';
 import { GitPartialCompletion } from './partial-completion';
+import { readWithCancellation } from './read-cancellation';
 
 type Creation = Extract<GitAction, { kind: 'create-worktree' }>;
 
@@ -17,38 +18,44 @@ export async function createBranchWorktree(
   reference: () => Promise<Reference>,
   signal?: AbortSignal,
 ): Promise<string> {
-  if (!isAbsolute(action.path) || action.path.includes('\0'))
-    throw new Error('Choose an absolute folder path for the worktree.');
-  let exists = true;
+  const source = await readWithCancellation(async () => {
+    if (!isAbsolute(action.path) || action.path.includes('\0'))
+      throw new Error('Choose an absolute folder path for the worktree.');
+    let exists = true;
 
-  try {
-    await lstat(action.path);
-  } catch (error) {
-    if (!hasErrorCode(error, 'ENOENT')) throw error;
-    exists = false;
-  }
+    try {
+      await lstat(action.path);
+    } catch (error) {
+      if (!hasErrorCode(error, 'ENOENT')) throw error;
+      exists = false;
+    }
 
-  if (exists)
-    throw new Error('Choose a new folder. The selected path already exists.');
-  const source = await reference();
+    if (exists)
+      throw new Error('Choose a new folder. The selected path already exists.');
+    const source = await reference();
 
-  if (
-    source.kind === 'tag' ||
-    (action.name === null && source.kind !== 'local')
-  )
-    throw new Error(
-      'Select a branch and create a local branch for a remote worktree.',
-    );
-  if (source.name.startsWith('-'))
-    throw new Error('Choose a branch name without a leading option character.');
-  if (action.name !== null) {
-    if (!action.name || action.name.startsWith('-'))
-      throw new Error('Enter a valid new branch name.');
-    await cli.run(id, ['check-ref-format', '--branch', action.name]);
-  }
+    if (
+      source.kind === 'tag' ||
+      (action.name === null && source.kind !== 'local')
+    )
+      throw new Error(
+        'Select a branch and create a local branch for a remote worktree.',
+      );
+    if (source.name.startsWith('-'))
+      throw new Error(
+        'Choose a branch name without a leading option character.',
+      );
+    if (action.name !== null) {
+      if (!action.name || action.name.startsWith('-'))
+        throw new Error('Enter a valid new branch name.');
+      await cli.run(id, ['check-ref-format', '--branch', action.name], signal);
+    }
 
-  await reference();
-  signal?.throwIfAborted();
+    await reference();
+    signal?.throwIfAborted();
+
+    return source;
+  }, signal);
   const path = await repo.createWorktree({
     path: action.path,
     commitish: action.name === null ? source.name : action.expectedSha,

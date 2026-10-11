@@ -1,3 +1,5 @@
+import { tmpdir } from 'node:os';
+
 import { assert, expect, test } from 'vitest';
 
 import type { GitAdapter } from '../../src/extension/git/adapter';
@@ -85,7 +87,10 @@ for (const kind of ['branch-from-commit', 'tag-from-commit'] as const) {
     } as unknown as GitApiAccess;
     const operate = createOperations(
       access,
-      { run: async () => '' },
+      {
+        run: async (_id, args) =>
+          args.includes('--git-common-dir') ? tmpdir() : '',
+      },
       { updateDiverged: async () => null, remoteCheckout: async () => null },
     );
 

@@ -59,6 +59,7 @@ async function fixture(
     apiAccess,
     {
       run: async (_id, args) => {
+        if (args.includes('--git-common-dir')) return directory;
         if (conflict && args[0] === 'diff') return 'blocked.txt\0';
         if (args.includes('rev-parse')) {
           if (failure === 'verification') throw new Error('Cannot read HEAD');

@@ -3,6 +3,7 @@ import type { GitApiAccess } from './api';
 import type { GitCli } from './cli';
 import { attachedBranch, validateCommitSuffix } from './commit-suffix';
 import { GitPartialCompletion } from './partial-completion';
+import { readWithCancellation } from './read-cancellation';
 
 export async function dropCommits(
   access: GitApiAccess,
@@ -11,10 +12,18 @@ export async function dropCommits(
   target: CommitRangeTarget,
   context?: AbortSignal,
 ): Promise<string> {
-  const snapshot = await validateCommitSuffix(access, cli, id, target, 'drop');
+  const reads: Pick<GitCli, 'run'> = {
+    run: (repositoryId, args) => cli.run(repositoryId, args, context),
+  };
+  const validate = () =>
+    readWithCancellation(
+      () => validateCommitSuffix(access, reads, id, target, 'drop'),
+      context,
+    );
+  const snapshot = await validate();
   const preflight = async () => {
     context?.throwIfAborted();
-    await validateCommitSuffix(access, cli, id, target, 'drop');
+    await validate();
     context?.throwIfAborted();
     access.repository(id);
   };

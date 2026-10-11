@@ -135,10 +135,15 @@ export class GitViewProvider implements vscode.WebviewViewProvider {
 
     webview.html = `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource}; font-src ${webview.cspSource}; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';"><link rel="stylesheet" href="${style}"></head><body><main id="app" aria-live="polite">Connecting to Git…</main><script nonce="${nonce}" src="${script}"></script></body></html>`;
     let controller: PanelController | null = null;
-    let initializing: Promise<PanelController> | null = null;
+    let initializing: Promise<PanelController | null> | null = null;
+    let initialization: AbortController | null = null;
     let closed = false;
     let initializationEpoch = 0;
-    const initialize = async (): Promise<PanelController> => {
+    const initialize = async (): Promise<PanelController | null> => {
+      initialization?.abort();
+      const owner = new AbortController();
+
+      initialization = owner;
       const epoch = ++initializationEpoch;
       let setupError: string | null = null;
       let adapter: GitAdapter | null = null;
@@ -146,32 +151,43 @@ export class GitViewProvider implements vscode.WebviewViewProvider {
 
       if (vscode.workspace.isTrusted) {
         try {
-          adapter = await createGitAdapter(undefined, {
-            runtime: {
-              executable: process.execPath,
-              helperPath: vscode.Uri.joinPath(
-                this.extensionUri,
-                'dist',
-                'squash-helper.cjs',
+          adapter = await createGitAdapter(
+            undefined,
+            {
+              runtime: {
+                executable: process.execPath,
+                helperPath: vscode.Uri.joinPath(
+                  this.extensionUri,
+                  'dist',
+                  'squash-helper.cjs',
+                ).fsPath,
+              },
+              storageDirectory: vscode.Uri.joinPath(
+                this.globalStorageUri,
+                'squash-recovery',
               ).fsPath,
             },
-            storageDirectory: vscode.Uri.joinPath(
-              this.globalStorageUri,
-              'squash-recovery',
-            ).fsPath,
-          });
+            owner.signal,
+          );
           const active = vscode.window.activeTextEditor?.document.uri;
 
           if (active)
             initialRepositoryId =
-              (await getGitApi()).api
+              (await getGitApi(owner.signal)).api
                 .getRepository(active)
                 ?.rootUri.toString() ?? null;
         } catch (error) {
-          setupError = error instanceof Error ? error.message : String(error);
           adapter?.dispose();
           adapter = null;
+          if (owner.signal.aborted) return null;
+          setupError = error instanceof Error ? error.message : String(error);
         }
+      }
+
+      if (owner.signal.aborted) {
+        adapter?.dispose();
+
+        return null;
       }
 
       const result = new PanelController({
@@ -306,7 +322,7 @@ export class GitViewProvider implements vscode.WebviewViewProvider {
           `Select a branch in ${extensionIdentity.displayName} before using this action.`,
         );
       initializing ??= initialize();
-      await (await initializing).handle(request);
+      await (await initializing)?.handle(request);
     };
 
     this.menuAction = menuAction;
@@ -318,7 +334,7 @@ export class GitViewProvider implements vscode.WebviewViewProvider {
           `Select a commit in ${extensionIdentity.displayName} before using this action.`,
         );
       initializing ??= initialize();
-      await (await initializing).handle(request);
+      await (await initializing)?.handle(request);
     };
 
     this.commitMenuAction = commitMenuAction;
@@ -330,11 +346,15 @@ export class GitViewProvider implements vscode.WebviewViewProvider {
 
       if (!request) throw new Error('Select worktrees from the current list.');
       initializing ??= initialize();
-      await (await initializing).handle(request);
+      await (await initializing)?.handle(request);
     };
 
     this.worktreeMenuAction = worktreeMenuAction;
-    const handleMessage = async (result: PanelController, message: unknown) => {
+    const handleMessage = async (
+      result: PanelController | null,
+      message: unknown,
+    ) => {
+      if (!result) return;
       await result.handle(message);
       if (
         !closed &&
@@ -408,6 +428,7 @@ export class GitViewProvider implements vscode.WebviewViewProvider {
     const cleanup = () => {
       if (closed) return;
       closed = true;
+      initialization?.abort();
       if (this.viewCleanup === cleanup) {
         this.jumps.detach();
         this.viewCleanup = null;

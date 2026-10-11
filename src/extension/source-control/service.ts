@@ -51,6 +51,7 @@ export class SourceControlService implements vscode.Disposable {
   readonly model: SourceControlModel;
   private runtime: SourceControlRuntime | null = null;
   private initializing: Promise<SourceControlRuntime> | null = null;
+  private readonly initialization = new AbortController();
   private readonly subscriptions: vscode.Disposable[] = [];
   private readonly repositoryListeners = new Map<string, vscode.Disposable>();
   private readonly notifications = new SourceControlNotifications((message) => {
@@ -111,6 +112,7 @@ export class SourceControlService implements vscode.Disposable {
 
   dispose(): void {
     this.disposed = true;
+    this.initialization.abort();
     this.refreshGeneration++;
     this.cancelGeneration();
     // Pending dialogs and queued writes must lose their live target on disposal.
@@ -548,7 +550,7 @@ export class SourceControlService implements vscode.Disposable {
   private initialize(): Promise<SourceControlRuntime> {
     if (this.runtime) return Promise.resolve(this.runtime);
     if (this.initializing) return this.initializing;
-    this.initializing = getGitApi()
+    this.initializing = getGitApi(this.initialization.signal)
       .then((access) => {
         const runtime = { access, cli: new GitCli(access) };
 

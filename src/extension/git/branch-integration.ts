@@ -2,6 +2,7 @@ import type { GitAction, Reference } from '../../shared/model';
 import type { GitRepository } from './api';
 import { updateCheckout } from './branch-update-target';
 import type { GitCli } from './cli';
+import { readWithCancellation } from './read-cancellation';
 import {
   requireCleanWorkingTree,
   requireNoGitOperation,
@@ -23,9 +24,12 @@ export async function integrateBranch(
 ): Promise<string> {
   const method = action.kind === 'merge-branch' ? 'merge' : 'rebase';
   const verb = method === 'merge' ? 'merging' : 'rebasing';
+  const preflight: Pick<GitCli, 'run'> = {
+    run: (repositoryId, args) => cli.run(repositoryId, args, signal),
+  };
   const validate = async () => {
     signal?.throwIfAborted();
-    const checkout = await updateCheckout(cli, id);
+    const checkout = await updateCheckout(preflight, id);
     const source = await reference();
 
     if (!checkout.ref || !action.expectedBranch)
@@ -43,7 +47,7 @@ export async function integrateBranch(
     )
       throw new Error('Select another local or remote branch.');
     const symbolic = (
-      await cli.run(id, [
+      await preflight.run(id, [
         'for-each-ref',
         '--format=%(refname)%00%(symref)',
         source.id,
@@ -55,13 +59,13 @@ export async function integrateBranch(
 
     if (symbolic)
       throw new Error('Select a direct branch, not a symbolic reference.');
-    await requireNoGitOperation(cli, id, verb);
+    await requireNoGitOperation(preflight, id, verb);
     await requireCleanWorkingTree(
-      cli,
+      preflight,
       id,
       `Commit or stash local changes before ${verb}.`,
     );
-    const final = await updateCheckout(cli, id);
+    const final = await updateCheckout(preflight, id);
 
     if (final.ref !== checkout.ref || final.sha !== checkout.sha)
       throw new Error(
@@ -73,7 +77,7 @@ export async function integrateBranch(
     return source;
   };
 
-  const source = await validate();
+  const source = await readWithCancellation(validate, signal);
 
   await repo[method](action.expectedSha);
   const checkout = await updateCheckout(cli, id);

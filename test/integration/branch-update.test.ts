@@ -492,6 +492,7 @@ test('Update rejects a changed upstream before fetching or writing', async () =>
     access,
     {
       run: async (_id, args) => {
+        if (args.includes('--git-common-dir')) return tmpdir();
         if (args[0] === 'symbolic-ref') return 'refs/heads/topic\n';
         if (args[0] === 'rev-parse') return sha;
         if (args[0] === 'for-each-ref')

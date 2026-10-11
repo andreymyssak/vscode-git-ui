@@ -9,6 +9,7 @@ import type { GitCli } from './cli';
 import type { CommitRewriteSnapshot } from './commit-rewrite';
 import { validateRewriteRange } from './commit-rewrite';
 import { attachedBranch, readCommit } from './commit-suffix';
+import { readWithCancellation } from './read-cancellation';
 import { supportsSquashGit, validateSquashMessage } from './squash';
 import { createSquashEditors, probeSquashRuntime } from './squash-editor';
 import type { SquashServices } from './squash-operation';
@@ -80,14 +81,23 @@ export async function editCommitMessage(
   context?: AbortSignal,
 ): Promise<string> {
   validateSquashMessage(action.message);
-  const snapshot = await validateMessageEdit(
-    access,
-    cli,
-    id,
-    action.sha,
-    action.expectedBranch,
-    action.expectedHeadSha,
-  );
+  const reads: Pick<GitCli, 'run'> = {
+    run: (repositoryId, args) => cli.run(repositoryId, args, context),
+  };
+  const validate = () =>
+    readWithCancellation(
+      () =>
+        validateMessageEdit(
+          access,
+          reads,
+          id,
+          action.sha,
+          action.expectedBranch,
+          action.expectedHeadSha,
+        ),
+      context,
+    );
+  const snapshot = await validate();
 
   if (snapshot) {
     if (!services)
@@ -132,14 +142,7 @@ export async function editCommitMessage(
         undefined,
         async () => {
           context?.throwIfAborted();
-          await validateMessageEdit(
-            access,
-            cli,
-            id,
-            action.sha,
-            action.expectedBranch,
-            action.expectedHeadSha,
-          );
+          await validate();
           context?.throwIfAborted();
         },
         createSquashEditors(services.runtime, inputPath),
@@ -173,10 +176,13 @@ export async function editCommitMessage(
     }
   }
 
+  const before = await readWithCancellation(
+    () => readCommit(reads, id, action.sha),
+    context,
+  );
   const directory = await mkdtemp(
     join(tmpdir(), `${extensionIdentity.name}-message-`),
   );
-  const before = await readCommit(cli, id, action.sha);
 
   try {
     const path = join(directory, 'message.txt');
@@ -189,14 +195,7 @@ export async function editCommitMessage(
       undefined,
       async () => {
         context?.throwIfAborted();
-        await validateMessageEdit(
-          access,
-          cli,
-          id,
-          action.sha,
-          action.expectedBranch,
-          action.expectedHeadSha,
-        );
+        await validate();
         context?.throwIfAborted();
       },
     );

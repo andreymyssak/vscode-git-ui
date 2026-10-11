@@ -31,6 +31,7 @@ test('multi-pick writes once in captured order and cancels at the final boundary
     access,
     {
       run: async (_id, args, _signal, before) => {
+        if (args.includes('--git-common-dir')) return directory;
         if (args[0] === 'symbolic-ref') return 'main\n';
         if (args[0] === 'rev-parse') return join(directory, args.at(-1)!);
         if (args[0] === 'cherry-pick') {

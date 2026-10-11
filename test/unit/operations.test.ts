@@ -1,3 +1,5 @@
+import { tmpdir } from 'node:os';
+
 import { expect, test } from 'vitest';
 
 import type {
@@ -31,6 +33,7 @@ test('an edit queued behind another operation performs no write after its view i
     access,
     {
       run: async (_id, args) => {
+        if (args.includes('--git-common-dir')) return tmpdir();
         if (args[0] === 'commit') writes.push('commit');
 
         return args[0] === 'symbolic-ref' ? 'main\n' : '';
