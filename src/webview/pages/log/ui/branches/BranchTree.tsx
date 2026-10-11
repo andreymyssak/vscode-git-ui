@@ -150,6 +150,8 @@ export function BranchTree({
 
     if (!tree) return;
     const epoch = memory.current.scrollEpoch;
+    const scrollTop = tree.scrollTop;
+    const scrollLeft = tree.scrollLeft;
     let cancelled = false;
     let frame: number | null = null;
     let finish: (() => void) | null = null;
@@ -192,8 +194,13 @@ export function BranchTree({
       }
 
       if (epoch === memory.current.scrollEpoch) {
-        tree.scrollTop = memory.current.scrollTop;
-        tree.scrollLeft = memory.current.scrollLeft;
+        // A newer scroll can precede its event; do not restore over the live offset.
+        if (tree.scrollTop === scrollTop)
+          tree.scrollTop = memory.current.scrollTop;
+        else memory.current.scrollTop = tree.scrollTop;
+        if (tree.scrollLeft === scrollLeft)
+          tree.scrollLeft = memory.current.scrollLeft;
+        else memory.current.scrollLeft = tree.scrollLeft;
       }
 
       if (reveal && revealed.current !== reveal.sequence) {

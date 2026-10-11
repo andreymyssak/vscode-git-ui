@@ -390,6 +390,59 @@ test('pending filter layout preserves scrolling to the focused branch name', asy
   });
 });
 
+test('pending filter layout preserves horizontal scrolling before its scroll event', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 620, height: 280 });
+  await expect(page.locator('#branch-pane')).toHaveCSS('width', '150px');
+  await updateReferences(page, ['main', 'feature/team/epic/deep-reference']);
+  const finishLayout = await page.evaluateHandle(() => {
+    const request = window.requestAnimationFrame;
+    const pending: FrameRequestCallback[] = [];
+
+    window.requestAnimationFrame = (callback) => pending.push(callback);
+
+    return async () => {
+      const tree = document.getElementById('branches');
+
+      if (!tree) throw new Error('Branch tree must be available.');
+      for (const item of tree.querySelectorAll('vscode-tree-item'))
+        await item.updateComplete;
+      if (!pending.length)
+        throw new Error('Layout restoration must be pending.');
+      tree.scrollLeft = tree.scrollWidth;
+      const intended = tree.scrollLeft;
+
+      window.requestAnimationFrame = request;
+      for (const callback of pending) callback(performance.now());
+
+      return intended;
+    };
+  });
+
+  await page.getByRole('searchbox', { name: 'Branch or tag' }).fill('feature');
+  const leaf = page.getByRole('treeitem', {
+    name: 'deep-reference',
+    exact: true,
+  });
+
+  await expect(leaf).toBeVisible();
+  const intended = await finishLayout.evaluate((finish) => finish());
+
+  await finishLayout.dispose();
+  expect(intended).toBeGreaterThan(0);
+  await expect
+    .poll(() =>
+      page
+        .getByRole('tree', { name: 'References' })
+        .evaluate((node) => node.scrollLeft),
+    )
+    .toBe(intended);
+  await expect(leaf.locator('[data-reference-name]')).toBeInViewport({
+    ratio: 1,
+  });
+});
+
 test('removing the focused reference keeps keyboard navigation in the tree', async ({
   page,
 }) => {
