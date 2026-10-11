@@ -6,3 +6,10 @@
 .handle:hover {
   background: var(--vscode-focusBorder, #007fd4);
 }
+.handle[data-orientation='horizontal'] {
+  height: 5px;
+  flex-shrink: 0;
+  cursor: row-resize;
+  border-left: 0;
+  border-top: 1px solid var(--vscode-panel-border, #454545);
+}

@@ -58,7 +58,11 @@
   overflow: hidden;
 }
 .messageArea {
+  display: flex;
+  flex-direction: column;
   flex-shrink: 0;
+  min-height: 0;
+  overflow: auto;
   padding: 8px;
 }
 .messageToolbar {
@@ -67,6 +71,7 @@
   flex-wrap: wrap;
   gap: 4px;
   min-height: 25px;
+  flex-shrink: 0;
   margin-bottom: 6px;
 }
 .amend {
@@ -76,15 +81,57 @@
   min-width: 0;
   white-space: nowrap;
 }
+.amend input {
+  margin: 0;
+}
+.checkedSummary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  margin-left: auto;
+  max-width: 100%;
+  min-width: 0;
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
+}
+.checkedSummary span {
+  white-space: nowrap;
+}
+.checkedSummary [data-status='added'] {
+  color: var(--vscode-gitDecoration-addedResourceForeground, #81b88b);
+}
+.checkedSummary [data-status='modified'] {
+  color: var(--vscode-gitDecoration-modifiedResourceForeground, #73b4ff);
+}
+.checkedSummary [data-status='deleted'] {
+  color: var(--vscode-gitDecoration-deletedResourceForeground, #c74e39);
+}
+.checkedSummary [data-status='renamed'] {
+  color: var(--vscode-gitDecoration-renamedResourceForeground, #73c991);
+}
+.checkedSummary [data-status='untracked'] {
+  color: var(
+    --vscode-gitDecoration-untrackedResourceForeground,
+    var(--vscode-gitDecoration-addedResourceForeground, #81b88b)
+  );
+}
+.checkedSummary [data-status='conflict'] {
+  color: var(
+    --vscode-gitDecoration-conflictingResourceForeground,
+    var(--vscode-errorForeground)
+  );
+}
 .message {
   display: block;
   width: 100%;
-  min-height: 60px;
-  max-height: min(180px, 30vh);
+  flex: 1;
+  min-height: 32px;
+  height: 0;
   padding: 5px 6px;
   font: inherit;
   line-height: 1.4;
-  resize: vertical;
+  resize: none;
+  overflow: auto;
   border: 1px solid var(--vscode-input-border, transparent);
   border-radius: 2px;
   color: var(--vscode-input-foreground);
@@ -98,6 +145,7 @@
 }
 .commitActions {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 5px;
   margin-top: 6px;
@@ -214,6 +262,7 @@
 }
 .empty,
 .progress {
+  flex-shrink: 0;
   color: var(--vscode-descriptionForeground);
 }
 .progress {

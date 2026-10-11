@@ -47,7 +47,6 @@ export interface SourceControlRepository {
   draft: string;
   draftEditId: string | null;
   commitMode: CommitMode;
-  hasMessageHistory: boolean;
 }
 
 export interface SourceControlState {
@@ -73,7 +72,6 @@ export type SourceControlRequest =
   | { kind: 'check'; repositoryId: string; paths: string[]; checked: boolean }
   | { kind: 'message'; repositoryId: string; message: string; editId: string }
   | { kind: 'amend'; repositoryId: string; enabled: boolean }
-  | { kind: 'message-history'; repositoryId: string }
   | {
       kind:
         'commit' | 'stash' | 'stash-silently' | 'generate' | 'reveal-working';

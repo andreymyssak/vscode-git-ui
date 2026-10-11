@@ -155,14 +155,13 @@ export async function writeChanges(options: {
         `The ${label} files or message changed. Review them before continuing.`,
       );
     requireSaved(root, files);
-    if (kind === 'commit') model.rememberMessage(id, message);
     const result =
       kind === 'commit'
         ? await commitSelected(runtime.cli, id, snapshot, message, mode)
         : await stashSelected(runtime.cli, id, snapshot, message);
 
     repo.checked.clear(files.map((file) => file.path));
-    if (kind === 'commit') model.committed(id, message);
+    if (kind === 'commit') model.committed(id);
     else model.setDraft(id, '');
     showOperationInfo(
       kind === 'commit'

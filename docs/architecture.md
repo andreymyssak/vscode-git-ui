@@ -23,7 +23,7 @@ The Git adapter uses the installed Git extension where possible and explicit Git
 
 The Source Control view works independently of the Log webview and uses ordinary Git stashes. Selected commits and stash creation use a temporary index to exclude unchecked staged changes. Writes share the repository operation queue and a lock across linked worktrees.
 
-Pages own workflow UI and saved view preferences. The extension host owns per-repository Source Control drafts, commit-message history and checked-file state. Shared contracts contain no VS Code, Node or DOM dependencies.
+Pages own workflow UI and saved view preferences. The extension host owns per-repository Source Control drafts and checked-file state. Shared contracts contain no VS Code, Node or DOM dependencies.
 
 Log, Commit and Stashes share `src/webview/shared/ui/file-tree/` for rendering and navigation. Pages supply their files and actions.
 

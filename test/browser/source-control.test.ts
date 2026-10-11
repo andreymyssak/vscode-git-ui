@@ -11,11 +11,16 @@ test('commit message tools stay above the message and fit a narrow sidebar', asy
     toolbar.getByRole('checkbox', { name: 'Amend last commit' }),
   ).toBeVisible();
   await expect(
-    toolbar.getByRole('button', { name: 'Commit Message History' }),
-  ).toBeVisible();
-  await expect(
     toolbar.getByRole('button', { name: 'Generate Commit Message' }),
   ).toBeVisible();
+  const checkbox = toolbar.getByRole('checkbox', {
+    name: 'Amend last commit',
+  });
+  const label = toolbar.getByText('Amend last commit', { exact: true });
+  const box = (await checkbox.boundingBox())!;
+  const text = (await label.boundingBox())!;
+
+  expect(text.x - box.x - box.width).toBeCloseTo(6, 0);
   for (const width of [320, 220]) {
     await page.setViewportSize({ width, height: 620 });
     const tools = (await toolbar.boundingBox())!;
@@ -36,6 +41,72 @@ test('commit message tools stay above the message and fit a narrow sidebar', asy
   await page.screenshot({
     path: '.artifacts/commit-message-toolbar-browser.png',
   });
+});
+
+test('checked file statistics follow inclusion and wrap in a narrow commit toolbar', async ({
+  page,
+}) => {
+  await page.goto('/source-control.html');
+  const toolbar = page.getByRole('toolbar', { name: 'Commit message actions' });
+  const summary = toolbar.getByRole('status', {
+    name: 'Checked files summary',
+  });
+  const tree = page.getByRole('tree', { name: 'Changes' });
+  const all = tree
+    .getByRole('treeitem', { name: 'Changes', exact: true })
+    .getByRole('checkbox', { name: 'Include all changes', exact: true });
+
+  await expect(summary).toHaveCount(0);
+  await all.click();
+  await expect(all).toBeChecked();
+  await expect(summary.getByText('M 1', { exact: true })).toBeVisible();
+  await expect(summary.getByText('U 1', { exact: true })).toBeVisible();
+  await page.evaluate(() => {
+    document.documentElement.style.setProperty(
+      '--vscode-gitDecoration-modifiedResourceForeground',
+      '#4090d0',
+    );
+    document.documentElement.style.setProperty(
+      '--vscode-gitDecoration-untrackedResourceForeground',
+      '#309050',
+    );
+  });
+  await expect(summary.getByText('M 1', { exact: true })).toHaveCSS(
+    'color',
+    'rgb(64, 144, 208)',
+  );
+  await expect(summary.getByText('U 1', { exact: true })).toHaveCSS(
+    'color',
+    'rgb(48, 144, 80)',
+  );
+  for (const width of [500, 320, 220]) {
+    await page.setViewportSize({ width, height: 620 });
+    await expect(summary).toBeVisible();
+    const tools = (await toolbar.boundingBox())!;
+    const field = (await page
+      .getByRole('textbox', { name: 'Commit message' })
+      .boundingBox())!;
+
+    expect(tools.y + tools.height).toBeLessThanOrEqual(field.y);
+    expect(
+      await toolbar.evaluate(
+        (element) => element.scrollWidth <= element.clientWidth,
+      ),
+    ).toBe(true);
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth),
+    ).toBeLessThanOrEqual(width);
+  }
+
+  await page.setViewportSize({ width: 500, height: 620 });
+  await page.screenshot({ path: '.artifacts/checked-files-summary.png' });
+  await summary.getByText('M 1', { exact: true }).hover();
+  await expect(
+    page.getByRole('tooltip', { name: '1 modified file checked', exact: true }),
+  ).toBeVisible({ timeout: 1500 });
+  await all.click();
+  await expect(all).not.toBeChecked();
+  await expect(summary).toHaveCount(0);
 });
 
 test('folder counts stay beside their names with a muted status dot at the right', async ({

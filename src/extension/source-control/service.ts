@@ -26,7 +26,7 @@ import {
   workingChangeUris,
 } from '../native/source-control-diffs';
 import { discardWorking } from './discard';
-import { chooseMessage, toggleAmend } from './message-tools';
+import { toggleAmend } from './message-tools';
 import { SourceControlModel } from './model';
 import { SourceControlNotifications } from './notifications';
 import { rollbackChanges } from './rollback';
@@ -67,6 +67,7 @@ export class SourceControlService implements vscode.Disposable {
   private hasSessionPreference = false;
   private disposed = false;
   private refreshGeneration = 0;
+  private amendGeneration = 0;
   private refreshTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(
@@ -180,6 +181,7 @@ export class SourceControlService implements vscode.Disposable {
     try {
       switch (request.kind) {
         case 'ready':
+          this.amendGeneration++;
           this.cancelGeneration();
           if (!this.hasSessionPreference) {
             this.preferredRepositoryId = request.repositoryId;
@@ -202,6 +204,7 @@ export class SourceControlService implements vscode.Disposable {
 
           return;
         case 'tab':
+          this.amendGeneration++;
           this.cancelGeneration();
           this.model.tab = request.tab;
           this.hasSessionPreference = true;
@@ -210,6 +213,7 @@ export class SourceControlService implements vscode.Disposable {
           return;
         case 'repository':
           this.model.requireRepository(request.repositoryId);
+          this.amendGeneration++;
           this.cancelGeneration();
           this.model.repositoryId = request.repositoryId;
           this.preferredRepositoryId = request.repositoryId;
@@ -253,6 +257,7 @@ export class SourceControlService implements vscode.Disposable {
 
         case 'message':
           this.model.requireRepository(request.repositoryId);
+          this.amendGeneration++;
           this.cancelGeneration();
           this.model.setDraft(
             request.repositoryId,
@@ -272,21 +277,7 @@ export class SourceControlService implements vscode.Disposable {
 
           return;
         case 'amend':
-        case 'message-history':
-          await this.write(
-            request.repositoryId,
-            'Loading commit message…',
-            async (runtime) => {
-              if (request.kind === 'amend')
-                await toggleAmend(
-                  runtime,
-                  this.model,
-                  request.repositoryId,
-                  request.enabled,
-                );
-              else await chooseMessage(this.model, request.repositoryId);
-            },
-          );
+          await this.amend(request.repositoryId, request.enabled);
 
           return;
         case 'commit':
@@ -598,12 +589,33 @@ export class SourceControlService implements vscode.Disposable {
     return this.initializing;
   }
 
+  private async amend(id: string, enabled: boolean): Promise<void> {
+    const generation = ++this.amendGeneration;
+
+    this.cancelGeneration();
+    const isCurrent = () =>
+      !this.disposed &&
+      generation === this.amendGeneration &&
+      this.model.repositoryId === id;
+
+    try {
+      const runtime = await this.initialize();
+
+      await toggleAmend({ runtime, model: this.model, id, enabled, isCurrent });
+    } catch (error) {
+      if (isCurrent()) throw error;
+    } finally {
+      if (isCurrent()) this.publish();
+    }
+  }
+
   private async write(
     id: string,
     title: string,
     action: (runtime: SourceControlRuntime) => Promise<void>,
   ): Promise<void> {
     if (this.model.busy) return;
+    this.amendGeneration++;
     // Acquire before any await, including trust, repository lookup and save dialogs.
     this.model.busy = true;
     this.cancelGeneration();
@@ -647,6 +659,7 @@ export class SourceControlService implements vscode.Disposable {
 
   private async generate(id: string): Promise<void> {
     if (this.generation) return;
+    this.amendGeneration++;
     const files = this.model.selectedFiles(id);
     const identity = this.model.selectionIdentity(id);
     const source = new vscode.CancellationTokenSource();

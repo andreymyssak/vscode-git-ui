@@ -6,7 +6,7 @@ import type {
   SourceControlTab,
 } from '@contracts/source-control';
 
-import { folderKey, readView } from '../model/view-state';
+import { folderKey, messageHeightLimits, readView } from '../model/view-state';
 import { CommitPane } from './CommitPane';
 import styles from './SourceControlPage.module.css';
 import { StashesPane } from './StashesPane';
@@ -206,6 +206,13 @@ export function SourceControlPage({ bridge }: { bridge: SourceControlBridge }) {
           repository={repository}
           busy={!state || state.busy}
           generating={state?.generating ?? false}
+          messageHeight={view.messageHeight}
+          onMessageHeightChange={(messageHeight) =>
+            setView((previous) => ({
+              ...previous,
+              messageHeight: Math.max(messageHeightLimits.min, messageHeight),
+            }))
+          }
           bridge={bridge}
           collapsed={view.collapsed}
           onCollapse={collapse}

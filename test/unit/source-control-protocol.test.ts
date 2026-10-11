@@ -34,7 +34,6 @@ describe('source-control boundary', () => {
     { kind: 'reveal-working', repositoryId: 'file:///repo' },
     { kind: 'generate', repositoryId: 'file:///repo' },
     { kind: 'amend', repositoryId: 'file:///repo', enabled: true },
-    { kind: 'message-history', repositoryId: 'file:///repo' },
     { kind: 'cancel-generation' },
     { kind: 'commit-selected', repositoryId: 'repo', paths: ['a.ts', 'b.ts'] },
     { kind: 'stash-selected', repositoryId: 'repo', paths: ['a.ts'] },
@@ -112,7 +111,6 @@ describe('source-control boundary', () => {
     { kind: 'commit' },
     { kind: 'amend', repositoryId: 'repo' },
     { kind: 'amend', repositoryId: 'repo', enabled: 'yes' },
-    { kind: 'message-history' },
     { kind: 'rollback', repositoryId: 'repo', paths: [] },
     { kind: 'rollback', repositoryId: 'repo', paths: ['../other'] },
     { kind: 'commit-selected', repositoryId: 'repo', paths: [] },
@@ -184,7 +182,6 @@ describe('source-control boundary', () => {
               draft: '',
               draftEditId: null,
               commitMode: { kind: 'new' },
-              hasMessageHistory: false,
               checked: [path],
               changes: {
                 kind: 'ready',

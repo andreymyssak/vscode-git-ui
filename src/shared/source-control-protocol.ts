@@ -100,7 +100,6 @@ export function parseSourceControlRequest(
     case 'stash':
     case 'stash-silently':
     case 'generate':
-    case 'message-history':
     case 'reveal-working':
       return { kind: value.kind, repositoryId };
     case 'amend':
@@ -242,7 +241,6 @@ function repository(value: unknown): value is SourceControlRepository {
     value.checked.every(path) &&
     text(value.draft) &&
     nullableText(value.draftEditId) &&
-    typeof value.hasMessageHistory === 'boolean' &&
     isRecord(value.commitMode) &&
     (value.commitMode.kind === 'new' ||
       (value.commitMode.kind === 'amend' && sha(value.commitMode.headSha)))

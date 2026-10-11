@@ -1,19 +1,25 @@
 import type {
   SourceControlBridge,
   SourceControlRepository,
+  WorkingFile,
 } from '@contracts/source-control';
 import { ActionButton, FileTreeCheckbox } from '@webview/shared/ui';
 
+import { CheckedFilesSummary } from './CheckedFilesSummary';
 import styles from './SourceControlPage.module.css';
 
 export function CommitMessageToolbar({
   repository,
+  checkedFiles,
+  hoverDelay,
   disabled,
   generating,
   canGenerate,
   bridge,
 }: {
   repository: SourceControlRepository | null;
+  checkedFiles: readonly WorkingFile[];
+  hoverDelay: number;
   disabled: boolean;
   generating: boolean;
   canGenerate: boolean;
@@ -45,19 +51,6 @@ export function CommitMessageToolbar({
         />
         <span>Amend last commit</span>
       </label>
-      <ActionButton
-        label="Commit Message History"
-        icon="history"
-        className={styles.iconButton}
-        disabled={disabled || !repository?.hasMessageHistory}
-        onClick={() => {
-          if (repository && !disabled)
-            bridge.send({
-              kind: 'message-history',
-              repositoryId: repository.info.id,
-            });
-        }}
-      />
       {generating ? (
         <ActionButton
           label="Cancel Generation"
@@ -81,6 +74,7 @@ export function CommitMessageToolbar({
           }}
         />
       )}
+      <CheckedFilesSummary files={checkedFiles} hoverDelay={hoverDelay} />
     </div>
   );
 }

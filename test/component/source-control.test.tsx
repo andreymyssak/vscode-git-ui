@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { expect, test } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 import type {
   SourceControlBridge,
@@ -10,6 +10,18 @@ import type {
   StashEntry,
 } from '../../src/shared/source-control';
 import { SourceControlPage } from '../../src/webview/pages/source-control';
+
+beforeEach(() =>
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  ),
+);
+afterEach(() => vi.unstubAllGlobals());
 
 const repository = {
   pathLabel: { root: '/workspace', separator: '/' as const },
@@ -54,7 +66,6 @@ const repository = {
   draft: '',
   draftEditId: null,
   commitMode: { kind: 'new' as const },
-  hasMessageHistory: false,
 };
 
 function initialState(): SourceControlState {
@@ -137,6 +148,68 @@ function session(
     listeners,
   };
 }
+
+test('commit statistics count checked files once by status and update with folder inclusion and refresh', async () => {
+  const user = userEvent.setup();
+  const state = initialState();
+  const repo = state.repositories[0]!;
+
+  repo.changes = {
+    kind: 'ready',
+    items: ['A ', 'MM', ' M', ' D', 'R ', '??', 'UU', ' X'].map(
+      (status, index) => ({
+        path: `src/file-${index}.ts`,
+        originalPath: `src/file-${index}.ts`,
+        status,
+        staged: status[0] !== ' ' && status !== '??',
+        working: status[1] !== ' ',
+        untracked: status === '??',
+      }),
+    ),
+  };
+  repo.checked = [
+    ...repo.changes.items.map((file) => file.path),
+    'src/file-1.ts',
+    'gone.ts',
+  ];
+  const app = session(state);
+  const summary = screen.getByRole('status', { name: 'Checked files summary' });
+
+  for (const text of ['A 1', 'M 2', 'D 1', 'R 1', 'U 1', '! 1', '? 1'])
+    expect(
+      within(summary).getByText(text, { exact: true }),
+    ).toBeInTheDocument();
+  await user.click(
+    within(screen.getByRole('treeitem', { name: 'src' })).getByRole(
+      'checkbox',
+      { name: 'Include src' },
+    ),
+  );
+  expect(
+    screen.queryByRole('status', { name: 'Checked files summary' }),
+  ).toBeNull();
+  await user.click(
+    within(screen.getByRole('treeitem', { name: 'src' })).getByRole(
+      'checkbox',
+      { name: 'Include src' },
+    ),
+  );
+  expect(
+    screen.getByRole('status', { name: 'Checked files summary' }),
+  ).toHaveTextContent('M 2');
+  app.emit({
+    ...app.state(),
+    repositories: [
+      {
+        ...app.state().repositories[0]!,
+        changes: { kind: 'ready', items: [] },
+      },
+    ],
+  });
+  expect(
+    screen.queryByRole('status', { name: 'Checked files summary' }),
+  ).toBeNull();
+});
 
 test.each([
   { statuses: ['??', ' M'], kind: 'modified' },
@@ -278,7 +351,7 @@ test('the Changes tree disappears when the working copy becomes clean', () => {
   expect(screen.getByRole('tree', { name: 'Changes' })).toBeVisible();
 });
 
-test('commit message tools group Amend, history and generation above the editor', async () => {
+test('commit message tools group Amend and generation above the editor', async () => {
   const user = userEvent.setup();
   const app = session();
   const toolbar = screen.getByRole('toolbar', {
@@ -291,9 +364,6 @@ test('commit message tools group Amend, history and generation above the editor'
   expect(
     within(toolbar).getByRole('button', { name: 'Generate Commit Message' }),
   ).toBeEnabled();
-  expect(
-    within(toolbar).getByRole('button', { name: 'Commit Message History' }),
-  ).toBeDisabled();
   await user.click(
     within(toolbar).getByRole('checkbox', { name: 'Amend last commit' }),
   );
@@ -302,6 +372,35 @@ test('commit message tools group Amend, history and generation above the editor'
     repositoryId: 'root',
     enabled: true,
   });
+});
+
+test('the commit message section remembers keyboard resizing without changing the draft', async () => {
+  const user = userEvent.setup();
+  const app = session(
+    {
+      ...initialState(),
+      repositories: [{ ...repository, draft: 'Keep this draft' }],
+    },
+    { messageHeight: 210 },
+  );
+  const divider = screen.getByRole('separator', {
+    name: 'Resize commit message',
+  });
+
+  expect(divider).toHaveAttribute('aria-orientation', 'horizontal');
+  expect(divider).toHaveAttribute('aria-valuenow', '210');
+  divider.focus();
+  await user.keyboard('{ArrowUp}');
+  expect(divider).toHaveAttribute('aria-valuenow', '220');
+  expect(app.saved()).toMatchObject({ messageHeight: 220 });
+  await user.keyboard('{ArrowDown}');
+  expect(divider).toHaveAttribute('aria-valuenow', '210');
+  expect(screen.getByRole('textbox', { name: 'Commit message' })).toHaveValue(
+    'Keep this draft',
+  );
+  expect(app.requests).toEqual([
+    { kind: 'ready', repositoryId: null, tab: 'commit' },
+  ]);
 });
 
 test.each(['loading', 'error'] as const)(

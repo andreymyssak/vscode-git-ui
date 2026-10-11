@@ -1,15 +1,20 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import type {
   SourceControlBridge,
   SourceControlRepository,
   SourceControlState,
 } from '@contracts/source-control';
-import { ActionButton, folderDecoration, Icon } from '@webview/shared/ui';
+import {
+  ActionButton,
+  folderDecoration,
+  Icon,
+  SplitHandle,
+} from '@webview/shared/ui';
 
 import { fileDecoration } from '../model/file-status';
 import { buildChangeTree, type ChangeNode } from '../model/file-tree';
-import { folderKey } from '../model/view-state';
+import { folderKey, messageHeightLimits } from '../model/view-state';
 import { ChangeTree } from './ChangeTree';
 import { CommitMessageToolbar } from './CommitMessageToolbar';
 import styles from './SourceControlPage.module.css';
@@ -27,6 +32,8 @@ export function CommitPane({
   onExpandAll,
   reveal,
   hoverDelay,
+  messageHeight,
+  onMessageHeightChange,
 }: {
   repository: SourceControlRepository | null;
   busy: boolean;
@@ -39,7 +46,11 @@ export function CommitPane({
   onExpandAll(this: void, keys: string[], expand: boolean): void;
   reveal: SourceControlState['reveal'];
   hoverDelay: number;
+  messageHeight: number;
+  onMessageHeightChange(this: void, height: number): void;
 }) {
+  const root = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState(620);
   const [sessionId] = useState(() => crypto.randomUUID());
   const editSequence = useRef(0);
   const previousBusy = useRef(busy);
@@ -67,6 +78,31 @@ export function CommitPane({
 
   const repositoryId = repository?.info.id;
 
+  useLayoutEffect(() => {
+    const element = root.current;
+
+    if (!element) return;
+    const measure = () => {
+      if (element.clientHeight > 0) setHeight(element.clientHeight);
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+
+    observer.observe(element);
+
+    return () => observer.disconnect();
+  }, []);
+  const maximumHeight = Math.min(
+    messageHeightLimits.max,
+    Math.max(0, height - 64),
+  );
+  const minimumHeight = Math.min(messageHeightLimits.min, maximumHeight);
+  const fittedHeight = Math.min(
+    maximumHeight,
+    Math.max(minimumHeight, messageHeight),
+  );
+
   useEffect(() => {
     const wasBusy = previousBusy.current;
 
@@ -83,7 +119,8 @@ export function CommitPane({
   const files =
     repository?.changes.kind === 'ready' ? repository.changes.items : [];
   const checked = new Set(repository?.checked);
-  const count = files.filter((file) => checked.has(file.path)).length;
+  const checkedFiles = files.filter((file) => checked.has(file.path));
+  const count = checkedFiles.length;
   const disabled = busy || generating;
   const canWrite =
     !!repository &&
@@ -113,7 +150,7 @@ export function CommitPane({
   };
 
   return (
-    <>
+    <div ref={root} className={styles.panel}>
       {repository && (
         <>
           <SourceControlToolbar
@@ -255,9 +292,22 @@ export function CommitPane({
           </div>
         </>
       )}
-      <div className={styles.messageArea}>
+      {repository && (
+        <SplitHandle
+          label="Resize commit message"
+          orientation="horizontal"
+          value={fittedHeight}
+          min={minimumHeight}
+          max={maximumHeight}
+          direction={-1}
+          onChange={onMessageHeightChange}
+        />
+      )}
+      <div className={styles.messageArea} style={{ height: fittedHeight }}>
         <CommitMessageToolbar
           repository={repository}
+          checkedFiles={checkedFiles}
+          hoverDelay={hoverDelay}
           disabled={disabled || draft.pending !== null}
           generating={generating}
           canGenerate={canGenerate}
@@ -315,6 +365,6 @@ export function CommitPane({
           </p>
         )}
       </div>
-    </>
+    </div>
   );
 }

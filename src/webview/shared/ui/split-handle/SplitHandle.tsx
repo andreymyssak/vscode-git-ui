@@ -9,6 +9,7 @@ interface Props {
   min: number;
   max: number;
   direction: 1 | -1;
+  orientation?: 'vertical' | 'horizontal';
   onChange(this: void, value: number): void;
 }
 
@@ -19,10 +20,13 @@ export function SplitHandle({
   min,
   max,
   direction,
+  orientation = 'vertical',
   onChange,
 }: Props) {
   const ref = useRef<HTMLDivElement>(null);
-  const drag = useRef<{ id: number; x: number; value: number } | null>(null);
+  const drag = useRef<{ id: number; position: number; value: number } | null>(
+    null,
+  );
   const end = () => {
     const active = drag.current;
 
@@ -48,10 +52,11 @@ export function SplitHandle({
       ref={ref}
       id={id}
       className={styles.handle}
+      data-orientation={orientation}
       tabIndex={0}
       role="separator"
       aria-label={label}
-      aria-orientation="vertical"
+      aria-orientation={orientation}
       aria-valuenow={Math.round(value)}
       aria-valuemin={min}
       aria-valuemax={max}
@@ -59,22 +64,33 @@ export function SplitHandle({
         if (event.button !== 0 || !event.isPrimary) return;
         event.preventDefault();
         end();
-        drag.current = { id: event.pointerId, x: event.clientX, value };
+        drag.current = {
+          id: event.pointerId,
+          position: orientation === 'vertical' ? event.clientX : event.clientY,
+          value,
+        };
         event.currentTarget.setPointerCapture(event.pointerId);
       }}
       onPointerMove={(event) => {
         const active = drag.current;
 
-        if (active?.id === event.pointerId)
-          change(active.value + (event.clientX - active.x) * direction);
+        if (active?.id === event.pointerId) {
+          const position =
+            orientation === 'vertical' ? event.clientX : event.clientY;
+
+          change(active.value + (position - active.position) * direction);
+        }
       }}
       onPointerUp={end}
       onPointerCancel={end}
       onLostPointerCapture={end}
       onKeyDown={(event) => {
-        if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+        const backward = orientation === 'vertical' ? 'ArrowLeft' : 'ArrowUp';
+        const forward = orientation === 'vertical' ? 'ArrowRight' : 'ArrowDown';
+
+        if (event.key === backward || event.key === forward) {
           event.preventDefault();
-          change(value + (event.key === 'ArrowRight' ? 10 : -10) * direction);
+          change(value + (event.key === forward ? 10 : -10) * direction);
         }
       }}
     />

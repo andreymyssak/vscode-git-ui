@@ -107,7 +107,7 @@ async function contextAction(
 }
 
 describe('combined Commit and Stash view', () => {
-  it('amends only the message on a clean repository and reuses full messages through native history', async () => {
+  it('amends only the message on a clean repository and restores the draft when unchecked', async () => {
     const fixture = await createFixture({ prefix: 'git-ui amend ' });
     let frame: Frame | undefined;
 
@@ -132,13 +132,10 @@ describe('combined Commit and Stash view', () => {
       const amend = toolbar.getByRole('checkbox', {
         name: 'Amend last commit',
       });
-      const history = toolbar.getByRole('button', {
-        name: 'Commit Message History',
-      });
       const message = frame.getByRole('textbox', { name: 'Commit message' });
 
-      await expect(root.getByRole('checkbox')).toHaveCount(0);
-      await expect(history).toBeDisabled();
+      await expect(root).toHaveCount(0);
+      await expect(frame.getByText('No changes.')).toBeVisible();
       await message.fill('New draft');
       await expect(amend).toBeEnabled();
       await amend.press('Space');
@@ -151,7 +148,7 @@ describe('combined Commit and Stash view', () => {
       await expect(amend).toBeEnabled();
       await amend.press('Space');
       await mutation(message).toHaveValue('Initial');
-      const revised = 'Revised subject\n\nFull body';
+      const revised = 'Revised subject\n\nFull body\nSecond body line';
 
       await message.fill(revised);
       await activate(frame, 'Amend Commit');
@@ -167,27 +164,7 @@ describe('combined Commit and Stash view', () => {
       );
       assert.equal(await fixture.runGit(['ls-files', '--stage', '-z']), index);
       await expect(amend).not.toBeChecked();
-      await message.fill('Next draft');
-      await expect(history).toBeEnabled();
-      await history.press('Enter');
-      const picker = frame.page().locator('.quick-input-widget:visible');
-      const input = picker.locator('input').first();
-
-      await expect(picker).toContainText('Commit Message History');
-      await input.fill('Revised subject');
-      await input.press('Enter');
-      await mutation(message).toHaveValue(revised);
-      await settled(frame);
-      const head = await fixture.runGit(['rev-parse', 'HEAD']);
-
-      await message.fill('Keep this draft');
-      await expect(history).toBeEnabled();
-      await history.press('Enter');
-      await expect(picker).toBeVisible();
-      await input.press('Escape');
-      await settled(frame);
-      await expect(message).toHaveValue('Keep this draft');
-      assert.equal(await fixture.runGit(['rev-parse', 'HEAD']), head);
+      await mutation(message).toHaveValue('');
       await frame.page().mouse.move(0, 0);
       await message.focus();
       await frame.locator('[data-source-control]').screenshot({

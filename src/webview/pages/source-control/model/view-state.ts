@@ -1,12 +1,15 @@
 import type { SourceControlTab } from '@contracts/source-control';
 import { isRecord } from '@contracts/validation';
 
+export const messageHeightLimits = { min: 140, max: 600, initial: 180 };
+
 export interface SourceControlView {
   repositoryId: string | null;
   tab: SourceControlTab;
   collapsed: string[];
   expandedStashes: string[];
   groupByDirectory: boolean;
+  messageHeight: number;
 }
 
 export function readView(value: unknown): SourceControlView {
@@ -17,6 +20,7 @@ export function readView(value: unknown): SourceControlView {
       collapsed: [],
       expandedStashes: [],
       groupByDirectory: true,
+      messageHeight: messageHeightLimits.initial,
     };
 
   return {
@@ -34,6 +38,14 @@ export function readView(value: unknown): SourceControlView {
         )
       : [],
     groupByDirectory: value.groupByDirectory !== false,
+    messageHeight:
+      typeof value.messageHeight === 'number' &&
+      Number.isFinite(value.messageHeight)
+        ? Math.max(
+            messageHeightLimits.min,
+            Math.min(messageHeightLimits.max, value.messageHeight),
+          )
+        : messageHeightLimits.initial,
   };
 }
 

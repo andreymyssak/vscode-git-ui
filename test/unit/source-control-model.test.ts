@@ -136,54 +136,17 @@ test('Amend loads the last message and restores the new-commit draft when unchec
   expect(model.requireRepository(first.id).commitMode).toEqual({ kind: 'new' });
 });
 
-test('leaving Amend preserves edits to the loaded message and remembers the displaced draft', () => {
+test('leaving Amend preserves edits to the loaded message', () => {
   const { model, first } = fixture();
 
   model.setDraft(first.id, 'Next change');
   model.setAmend(first.id, { headSha: first.headSha!, message: 'Previous' });
-  expect(model.messageHistory(first.id)).toEqual(['Next change']);
   model.setDraft(first.id, 'Edited message');
   model.setAmend(first.id, null);
   expect(model.draft(first.id)).toBe('Edited message');
   model.setAmend(first.id, { headSha: first.headSha!, message: 'Previous' });
   model.setAmend(first.id, null);
   expect(model.draft(first.id)).toBe('Edited message');
-});
-
-test('message history retains the 25 most recent nonempty messages', () => {
-  const { model, first } = fixture();
-
-  for (let index = 0; index < 26; index++)
-    model.rememberMessage(first.id, `Message ${index}`);
-  model.rememberMessage(first.id, '   ');
-  expect(model.messageHistory(first.id)).toHaveLength(25);
-  expect(model.messageHistory(first.id)[0]).toBe('Message 25');
-  expect(model.messageHistory(first.id).at(-1)).toBe('Message 1');
-});
-
-test('commit messages survive recreation, stay repository-specific and reuse the most recent entry', () => {
-  const values = new Map<string, unknown>();
-  const storage = {
-    get: (key: string) => values.get(key),
-    update: (key: string, value: unknown) => {
-      values.set(key, value);
-
-      return Promise.resolve();
-    },
-  };
-  const model = new SourceControlModel(storage);
-
-  model.rememberMessage('first', 'Subject\n\nBody');
-  model.rememberMessage('first', 'Other');
-  model.rememberMessage('first', 'Subject\n\nBody');
-  model.rememberMessage('second', 'Other repository');
-  const reopened = new SourceControlModel(storage);
-
-  expect(reopened.messageHistory('first')).toEqual([
-    'Subject\n\nBody',
-    'Other',
-  ]);
-  expect(reopened.messageHistory('second')).toEqual(['Other repository']);
 });
 
 test('draft acknowledgments distinguish repeated text and host updates clear the ephemeral edit id', () => {

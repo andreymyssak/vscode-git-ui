@@ -28,8 +28,6 @@ export interface RepositorySession {
 }
 
 const DRAFT_KEY = 'gitUI.sourceControlDrafts';
-const HISTORY_KEY = 'gitUI.commitMessageHistory';
-const HISTORY_LIMIT = 25;
 
 type ModelState = Omit<SourceControlState, 'hoverDelay' | 'repositories'> & {
   repositories: Omit<SourceControlRepository, 'pathLabel'>[];
@@ -45,7 +43,6 @@ export class SourceControlModel {
     { draft: string; loaded: string }
   >();
 
-  private readonly history = new Map<string, string[]>();
   repositoryId: string | null = null;
   tab: SourceControlTab = 'commit';
   busy = false;
@@ -64,26 +61,6 @@ export class SourceControlModel {
           typeof entry.message === 'string'
         )
           this.drafts.set(entry.repositoryId, entry.message);
-    const history = storage.get(HISTORY_KEY);
-
-    if (Array.isArray(history))
-      for (const entry of history)
-        if (
-          isRecord(entry) &&
-          typeof entry.repositoryId === 'string' &&
-          Array.isArray(entry.messages)
-        )
-          this.history.set(
-            entry.repositoryId,
-            entry.messages
-              .filter(
-                (message): message is string =>
-                  typeof message === 'string' &&
-                  message.length <= 65536 &&
-                  !!message.trim(),
-              )
-              .slice(0, HISTORY_LIMIT),
-          );
   }
 
   state(): ModelState {
@@ -96,7 +73,6 @@ export class SourceControlModel {
         draft: this.draft(repo.info.id),
         draftEditId: this.draftEditIds.get(repo.info.id) ?? null,
         commitMode: repo.commitMode,
-        hasMessageHistory: this.messageHistory(repo.info.id).length > 0,
       })),
       repositoryId: this.repositoryId,
       tab: this.tab,
@@ -250,7 +226,6 @@ export class SourceControlModel {
         const draft = this.draft(id);
 
         this.beforeAmend.set(id, { draft, loaded: commit.message });
-        if (draft !== commit.message) this.rememberMessage(id, draft);
       }
 
       repo.commitMode = { kind: 'amend', headSha: commit.headSha };
@@ -269,32 +244,7 @@ export class SourceControlModel {
     }
   }
 
-  messageHistory(id: string): readonly string[] {
-    return this.history.get(id) ?? [];
-  }
-
-  rememberMessage(id: string, message: string): void {
-    if (!message.trim() || message.length > 65536) return;
-    this.history.set(
-      id,
-      [
-        message,
-        ...this.messageHistory(id).filter((entry) => entry !== message),
-      ].slice(0, HISTORY_LIMIT),
-    );
-    void Promise.resolve(
-      this.storage.update(
-        HISTORY_KEY,
-        [...this.history].map(([repositoryId, messages]) => ({
-          repositoryId,
-          messages,
-        })),
-      ),
-    ).catch(() => undefined);
-  }
-
-  committed(id: string, message: string): void {
-    this.rememberMessage(id, message);
+  committed(id: string): void {
     this.requireRepository(id).commitMode = { kind: 'new' };
     this.beforeAmend.delete(id);
     this.setDraft(id, '');
