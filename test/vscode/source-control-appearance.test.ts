@@ -276,7 +276,8 @@ describe('Source Control appearance', () => {
         await page.locator('.scm-view .monaco-list').first().focus();
         await page.mouse.move(0, 0);
         await revealNativeLabel(page, nativeLabel);
-        await nativeLabel.hover({ timeout: 5000 });
+        // Use the native keyboard action to avoid losing a mouse hover during theme redraws.
+        await vscode.commands.executeCommand('list.showHover');
         const nativeHover = page
           .locator('.monaco-hover.workbench-hover')
           .filter({ visible: true });
@@ -308,13 +309,29 @@ describe('Source Control appearance', () => {
       assert.deepEqual(comparisons, native);
     } catch (error) {
       await page?.screenshot({
-        path: '.artifacts/source-control-appearance-failure.png',
+        path: join(
+          process.env.GIT_UI_TEST_ARTIFACTS ?? '.artifacts',
+          'source-control-appearance-failure.png',
+        ),
       });
       await writeFile(
-        '.artifacts/source-control-appearance-diagnostic.json',
+        join(
+          process.env.GIT_UI_TEST_ARTIFACTS ?? '.artifacts',
+          'source-control-appearance-diagnostic.json',
+        ),
         JSON.stringify({
           hoverTarget,
-          theme: workbench.get('colorTheme'),
+          theme: vscode.workspace
+            .getConfiguration('workbench')
+            .get('colorTheme'),
+          focusedRow: await page
+            ?.locator('.scm-view .monaco-list-row.focused')
+            .allTextContents(),
+          activeElement: await page?.evaluate(() => ({
+            tag: document.activeElement?.tagName,
+            class: document.activeElement?.className,
+            focused: document.hasFocus(),
+          })),
           labels: await page
             ?.locator('.scm-view .monaco-list-row .monaco-icon-label')
             .allTextContents(),
