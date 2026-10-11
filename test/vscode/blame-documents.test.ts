@@ -285,6 +285,48 @@ describe('native blame documents and sessions', () => {
     assert.ok(!uncommitted.value.includes('command:'));
   });
 
+  it('attributes an index document before committing a staged rename', async () => {
+    const f = await createFixture({ prefix: 'git-ui-blame-staged-rename ü ' });
+
+    try {
+      const access = await getGitApi();
+      const repository = await access.api.openRepository(
+        vscode.Uri.file(f.root),
+      );
+
+      assert.ok(repository);
+      const head = (await f.runGit(['rev-parse', 'HEAD'])).trim();
+      const name =
+        process.platform === 'win32' ? 'renamed ü.txt' : 'renamed\t" ü.txt';
+
+      await f.runGit(['mv', 'sample.txt', name]);
+      await writeFile(join(f.root, name), 'first\nworking only\n');
+      await repository.status();
+      const index = await vscode.workspace.openTextDocument(
+        access.api.toGitUri(vscode.Uri.file(join(f.root, name)), ''),
+      );
+      const snapshot = await resolveBlameDocument(access, index);
+
+      assert.equal(snapshot.kind, 'ready');
+      if (snapshot.kind !== 'ready') assert.fail('Missing index snapshot');
+      const result = await createBlameQueries(
+        access,
+        new GitCli(access),
+      )(snapshot.query);
+
+      assert.deepEqual(index.getText(), 'first\n');
+      assert.equal(result.kind, 'blame');
+      if (result.kind !== 'blame')
+        assert.fail('Staged rename lost its history');
+      assert.equal(result.lines.length, 1);
+      assert.equal(result.lines[0]?.kind, 'committed');
+      assert.equal(result.lines[0]?.sha, head);
+    } finally {
+      await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+      await f.dispose();
+    }
+  });
+
   it('refreshes unsaved snapshots, ignores superseded reads, and closes cleanly', async () => {
     const f = await createFixture({ prefix: 'git-ui-blame-lifecycle ü ' });
     let annotations: BlameAnnotations | undefined;

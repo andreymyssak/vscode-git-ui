@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { expect, type Locator, type Page } from '@playwright/test';
 import * as vscode from 'vscode';
 
-import { getGitApi } from '../../src/extension/git/api';
+import { getGitApi, type GitAPI } from '../../src/extension/git/api';
 import { commandId, LOG_VIEW_ID } from '../../src/shared/extension-identity';
 import {
   nativeBrowser,
@@ -126,6 +126,113 @@ async function selectedCommit(id: string, sha: string): Promise<void> {
 }
 
 describe('native Git UI blame', () => {
+  for (const failOlder of [false, true])
+    it(`keeps the newest commit click when older validation ${failOlder ? 'fails' : 'finishes'} late`, async function () {
+      this.timeout(60000);
+      const fixture = await createFixture({
+        prefix: 'git-ui-blame-click-order-',
+      });
+      const path = join(fixture.root, 'sample.txt');
+      const id = vscode.Uri.file(fixture.root).toString();
+      const older = (await fixture.runGit(['rev-parse', 'HEAD'])).trim();
+
+      await writeFile(path, 'first\nsecond\n');
+      await fixture.runGit(['add', '--', 'sample.txt']);
+      await fixture.runGit(['commit', '-m', 'Newest clicked commit']);
+      const newer = (await fixture.runGit(['rev-parse', 'HEAD'])).trim();
+      const access = await getGitApi();
+      const repository = await access.api.openRepository(
+        vscode.Uri.file(fixture.root),
+      );
+
+      assert.ok(repository);
+      await repository.status();
+      const gitExtension = vscode.extensions.getExtension<{
+        getAPI(version: 1): GitAPI;
+      }>('vscode.git');
+
+      assert.ok(gitExtension);
+      const getAPI = gitExtension.exports.getAPI;
+      const getCommit = repository.getCommit;
+      let release = () => {};
+
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      let started = false;
+      let pending: Thenable<unknown> | undefined;
+
+      repository.getCommit = async (ref) => {
+        if (ref === older && !started) {
+          started = true;
+          await held;
+          if (failOlder) throw new Error('Superseded blame validation failure');
+        }
+
+        return getCommit.call(repository, ref);
+      };
+
+      // VS Code creates new repository wrappers for each public API request.
+      gitExtension.exports.getAPI = (version) => {
+        const api = getAPI.call(gitExtension.exports, version);
+
+        return new Proxy(api, {
+          get: (target, property) => {
+            if (property === 'repositories')
+              return target.repositories.map((candidate) =>
+                candidate.rootUri.toString() === id ? repository : candidate,
+              );
+            const value: unknown = Reflect.get(target, property, target);
+
+            return typeof value === 'function' ? value.bind(target) : value;
+          },
+        });
+      };
+
+      try {
+        await vscode.commands.executeCommand('notifications.clearAll');
+        pending = vscode.commands.executeCommand(
+          commandId('open-blame-commit'),
+          {
+            documentUri: vscode.Uri.file(path).toString(),
+            sha: older,
+          },
+        );
+        await expect.poll(() => started).toBe(true);
+        assert.equal(
+          await vscode.commands.executeCommand(commandId('open-blame-commit'), {
+            documentUri: vscode.Uri.file(path).toString(),
+            sha: newer,
+          }),
+          true,
+        );
+        await selectedCommit(id, newer);
+        release();
+        await pending;
+        await selectedCommit(id, newer);
+        if (failOlder) {
+          const page = await workbench();
+
+          await vscode.commands.executeCommand('notifications.showList');
+          await expect(
+            page.locator('.notification-list-item').filter({
+              hasText: 'Superseded blame validation failure',
+            }),
+          ).toHaveCount(0);
+        }
+      } finally {
+        release();
+        await pending;
+        repository.getCommit = getCommit;
+        gitExtension.exports.getAPI = getAPI;
+        await vscode.commands.executeCommand('notifications.hideList');
+        await vscode.commands.executeCommand(
+          'workbench.action.closeAllEditors',
+        );
+        await fixture.dispose();
+      }
+    });
+
   it('traces rendered annotations through commit details and both native diff sides', async function () {
     this.timeout(120000);
     assert.ok(

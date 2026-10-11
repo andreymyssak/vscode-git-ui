@@ -145,6 +145,64 @@ describe('blame against real Git', () => {
     });
   });
 
+  it('follows a staged rename for both index and working contents', async (t) => {
+    const f = await fixture();
+
+    t.onTestFinished(() => f.dispose());
+    const name =
+      process.platform === 'win32' ? 'staged ü.txt' : 'staged\t" ü.txt';
+
+    await f.runGit(['mv', 'sample.txt', name]);
+    await writeFile(join(f.root, name), 'first\nnew\n');
+    const index = await f.runGit(['show', `:${name}`]);
+    const before = await f.runGit(['status', '--porcelain=v1']);
+
+    for (const contents of [index, 'first\nnew\n']) {
+      const result = await f.read({
+        repositoryId: 'fixture',
+        ignoreWhitespace: false,
+        source: { kind: 'contents', path: name, headSha: f.firstSha, contents },
+      });
+
+      assert(result.kind === 'blame');
+      expect(result.lines[0]).toMatchObject({
+        kind: 'committed',
+        sha: f.firstSha,
+        originalPath: 'sample.txt',
+        text: 'first',
+      });
+      if (contents !== index)
+        expect(result.lines[1]).toMatchObject({
+          kind: 'uncommitted',
+          text: 'new',
+        });
+    }
+
+    expect(await f.runGit(['status', '--porcelain=v1'])).toBe(before);
+    expect(await f.runGit(['show', `:${name}`])).toBe(index);
+    expect((await f.runGit(['rev-parse', 'HEAD'])).trim()).toBe(f.firstSha);
+  });
+
+  it('reports no history for a newly staged file', async (t) => {
+    const f = await fixture();
+
+    t.onTestFinished(() => f.dispose());
+    await writeFile(join(f.root, 'new.txt'), 'new\n');
+    await f.runGit(['add', '--', 'new.txt']);
+    expect(
+      await f.read({
+        repositoryId: 'fixture',
+        ignoreWhitespace: false,
+        source: {
+          kind: 'contents',
+          path: 'new.txt',
+          headSha: f.firstSha,
+          contents: 'new\n',
+        },
+      }),
+    ).toEqual({ kind: 'no-history' });
+  });
+
   it('reports no history for an untracked file and an unborn repository', async (t) => {
     const f = await fixture();
 

@@ -59,6 +59,7 @@ export function registerBlame(
   let annotations: BlameAnnotations | null = null;
   let adapter: Promise<GitAdapter> | null = null;
   let disposed = false;
+  let commitRequest = 0;
   const updateEnabled = () => {
     const editor = vscode.window.activeTextEditor;
 
@@ -107,15 +108,18 @@ export function registerBlame(
     return annotations;
   };
 
-  const run = async (work: () => void | Promise<void>): Promise<boolean> => {
+  const run = async (
+    work: () => void | Promise<void>,
+    isCurrent = () => !disposed,
+  ): Promise<boolean> => {
     try {
       await getGitApi();
-      if (disposed) return false;
+      if (!isCurrent()) return false;
       await work();
 
-      return true;
+      return isCurrent();
     } catch (error) {
-      if (!cancelled(error))
+      if (isCurrent() && !cancelled(error))
         await showOperationError(
           error instanceof Error ? error.message : String(error),
         );
@@ -143,8 +147,11 @@ export function registerBlame(
     ),
     vscode.commands.registerCommand(
       commandId('open-blame-commit'),
-      (value: unknown) =>
-        run(async () => {
+      (value: unknown) => {
+        const request = ++commitRequest;
+        const isCurrent = () => !disposed && request === commitRequest;
+
+        return run(async () => {
           const parsed = commitArgument.safeParse(value);
 
           if (!parsed.success)
@@ -154,6 +161,8 @@ export function registerBlame(
 
           if (!file) throw new Error('This blame document is not a Git file.');
           const access = await getGitApi();
+
+          if (!isCurrent()) return;
           const found = access.api.getRepository(file);
 
           if (!found)
@@ -162,9 +171,11 @@ export function registerBlame(
           const repository = access.repository(repositoryId);
 
           await repository.getCommit(parsed.data.sha);
+          if (!isCurrent()) return;
           access.repository(repositoryId);
           await options.revealCommit({ repositoryId, sha: parsed.data.sha });
-        }),
+        }, isCurrent);
+      },
     ),
     vscode.languages.registerHoverProvider(
       [{ scheme: 'file' }, { scheme: 'git' }],
@@ -189,6 +200,7 @@ export function registerBlame(
     vscode.window.onDidChangeActiveTextEditor(updateEnabled),
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (event.affectsConfiguration('git.enabled')) {
+        commitRequest++;
         releaseAdapter();
         updateEnabled();
       }

@@ -49,6 +49,7 @@ export function createBlameQueries(
     if (query.ignoreWhitespace) args.push('-w');
     const { source, repositoryId } = query;
     let output: string;
+    let pathInHead = true;
 
     if (source.kind === 'revision') {
       output = await cli.run(
@@ -94,7 +95,16 @@ export function createBlameQueries(
         signal,
       );
 
-      if (!tracked) return { kind: 'no-history' };
+      pathInHead = Boolean(tracked);
+      if (
+        !pathInHead &&
+        !(await cli.run(
+          repositoryId,
+          ['ls-files', '--cached', '-z', '--', `:(literal)${source.path}`],
+          signal,
+        ))
+      )
+        return { kind: 'no-history' };
       output = await cli.runWithInput(
         repositoryId,
         [...args, '--contents', '-', '--', source.path],
@@ -107,6 +117,11 @@ export function createBlameQueries(
     signal?.throwIfAborted();
     access.repository(repositoryId);
 
-    return { kind: 'blame', lines: parseBlamePorcelain(output) };
+    const lines = parseBlamePorcelain(output);
+
+    if (!pathInHead && !lines.some((line) => line.kind === 'committed'))
+      return { kind: 'no-history' };
+
+    return { kind: 'blame', lines };
   };
 }
