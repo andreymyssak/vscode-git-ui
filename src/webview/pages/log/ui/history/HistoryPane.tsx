@@ -171,6 +171,10 @@ function HistoryContent({
       generation: data.generation,
       repositoryId: data.repository?.id,
     };
+    // A wheel scroll can change the DOM before its event updates model state.
+    // Restore the keyboard destination even when the stored offset is unchanged.
+    if (root.current && root.current.scrollTop !== scrollTop)
+      root.current.scrollTop = scrollTop;
     flushSync(() =>
       onIntent({ kind: 'select-commit', sha, scrollTop, gesture }),
     );

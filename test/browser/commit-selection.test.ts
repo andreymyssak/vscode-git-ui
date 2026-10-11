@@ -242,6 +242,22 @@ test('grid-focused Shift arrows resume the active range after its row scrolls ou
   expect(await selected(page)).toEqual([sha(1)]);
 });
 
+test('keyboard navigation restores the viewport before a pending scroll event updates the model', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await row(page, 2).click();
+  await page.locator('#history').evaluate((node) => {
+    node.scrollTop = 22000;
+    (node as HTMLElement).focus();
+    node.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }),
+    );
+  });
+  await expect(row(page, 1)).toBeFocused();
+  expect(await selected(page)).toEqual([sha(1)]);
+});
+
 test('reference-control arrows do not navigate rows or the grid twice', async ({
   page,
 }) => {
