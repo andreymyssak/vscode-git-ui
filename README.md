@@ -4,35 +4,35 @@
 
 **Finally, a proper Git UI for VS Code. Completely free and open source. No subscriptions or paid tiers.**
 
-Git UI helps you browse history, commit the files you choose, manage stashes, and trace code with Git Blame. It follows your VS Code theme and opens comparisons in the native diff editor.
+Git UI helps you browse history, inspect changes, trace lines with Git Blame, commit the files you choose, and keep unfinished work in stashes. It opens comparisons in VS Code's native diff editor.
 
 Inspired by the Git tool window in JetBrains' [IntelliJ IDEA Community Edition](https://github.com/JetBrains/intellij-community).
 
-## Commit the files you choose
-
-![Git UI Changes with two files checked for a commit, two files left unchecked, and the selected file open in VS Code's diff editor](assets/readme/changes.png)
-
-### Keep unfinished work in stashes
-
-![The Stashes tab with named stashes, their creation times, a checked saved file, and its native diff](assets/readme/stashes.png)
-
 ## Browse history and inspect changes
 
-![Demo of commit selection, opening a changed file in VS Code's diff editor, history search, and worktrees in Git UI](assets/readme/browsing.gif)
-
-## Trace a line back to its commit
-
-![Git Blame dates and authors beside syntax-highlighted code, with the line's commit selected in Git UI and its originating file highlighted in the changed-files list](assets/readme/blame.png)
-
-Choose **Annotate with Git Blame** from the editor's line-number menu. Open a commit through the annotation's hover link or **Open Line Commit in Git UI** in the editor menu. Git UI selects the exact commit and its originating file in the Log while you keep the native editor's syntax highlighting and editing tools.
+![Browse commits, inspect a native diff, search history, and view worktrees while Git UI stays below the open editor in Dark Modern](assets/readme/browsing-dark.gif)
 
 ## Fits your VS Code theme
 
-The panel follows your VS Code theme. Here it is in Dark Modern:
-![Git UI in VS Code's Dark Modern theme, showing branches, a commit graph, and changed files](assets/readme/log-dark.png)
+![Switch between Dark Modern and Light Modern using VS Code's theme picker, with both the editor and Git UI changing together](assets/readme/themes.gif)
 
-And in Light Modern:
-![Git UI in VS Code's Light Modern theme](assets/readme/log-light.png)
+The panel follows your VS Code theme.
+
+## Git Blame
+
+![Annotate a file, follow a line's commit into Git UI, open another changed file, and annotate its native diff to trace an older commit](assets/readme/blame.gif)
+
+Choose **Git UI: Annotate with Git Blame** from the editor's line-number menu to see who changed each line and when.
+
+## Improved Source Control
+
+![Check two files, inspect their changes, enter a commit message, and commit them while leaving other files unchanged](assets/readme/changes.gif)
+
+### Stashes
+
+![Save unfinished changes in a stash, rename it, inspect a saved file in the native diff editor, and restore only that file](assets/readme/stashes.gif)
+
+Keep unfinished work in named stashes. Restore a whole stash or just the files you need.
 
 ## More ways to work with Git
 
