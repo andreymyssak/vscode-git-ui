@@ -1,9 +1,10 @@
 # Changelog
 
-## [0.3.1](https://github.com/andreymyssak/vscode-git-ui/compare/v0.3.0...v0.3.1) (2026-10-11)
+## [0.3.1](https://github.com/andreymyssak/vscode-git-ui/compare/v0.3.0...v0.3.1) (2026-10-12)
 
 ### Bug Fixes
 
+- **blame:** open line commits with mouse clicks on dates and authors ([198d109](https://github.com/andreymyssak/vscode-git-ui/commit/198d109071c1170a574d50ae3256bcfde88bf56e))
 - **blame:** preserve file encodings and keep annotations with their editor tabs ([c56653b](https://github.com/andreymyssak/vscode-git-ui/commit/c56653b919dc91901f8986428dab554167a49cd9))
 - **branches:** keep horizontally scrolled names visible while filtering ([f4bbab1](https://github.com/andreymyssak/vscode-git-ui/commit/f4bbab1f775620cae105c9c80ae3e22fcd86dc76))
 - **git:** order writes across linked worktrees and cancel abandoned action checks ([7efd073](https://github.com/andreymyssak/vscode-git-ui/commit/7efd0736b5703b931e9163518e98aa855051e2b0))
