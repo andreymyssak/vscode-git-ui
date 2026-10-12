@@ -6,8 +6,8 @@ import { expect, onTestFinished, test } from 'vitest';
 import {
   captureRollback,
   rollbackSelected,
-} from '../../src/extension/git/rollback';
-import { readWorkingChanges } from '../../src/extension/git/working-changes';
+} from '../../src/extension/git/source-control/rollback';
+import { readWorkingChanges } from '../../src/extension/git/source-control/working-changes';
 import { createSquashFixture } from '../fixtures/squash-repository';
 
 test('Rollback restores selected staged and working versions to HEAD and preserves other staging and new files', async () => {

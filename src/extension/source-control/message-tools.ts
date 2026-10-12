@@ -1,5 +1,6 @@
+import type { SourceControlBackend } from '../git/source-control/index';
 import type { SourceControlModel } from './model';
-import { requireLiveRepository, type SourceControlRuntime } from './writes';
+import { requireLiveRepository } from './writes';
 
 export async function toggleAmend({
   runtime,
@@ -8,7 +9,7 @@ export async function toggleAmend({
   enabled,
   isCurrent = () => true,
 }: {
-  runtime: SourceControlRuntime;
+  runtime: SourceControlBackend;
   model: SourceControlModel;
   id: string;
   enabled: boolean;
@@ -32,7 +33,7 @@ export async function toggleAmend({
     model.draft(id) === draft;
 
   try {
-    const commit = await runtime.access.repository(id).getCommit('HEAD');
+    const commit = await runtime.headCommit(id);
 
     if (!unchanged()) return;
     const message = commit.message.trimEnd();

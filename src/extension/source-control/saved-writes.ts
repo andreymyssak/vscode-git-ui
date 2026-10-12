@@ -2,16 +2,8 @@ import * as vscode from 'vscode';
 
 import type { SourceControlRequest } from '../../shared/source-control';
 import { saveSelectedDocuments } from '../changes/prompts';
-import { deleteStashFiles, renameStash } from '../git/edit-stash';
-import { withRepositoryOperation } from '../git/repository-operations';
-import {
-  applyStash,
-  deleteStash,
-  restoreStashFiles,
-} from '../git/stash-operations';
-import { readStashFiles } from '../git/stashes';
+import type { SourceControlBackend } from '../git/source-control/index';
 import type { SourceControlModel } from './model';
-import type { SourceControlRuntime } from './writes';
 import { requireLiveRepository, requireSaved } from './writes';
 
 type SavedRequest =
@@ -34,7 +26,7 @@ export function savedWriteDescription(request: SavedRequest): string {
 }
 
 export async function writeSaved(options: {
-  runtime: SourceControlRuntime;
+  runtime: SourceControlBackend;
   model: SourceControlModel;
   request: SavedRequest;
 }): Promise<void> {
@@ -43,12 +35,13 @@ export async function writeSaved(options: {
   const sha = request.sha;
   const repo = requireLiveRepository(runtime, model, id);
   const stash = model.requireStash(id, sha);
+  const prepared = runtime.prepareStash({ id, sha });
   const keys = 'files' in request ? request.files : null;
   const files =
     keys === null
-      ? await readStashFiles(runtime.cli, id, stash)
+      ? await runtime.stashFiles(id, stash)
       : model.stashFiles(id, sha, keys);
-  const root = runtime.access.repository(id).rootUri;
+  const root = runtime.root(id);
   let name: string | null = null;
 
   if (request.kind === 'rename-stash') {
@@ -79,8 +72,7 @@ export async function writeSaved(options: {
 
     if (answer !== label) return;
   } else if (!(await saveSelectedDocuments(root, files))) return;
-  requireLiveRepository(runtime, model, id);
-  await withRepositoryOperation(runtime.cli, id, async () => {
+  const beforeWrite = () => {
     requireLiveRepository(runtime, model, id);
     model.requireStash(id, sha);
     if (
@@ -90,37 +82,50 @@ export async function writeSaved(options: {
       throw new Error(
         'The saved selection changed. Refresh and select it again.',
       );
-    switch (request.kind) {
-      case 'restore-stash':
-        requireSaved(root, files);
-        await applyStash(runtime.cli, id, sha);
+    if (
+      request.kind === 'restore-stash' ||
+      request.kind === 'restore-stash-files'
+    )
+      requireSaved(root, files);
+  };
 
-        return;
-      case 'restore-stash-files':
-        requireSaved(root, files);
-        await restoreStashFiles(runtime.cli, id, sha, files);
+  switch (request.kind) {
+    case 'restore-stash':
+      await prepared.write({ action: { kind: 'restore' }, beforeWrite });
 
-        return;
-      case 'delete-stash':
-        await deleteStash(runtime.cli, id, sha);
+      return;
+    case 'restore-stash-files':
+      await prepared.write({
+        action: { kind: 'restore-files', files },
+        beforeWrite,
+      });
 
-        return;
-      case 'delete-stash-files': {
-        const next = await deleteStashFiles(runtime.cli, id, sha, files);
+      return;
+    case 'delete-stash':
+      await prepared.write({ action: { kind: 'delete' }, beforeWrite });
 
-        if (next !== null) await model.rememberStashRewrite(id, stash, next);
+      return;
+    case 'delete-stash-files': {
+      const next = await prepared.write({
+        action: { kind: 'delete-files', files },
+        beforeWrite,
+      });
 
-        return;
-      }
+      if (next !== null) await model.rememberStashRewrite(id, stash, next);
 
-      case 'rename-stash': {
-        if (name === null) throw new Error('Enter a stash name.');
-        const next = await renameStash(runtime.cli, id, sha, name);
-
-        await model.rememberStashRewrite(id, stash, next);
-
-        return;
-      }
+      return;
     }
-  });
+
+    case 'rename-stash': {
+      if (name === null) throw new Error('Enter a stash name.');
+      const next = await prepared.write({
+        action: { kind: 'rename', name },
+        beforeWrite,
+      });
+
+      if (next !== null) await model.rememberStashRewrite(id, stash, next);
+
+      return;
+    }
+  }
 }

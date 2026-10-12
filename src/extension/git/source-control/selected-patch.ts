@@ -1,9 +1,10 @@
-import type { GitCli } from './cli';
+import { MAX_SELECTED_PATCH_BYTES } from '../../../shared/commit-message';
+import type { GitCli } from '../cli';
 import { captureSelection, type SelectionSnapshot } from './selected-changes';
 import type { WorkingFile } from './working-changes';
 import { stageWorkingFiles } from './working-paths';
 
-export const MAX_SELECTED_PATCH_BYTES = 256 * 1024;
+export { MAX_SELECTED_PATCH_BYTES } from '../../../shared/commit-message';
 
 export interface SelectedPatch {
   readonly snapshot: SelectionSnapshot;

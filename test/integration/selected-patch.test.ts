@@ -7,8 +7,8 @@ import { GitCli, type PrivateIndex } from '../../src/extension/git/cli';
 import {
   readSelectedPatch,
   validateSelectedPatch,
-} from '../../src/extension/git/selected-patch';
-import { readWorkingChanges } from '../../src/extension/git/working-changes';
+} from '../../src/extension/git/source-control/selected-patch';
+import { readWorkingChanges } from '../../src/extension/git/source-control/working-changes';
 import { createSquashFixture } from '../fixtures/squash-repository';
 
 test('selected patch describes whole working files, including literal new/deleted/renamed paths, while preserving Git state', async (t) => {

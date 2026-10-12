@@ -23,6 +23,8 @@ The Git adapter uses the installed Git extension where possible and explicit Git
 
 The Source Control view works independently of the Log webview and uses ordinary Git stashes. Selected commits and stash creation use a temporary index to exclude unchecked staged changes. Writes share the repository operation queue and a lock across linked worktrees.
 
+`src/extension/git/source-control/index.ts` is the commit/stash backend entry point. Its private implementation owns Git reads, prepared snapshots, live repository checks and queued writes; Source Control owns prompts, drafts and checkbox state. Prepared operations reject repositories closed or replaced during confirmation. Import checks prevent callers from accessing private backend files or using Git infrastructure directly from Source Control.
+
 Stash names are independent of the commit draft. Applying saved files keeps the stash intact; explicitly deleting files removes their saved versions. Rename and partial deletion preserve stash order and dates through the same guarded ref/reflog writer used for stash deletion.
 
 Blame uses native editor decorations and hover links. A shared reader owns identical pending snapshots; each editor cancels its own subscription, and the last reader releases the Git process. Tab closure releases editor state. The adapter converts displayed text with VS Code's encoding APIs while decoding Git metadata independently.

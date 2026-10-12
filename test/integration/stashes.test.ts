@@ -8,8 +8,11 @@ import {
   applyStash,
   deleteStash,
   restoreStashFiles,
-} from '../../src/extension/git/stash-operations';
-import { readStashes, readStashFiles } from '../../src/extension/git/stashes';
+} from '../../src/extension/git/source-control/stash-operations';
+import {
+  readStashes,
+  readStashFiles,
+} from '../../src/extension/git/source-control/stashes';
 import { createSquashFixture } from '../fixtures/squash-repository';
 
 const literalPath =

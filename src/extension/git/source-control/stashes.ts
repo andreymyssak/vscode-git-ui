@@ -1,10 +1,10 @@
 import { win32 } from 'node:path';
 
-import type { Stash, StashFile } from '../../shared/source-control';
-import type { GitCli } from './cli';
-import { readObjectParents } from './parents';
+import type { Stash, StashFile } from '../../../shared/source-control';
+import type { GitCli } from '../cli';
+import { readObjectParents } from '../parents';
 
-export type { Stash, StashFile } from '../../shared/source-control';
+export type { Stash, StashFile } from '../../../shared/source-control';
 
 type Reader = Pick<GitCli, 'run'>;
 

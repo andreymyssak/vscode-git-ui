@@ -1,9 +1,7 @@
 import type * as vscode from 'vscode';
 
-import {
-  MAX_SELECTED_PATCH_BYTES,
-  type SelectedPatch,
-} from '../git/selected-patch';
+import { MAX_SELECTED_PATCH_BYTES } from '../../shared/commit-message';
+import type { SelectedPatch } from '../git/source-control/index';
 
 export interface CommitMessageModel extends Pick<
   vscode.LanguageModelChat,

@@ -6,7 +6,7 @@ import { expect } from '@playwright/test';
 import * as vscode from 'vscode';
 
 import { getGitApi } from '../../src/extension/git/api';
-import { GitCli } from '../../src/extension/git/cli';
+import { createSourceControlBackend } from '../../src/extension/git/source-control/index';
 import { toggleAmend } from '../../src/extension/source-control/message-tools';
 import { SourceControlModel } from '../../src/extension/source-control/model';
 import { sourceControlCommandId } from '../../src/shared/extension-identity';
@@ -132,26 +132,30 @@ describe('Amend mode', () => {
       });
 
       model.updateRepositories([info]);
-      const runtime = { access, cli: new GitCli(access) };
+      const runtime = await createSourceControlBackend();
 
-      model.setDraft(id, 'Original draft');
-      const editing = toggleAmend({ runtime, model, id, enabled: true });
+      try {
+        model.setDraft(id, 'Original draft');
+        const editing = toggleAmend({ runtime, model, id, enabled: true });
 
-      model.setDraft(id, 'Newer edited draft');
-      await editing;
-      assert.equal(model.draft(id), 'Newer edited draft');
-      assert.equal(model.requireRepository(id).commitMode.kind, 'new');
-      const cancelled = toggleAmend({ runtime, model, id, enabled: true });
+        model.setDraft(id, 'Newer edited draft');
+        await editing;
+        assert.equal(model.draft(id), 'Newer edited draft');
+        assert.equal(model.requireRepository(id).commitMode.kind, 'new');
+        const cancelled = toggleAmend({ runtime, model, id, enabled: true });
 
-      model.setAmend(id, null);
-      await cancelled;
-      assert.equal(model.requireRepository(id).commitMode.kind, 'new');
-      const writing = toggleAmend({ runtime, model, id, enabled: true });
+        model.setAmend(id, null);
+        await cancelled;
+        assert.equal(model.requireRepository(id).commitMode.kind, 'new');
+        const writing = toggleAmend({ runtime, model, id, enabled: true });
 
-      model.busy = true;
-      await writing;
-      assert.equal(model.requireRepository(id).commitMode.kind, 'new');
-      assert.equal(model.draft(id), 'Newer edited draft');
+        model.busy = true;
+        await writing;
+        assert.equal(model.requireRepository(id).commitMode.kind, 'new');
+        assert.equal(model.draft(id), 'Newer edited draft');
+      } finally {
+        runtime.dispose();
+      }
     } finally {
       await closeRepository(fixture);
     }

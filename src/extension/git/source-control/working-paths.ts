@@ -1,7 +1,7 @@
 import { lstat } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import type { PrivateIndex } from './cli';
+import type { PrivateIndex } from '../cli';
 
 export const pathsOverlap = (left: string, right: string) =>
   left === right ||

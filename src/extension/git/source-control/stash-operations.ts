@@ -1,11 +1,11 @@
-import type { GitCli } from './cli';
-import { deleteStashEntry } from './delete-stash';
-import type { Stash, StashFile } from './stashes';
-import { readStashes, readStashFiles, requireStashIdentity } from './stashes';
+import type { GitCli } from '../cli';
 import {
   GitRequiresSourceControl,
   requireNoGitOperation,
-} from './working-tree-state';
+} from '../working-tree-state';
+import { deleteStashEntry } from './delete-stash';
+import type { Stash, StashFile } from './stashes';
+import { readStashes, readStashFiles, requireStashIdentity } from './stashes';
 
 type Reader = Pick<GitCli, 'run'>;
 

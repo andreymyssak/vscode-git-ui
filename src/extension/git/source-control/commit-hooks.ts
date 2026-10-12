@@ -9,7 +9,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-import type { GitCli } from './cli';
+import type { GitCli } from '../cli';
 
 const guardedHooks = new Set([
   'pre-commit',

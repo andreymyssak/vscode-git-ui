@@ -7,8 +7,8 @@ import {
   captureSelection,
   commitSelected,
   stashSelected,
-} from '../../src/extension/git/selected-changes';
-import { readWorkingChanges } from '../../src/extension/git/working-changes';
+} from '../../src/extension/git/source-control/selected-changes';
+import { readWorkingChanges } from '../../src/extension/git/source-control/working-changes';
 import { createSquashFixture } from '../fixtures/squash-repository';
 
 for (const hookName of ['pre-commit', 'prepare-commit-msg', 'commit-msg']) {

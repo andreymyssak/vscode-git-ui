@@ -2,8 +2,9 @@ import { createHash } from 'node:crypto';
 import { readFile, readlink, rmdir, unlink } from 'node:fs/promises';
 import { dirname, isAbsolute, join } from 'node:path';
 
-import type { CommitMode } from '../../shared/source-control';
-import type { GitCli } from './cli';
+import type { CommitMode } from '../../../shared/source-control';
+import type { GitCli } from '../cli';
+import { requireNoGitOperation } from '../working-tree-state';
 import { withCheckedCommitHooks } from './commit-hooks';
 import { readWorkingChanges, type WorkingFile } from './working-changes';
 import {
@@ -11,7 +12,6 @@ import {
   stageWorkingFiles,
   workingPathStat,
 } from './working-paths';
-import { requireNoGitOperation } from './working-tree-state';
 
 export interface SelectionSnapshot {
   head: string | null;

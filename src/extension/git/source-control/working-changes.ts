@@ -1,7 +1,7 @@
-import type { WorkingFile } from '../../shared/source-control';
-import type { GitCli } from './cli';
+import type { WorkingFile } from '../../../shared/source-control';
+import type { GitCli } from '../cli';
 
-export type { WorkingFile } from '../../shared/source-control';
+export type { WorkingFile } from '../../../shared/source-control';
 
 export async function readWorkingChanges(
   cli: GitCli,

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { lstat, readFile, readlink } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import type { GitCli } from './cli';
+import type { GitCli } from '../cli';
 import {
   captureSelection,
   type SelectionSnapshot,

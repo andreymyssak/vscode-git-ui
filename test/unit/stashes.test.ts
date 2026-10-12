@@ -1,6 +1,9 @@
 import { expect, test } from 'vitest';
 
-import { parseStashes, parseStashFiles } from '../../src/extension/git/stashes';
+import {
+  parseStashes,
+  parseStashFiles,
+} from '../../src/extension/git/source-control/stashes';
 
 const sha = 'a'.repeat(40);
 const base = 'b'.repeat(40);

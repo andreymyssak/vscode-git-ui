@@ -1,6 +1,6 @@
-import type { GitCli } from './cli';
+import type { GitCli } from '../cli';
+import { readObjectParents } from '../parents';
 import { deleteStashEntry, replaceStashEntry } from './delete-stash';
-import { readObjectParents } from './parents';
 import type { StashFile } from './stashes';
 import { readStashes, readStashFiles, requireStashIdentity } from './stashes';
 

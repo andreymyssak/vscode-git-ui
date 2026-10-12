@@ -11,27 +11,22 @@ import {
   dirtySelectedDocuments,
   saveSelectedDocuments,
 } from '../changes/prompts';
-import { getGitApi } from '../git/api';
-import { GitCli } from '../git/cli';
-import { readStashes, readStashFiles } from '../git/stashes';
-import { readWorkingChanges } from '../git/working-changes';
+import {
+  createSourceControlBackend,
+  type SourceControlBackend,
+} from '../git/source-control/index';
 import { generateCommitMessage } from '../native/commit-message';
 import { openWorkingFiles } from '../native/open-working-files';
 import { openedChangePath } from '../native/opened-change';
 import { showOperationError } from '../native/operation-feedback';
 import { formatPathLabel } from '../native/path-label';
-import {
-  openSourceControlDiff,
-  stashChangeUris,
-  workingChangeUris,
-} from '../native/source-control-diffs';
+import { openSourceControlDiff } from '../native/source-control-diffs';
 import { discardWorking } from './discard';
 import { toggleAmend } from './message-tools';
 import { SourceControlModel } from './model';
 import { SourceControlNotifications } from './notifications';
 import { rollbackChanges } from './rollback';
 import { savedWriteDescription, writeSaved } from './saved-writes';
-import type { SourceControlRuntime } from './writes';
 import { requireLiveRepository, writeChanges } from './writes';
 
 function errorMessage(error: unknown): string {
@@ -49,8 +44,8 @@ async function loaded<T>(work: Promise<T[]>): Promise<Loaded<T>> {
 /** This service outlives hidden or recreated webviews; requests never own Git refs. */
 export class SourceControlService implements vscode.Disposable {
   readonly model: SourceControlModel;
-  private runtime: SourceControlRuntime | null = null;
-  private initializing: Promise<SourceControlRuntime> | null = null;
+  private runtime: SourceControlBackend | null = null;
+  private initializing: Promise<SourceControlBackend> | null = null;
   private readonly initialization = new AbortController();
   private readonly subscriptions: vscode.Disposable[] = [];
   private readonly repositoryListeners = new Map<string, vscode.Disposable>();
@@ -359,10 +354,7 @@ export class SourceControlService implements vscode.Disposable {
             request.paths,
           );
 
-          await openWorkingFiles(
-            runtime.access.repository(request.repositoryId).rootUri,
-            files,
-          );
+          await openWorkingFiles(runtime.root(request.repositoryId), files);
 
           return;
         }
@@ -372,7 +364,7 @@ export class SourceControlService implements vscode.Disposable {
 
           requireLiveRepository(runtime, this.model, request.repositoryId);
           await openWorkingFiles(
-            runtime.access.repository(request.repositoryId).rootUri,
+            runtime.root(request.repositoryId),
             this.model.workingFiles(request.repositoryId, [request.path]),
           );
 
@@ -457,7 +449,7 @@ export class SourceControlService implements vscode.Disposable {
       : null;
 
     try {
-      const { access, cli } = await this.initialize();
+      const runtime = await this.initialize();
 
       if (this.disposed || epoch !== this.refreshGeneration) return;
       if (
@@ -467,7 +459,7 @@ export class SourceControlService implements vscode.Disposable {
         throw new Error(
           'Enable Git and trust this workspace to load changes and stashes.',
         );
-      const infos = access.repositories();
+      const infos = runtime.repositories();
       const ids = new Set(infos.map((info) => info.id));
 
       this.notifications.connection(null);
@@ -483,9 +475,7 @@ export class SourceControlService implements vscode.Disposable {
         if (!this.repositoryListeners.has(info.id))
           this.repositoryListeners.set(
             info.id,
-            access
-              .repository(info.id)
-              .state.onDidChange(() => this.scheduleRefresh()),
+            runtime.subscribe(info.id, () => this.scheduleRefresh()),
           );
       this.model.updateRepositories(infos);
       if (this.preferredRepositoryId && ids.has(this.preferredRepositoryId))
@@ -494,8 +484,8 @@ export class SourceControlService implements vscode.Disposable {
       const results = await Promise.all(
         infos.map(async (info) => {
           const [changes, stashes] = await Promise.all([
-            loaded<WorkingFile>(readWorkingChanges(cli, info.id)),
-            loaded<Stash>(readStashes(cli, info.id)),
+            loaded<WorkingFile>(runtime.workingChanges(info.id)),
+            loaded<Stash>(runtime.stashes(info.id)),
           ]);
 
           return { id: info.id, changes, stashes };
@@ -547,20 +537,18 @@ export class SourceControlService implements vscode.Disposable {
     }, 100);
   }
 
-  private initialize(): Promise<SourceControlRuntime> {
+  private initialize(): Promise<SourceControlBackend> {
     if (this.runtime) return Promise.resolve(this.runtime);
     if (this.initializing) return this.initializing;
-    this.initializing = getGitApi(this.initialization.signal)
-      .then((access) => {
-        const runtime = { access, cli: new GitCli(access) };
-
+    this.initializing = createSourceControlBackend(this.initialization.signal)
+      .then((runtime) => {
         if (!this.disposed) {
           this.runtime = runtime;
           this.subscriptions.push(
-            access.api.onDidOpenRepository(() => this.scheduleRefresh()),
-            access.api.onDidCloseRepository(() => this.scheduleRefresh()),
+            runtime,
+            runtime.subscribeRepositories(() => this.scheduleRefresh()),
           );
-        }
+        } else runtime.dispose();
 
         return runtime;
       })
@@ -594,7 +582,7 @@ export class SourceControlService implements vscode.Disposable {
   private async write(
     id: string,
     title: string,
-    action: (runtime: SourceControlRuntime) => Promise<void>,
+    action: (runtime: SourceControlBackend) => Promise<void>,
   ): Promise<void> {
     if (this.model.busy) return;
     this.amendGeneration++;
@@ -603,7 +591,7 @@ export class SourceControlService implements vscode.Disposable {
     this.cancelGeneration();
     this.model.error = null;
     this.publish();
-    let runtime: SourceControlRuntime | null = null;
+    let runtime: SourceControlBackend | null = null;
 
     try {
       runtime = await this.initialize();
@@ -618,7 +606,7 @@ export class SourceControlService implements vscode.Disposable {
     } finally {
       if (!this.disposed) {
         try {
-          await runtime?.access.repository(id).status();
+          await runtime?.status(id);
         } catch {
           // A repository can close while its action or save dialog is open.
         }
@@ -663,7 +651,7 @@ export class SourceControlService implements vscode.Disposable {
       const runtime = await this.initialize();
 
       requireLiveRepository(runtime, this.model, id);
-      const root = runtime.access.repository(id).rootUri;
+      const root = runtime.root(id);
 
       if (source.token.isCancellationRequested || this.disposed) return;
       if (!(await saveSelectedDocuments(root, files))) return;
@@ -679,7 +667,7 @@ export class SourceControlService implements vscode.Disposable {
           'Checked files have unsaved edits. Save them before generating a message.',
         );
       const message = await this.generateMessage(
-        runtime.cli,
+        runtime,
         id,
         files,
         source.token,
@@ -721,7 +709,7 @@ export class SourceControlService implements vscode.Disposable {
       return;
     stash.files = { kind: 'loading' };
     this.publish();
-    const files = await loaded(readStashFiles(runtime.cli, id, stash));
+    const files = await loaded(runtime.stashFiles(id, stash));
 
     if (this.disposed) return;
     const current = this.model.repositories.get(id);
@@ -755,9 +743,7 @@ export class SourceControlService implements vscode.Disposable {
 
     if (!file) return;
     await openSourceControlDiff(
-      await workingChangeUris(
-        runtime.access,
-        runtime.cli,
+      await runtime.workingComparison(
         request.repositoryId,
         file,
         request.index,
@@ -780,7 +766,7 @@ export class SourceControlService implements vscode.Disposable {
 
     if (!file) return;
     await openSourceControlDiff(
-      stashChangeUris(runtime.access, request.repositoryId, file),
+      runtime.stashComparison(request.repositoryId, file),
       `${file.path} (${file.snapshot} · ${request.sha.slice(0, 8)})`,
       preview,
     );

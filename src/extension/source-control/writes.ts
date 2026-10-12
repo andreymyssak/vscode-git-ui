@@ -6,32 +6,18 @@ import {
   messagePrompt,
   saveSelectedDocuments,
 } from '../changes/prompts';
-import type { GitApiAccess } from '../git/api';
-import type { GitCli } from '../git/cli';
-import { withRepositoryOperation } from '../git/repository-operations';
-import {
-  captureSelection,
-  commitSelected,
-  stashSelected,
-} from '../git/selected-changes';
+import type { SourceControlBackend } from '../git/source-control/index';
 import { showOperationInfo } from '../native/operation-feedback';
 import type { SourceControlModel } from './model';
 
-export interface SourceControlRuntime {
-  access: GitApiAccess;
-  cli: GitCli;
-}
-
 export function requireLiveRepository(
-  runtime: SourceControlRuntime,
+  runtime: SourceControlBackend,
   model: SourceControlModel,
   id: string,
 ) {
   const repo = model.requireRepository(id);
 
-  if (!runtime.access.repositories().some((info) => info.id === id))
-    throw new Error('The repository closed. Refresh and select it again.');
-  runtime.access.repository(id);
+  runtime.root(id);
 
   return repo;
 }
@@ -47,7 +33,7 @@ export function requireSaved(
 }
 
 export async function writeChanges(options: {
-  runtime: SourceControlRuntime;
+  runtime: SourceControlBackend;
   model: SourceControlModel;
   id: string;
   kind: 'commit' | 'stash' | 'stash-silently';
@@ -78,7 +64,7 @@ export async function writeChanges(options: {
   if (!files.length && !amending)
     throw new Error('Select at least one changed file.');
   const selection = JSON.stringify(files);
-  const root = runtime.access.repository(id).rootUri;
+  const root = runtime.root(id);
 
   if (!(await saveSelectedDocuments(root, files))) return;
   requireLiveRepository(runtime, model, id);
@@ -86,25 +72,13 @@ export async function writeChanges(options: {
     throw new Error(
       `The ${label} files changed. Review them before continuing.`,
     );
-  const snapshot = await captureSelection(
-    runtime.cli,
+  const prepared = await runtime.prepareChanges({
     id,
     files,
-    amending ? mode : { kind: 'new' },
-  );
+    mode: amending ? mode : { kind: 'new' },
+  });
 
-  if (
-    amending &&
-    snapshot.head &&
-    (
-      await runtime.cli.run(id, [
-        'for-each-ref',
-        `--contains=${snapshot.head}`,
-        '--format=%(refname)',
-        'refs/remotes',
-      ])
-    ).trim()
-  ) {
+  if (prepared.amendPublished) {
     const choice = await vscode.window.showWarningMessage(
       'The last commit is in known remote history. Amending changes its identity.',
       { modal: true },
@@ -149,29 +123,29 @@ export async function writeChanges(options: {
 
   if (!message.trim()) throw new Error('Enter a message before continuing.');
   requireSaved(root, files);
-  await withRepositoryOperation(runtime.cli, id, async () => {
-    requireLiveRepository(runtime, model, id);
-    if (
-      JSON.stringify(currentFiles()) !== selection ||
-      (kind === 'commit' && model.draft(id) !== draft)
-    )
-      throw new Error(
-        `The ${label} files or message changed. Review them before continuing.`,
-      );
-    requireSaved(root, files);
-    const result =
-      kind === 'commit'
-        ? await commitSelected(runtime.cli, id, snapshot, message, mode)
-        : await stashSelected(runtime.cli, id, snapshot, message);
-
-    repo.checked.clear(files.map((file) => file.path));
-    if (kind === 'commit') model.committed(id);
-    showOperationInfo(
-      kind === 'commit'
-        ? amending
-          ? `Amended the last commit in ${repo.info.label}, ${result.sha.slice(0, 8)}.`
-          : `Committed ${files.length} ${label} files in ${repo.info.label}, ${result.sha.slice(0, 8)}.`
-        : `Stashed ${files.length} ${label} files in ${repo.info.label}.`,
-    );
+  const result = await prepared.write({
+    kind: kind === 'commit' ? 'commit' : 'stash',
+    message,
+    beforeWrite: () => {
+      requireLiveRepository(runtime, model, id);
+      if (
+        JSON.stringify(currentFiles()) !== selection ||
+        (kind === 'commit' && model.draft(id) !== draft)
+      )
+        throw new Error(
+          `The ${label} files or message changed. Review them before continuing.`,
+        );
+      requireSaved(root, files);
+    },
   });
+
+  repo.checked.clear(files.map((file) => file.path));
+  if (kind === 'commit') model.committed(id);
+  showOperationInfo(
+    kind === 'commit'
+      ? amending
+        ? `Amended the last commit in ${repo.info.label}, ${result.sha.slice(0, 8)}.`
+        : `Committed ${files.length} ${label} files in ${repo.info.label}, ${result.sha.slice(0, 8)}.`
+      : `Stashed ${files.length} ${label} files in ${repo.info.label}.`,
+  );
 }

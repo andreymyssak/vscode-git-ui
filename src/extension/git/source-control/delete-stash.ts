@@ -4,7 +4,7 @@ import type { FileHandle } from 'node:fs/promises';
 import { lstat, open, realpath, rename, stat, unlink } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 
-import type { GitCli } from './cli';
+import type { GitCli } from '../cli';
 import { readStashes, requireStashIdentity } from './stashes';
 
 type Reader = Pick<GitCli, 'run'>;

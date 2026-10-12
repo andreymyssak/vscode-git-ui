@@ -6,14 +6,14 @@ import { expect, onTestFinished, test } from 'vitest';
 import {
   captureRollback,
   rollbackSelected,
-} from '../../src/extension/git/rollback';
+} from '../../src/extension/git/source-control/rollback';
 import {
   captureSelection,
   commitSelected,
   stashSelected,
-} from '../../src/extension/git/selected-changes';
-import { readSelectedPatch } from '../../src/extension/git/selected-patch';
-import { readWorkingChanges } from '../../src/extension/git/working-changes';
+} from '../../src/extension/git/source-control/selected-changes';
+import { readSelectedPatch } from '../../src/extension/git/source-control/selected-patch';
+import { readWorkingChanges } from '../../src/extension/git/source-control/working-changes';
 import { createSquashFixture } from '../fixtures/squash-repository';
 
 async function replacement(direction: 'file' | 'directory', staged: boolean) {

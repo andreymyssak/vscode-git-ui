@@ -14,8 +14,8 @@ import {
   captureSelection,
   commitSelected,
   stashSelected,
-} from '../../src/extension/git/selected-changes';
-import { readWorkingChanges } from '../../src/extension/git/working-changes';
+} from '../../src/extension/git/source-control/selected-changes';
+import { readWorkingChanges } from '../../src/extension/git/source-control/working-changes';
 import { createSquashFixture } from '../fixtures/squash-repository';
 
 test.skipIf(process.platform === 'win32').each(['commit', 'stash'] as const)(

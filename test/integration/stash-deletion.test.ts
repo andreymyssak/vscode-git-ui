@@ -14,9 +14,9 @@ import type { TestContext } from 'vitest';
 import { assert, expect, test } from 'vitest';
 
 import { GitCli } from '../../src/extension/git/cli';
-import { deleteStashEntry } from '../../src/extension/git/delete-stash';
-import { deleteStash } from '../../src/extension/git/stash-operations';
-import { readStashes } from '../../src/extension/git/stashes';
+import { deleteStashEntry } from '../../src/extension/git/source-control/delete-stash';
+import { deleteStash } from '../../src/extension/git/source-control/stash-operations';
+import { readStashes } from '../../src/extension/git/source-control/stashes';
 import {
   createSquashFixture,
   squashAccess,

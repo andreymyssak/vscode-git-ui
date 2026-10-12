@@ -6,8 +6,11 @@ import { assert, expect, test } from 'vitest';
 import {
   deleteStashFiles,
   renameStash,
-} from '../../src/extension/git/edit-stash';
-import { readStashes, readStashFiles } from '../../src/extension/git/stashes';
+} from '../../src/extension/git/source-control/edit-stash';
+import {
+  readStashes,
+  readStashFiles,
+} from '../../src/extension/git/source-control/stashes';
 import { createSquashFixture } from '../fixtures/squash-repository';
 
 test('renaming an older stash keeps its position, date, snapshots and other stashes', async (t) => {

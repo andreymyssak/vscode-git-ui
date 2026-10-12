@@ -1,16 +1,12 @@
 import * as vscode from 'vscode';
 
-import type { GitCli } from '../git/cli';
-import {
-  readSelectedPatch,
-  validateSelectedPatch,
-} from '../git/selected-patch';
-import type { WorkingFile } from '../git/working-changes';
+import type { WorkingFile } from '../../shared/source-control';
+import type { SourceControlBackend } from '../git/source-control/index';
 import { draftCommitMessage } from './commit-message-model';
 
 /** Called only by the host's explicit Generate Message action. */
 export async function generateCommitMessage(
-  cli: GitCli,
+  backend: SourceControlBackend,
   id: string,
   files: readonly WorkingFile[],
   token: vscode.CancellationToken,
@@ -20,12 +16,13 @@ export async function generateCommitMessage(
 
   try {
     if (token.isCancellationRequested) throw new vscode.CancellationError();
-    const patch = await readSelectedPatch(cli, id, files, abort.signal);
+    const prepared = await backend.messagePatch(id, files, abort.signal);
+    const patch = prepared.patch;
 
     return await draftCommitMessage({
       patch,
       token,
-      validate: () => validateSelectedPatch(cli, id, patch, abort.signal),
+      validate: prepared.validate,
       provider: {
         models: async () =>
           (await vscode.lm.selectChatModels()).map((model) => ({

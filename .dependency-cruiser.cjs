@@ -2,6 +2,24 @@
 module.exports = {
   forbidden: [
     {
+      name: 'source-control-git-public-api-only',
+      severity: 'error',
+      from: { pathNot: '^src/extension/git/source-control/' },
+      to: {
+        path: '^src/extension/git/source-control/',
+        pathNot: '^src/extension/git/source-control/index\\.ts$',
+      },
+    },
+    {
+      name: 'source-control-uses-git-backend',
+      severity: 'error',
+      from: { path: '^src/extension/source-control/' },
+      to: {
+        path: '^src/extension/git/',
+        pathNot: '^src/extension/git/source-control/index\\.ts$',
+      },
+    },
+    {
       name: 'not-to-unresolvable',
       severity: 'error',
       from: {},

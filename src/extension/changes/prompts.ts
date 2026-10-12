@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-import type { WorkingFile } from '../git/working-changes';
+import type { WorkingFile } from '../../shared/source-control';
 import { showOperationError } from '../native/operation-feedback';
 
 export function messagePrompt(options: {
