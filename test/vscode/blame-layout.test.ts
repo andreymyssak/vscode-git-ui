@@ -295,7 +295,7 @@ describe('native Blame layout', () => {
       );
     }
   });
-  it('keeps a normal cursor on labels and exposes navigation in the hover', async function () {
+  it('shows a pointer on committed labels and exposes navigation in the hover', async function () {
     this.timeout(60000);
     const f = await setup();
 
@@ -310,7 +310,7 @@ describe('native Blame layout', () => {
             return label ? getComputedStyle(label, '::before').cursor : null;
           }),
         )
-        .toBe('default');
+        .toBe('pointer');
       const hover = await nativeHover(f.native, 'Fixture');
 
       await expect(
@@ -376,12 +376,6 @@ describe('native Blame layout', () => {
       const ageColors = await annotationColors(f.native);
 
       await f.page.mouse.click(label.x, label.y);
-      assert.equal(
-        await vscode.commands.executeCommand(
-          commandId('open-current-blame-commit'),
-        ),
-        true,
-      );
       const frame = await nativePanel(f.repositoryId);
 
       await expect(

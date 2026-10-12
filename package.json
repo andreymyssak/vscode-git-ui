@@ -410,14 +410,12 @@
       },
       {
         "command": "gitUI.annotate-blame",
-        "title": "Annotate with Git Blame",
-        "category": "Git UI",
+        "title": "Git UI: Annotate with Git Blame",
         "enablement": "isWorkspaceTrusted && config.git.enabled && gitOpenRepositoryCount > 0 && (resourceScheme == file || resourceScheme == git)"
       },
       {
         "command": "gitUI.close-blame",
-        "title": "Close Git Blame",
-        "category": "Git UI",
+        "title": "Git UI: Close Git Blame",
         "enablement": "isWorkspaceTrusted && config.git.enabled && gitOpenRepositoryCount > 0 && (resourceScheme == file || resourceScheme == git)"
       },
       {
@@ -427,8 +425,7 @@
       },
       {
         "command": "gitUI.open-current-blame-commit",
-        "title": "Open Line Commit in Git UI",
-        "category": "Git UI",
+        "title": "Git UI: Open Line Commit",
         "enablement": "isWorkspaceTrusted && config.git.enabled && gitOpenRepositoryCount > 0 && (resourceScheme == file || resourceScheme == git) && gitUI.blame-enabled"
       }
     ],

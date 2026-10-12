@@ -21,9 +21,10 @@ async function annotateMenu(editor: Locator, line = '1'): Promise<void> {
     .filter({ hasText: new RegExp(`^${line}$`) })
     .first()
     .click({ button: 'right' });
-  const item = editor
-    .page()
-    .getByRole('menuitem', { name: 'Annotate with Git Blame', exact: true });
+  const item = editor.page().getByRole('menuitem', {
+    name: 'Git UI: Annotate with Git Blame',
+    exact: true,
+  });
 
   await expect(item).not.toHaveAttribute('aria-disabled', 'true');
   await editor.page().getByRole('menu').last().focus();

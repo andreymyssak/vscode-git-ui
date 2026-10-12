@@ -80,6 +80,44 @@ export class BlameAnnotations implements vscode.Disposable {
   ) {
     this.cache = new BlameReadCache(options.readBlame);
     this.listeners = [
+      vscode.window.onDidChangeTextEditorSelection((event) => {
+        const selection = event.selections[0];
+
+        // Native decorations expose selection events, not hit targets. Code-start
+        // clicks are indistinguishable; repeated clicks may produce no event.
+        if (
+          event.kind !== vscode.TextEditorSelectionChangeKind.Mouse ||
+          event.selections.length !== 1 ||
+          !selection?.isEmpty ||
+          selection.active.character !== 0
+        )
+          return;
+        const session = this.sessions.get(event.textEditor);
+        const snapshot = session?.snapshot;
+        const line = snapshot?.lines[selection.active.line];
+
+        if (!session || !snapshot || line?.kind !== 'committed') return;
+        const current = () =>
+          this.liveSnapshot(session, snapshot) &&
+          vscode.window.visibleTextEditors.includes(session.editor);
+
+        if (!current()) return;
+        void this.options
+          .openCommit(
+            {
+              documentUri: session.editor.document.uri,
+              sha: line.sha,
+              filePath: line.originalPath,
+            },
+            current,
+          )
+          .catch((error: unknown) => {
+            if (current() && !cancelled(error))
+              void showOperationError(
+                error instanceof Error ? error.message : String(error),
+              );
+          });
+      }),
       vscode.window.tabGroups.onDidChangeTabs((event) => {
         for (const tab of event.opened) {
           const owners = [...this.sessions.values()].filter(
@@ -387,8 +425,7 @@ export class BlameAnnotations implements vscode.Disposable {
             contentText: formatBlameLabel(line).padEnd(width),
             width: `${width + 1}ch`,
             color: new vscode.ThemeColor('editorCodeLens.foreground'),
-            textDecoration:
-              'none; border-right: 1px solid var(--vscode-panel-border); padding-right: 0.6em; white-space: pre; overflow: hidden; text-overflow: ellipsis; vertical-align: top; cursor: default',
+            textDecoration: `none; border-right: 1px solid var(--vscode-panel-border); padding-right: 0.6em; white-space: pre; overflow: hidden; text-overflow: ellipsis; vertical-align: top; cursor: ${line.kind === 'committed' ? 'pointer' : 'default'}`,
             backgroundColor:
               line.kind === 'committed'
                 ? `hsla(${210 - 170 * (newest === oldest ? 0 : (Date.parse(line.authorDate) - oldest) / (newest - oldest))}, 65%, 55%, 0.14)`
