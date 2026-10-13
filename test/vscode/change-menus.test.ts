@@ -69,6 +69,7 @@ async function runContextAction(
   frame: Frame,
   path: string,
   action: keyof typeof contextActions,
+  interact?: () => Promise<void>,
 ) {
   const target = row(frame, path);
 
@@ -130,24 +131,46 @@ async function runContextAction(
   assert.ok(encoded);
   await frame.page().keyboard.press('Escape');
   await expect(frame.page().getByRole('menu')).toHaveCount(0);
-  // Native menu dismissal restores focus across two nested iframes asynchronously.
-  // Finish that restoration before another menu or command can change focus.
+  // Exercise menu dismissal returning focus to the editor rather than the tree.
+  await vscode.commands.executeCommand(
+    'workbench.action.focusActiveEditorGroup',
+  );
+  // Finish menu dismissal before restoring focus through the nested webview.
   await expect
     .poll(() =>
-      frame.evaluate(() => ({
-        focused: document.hasFocus(),
-        menuVisible: document.body.classList.contains(
-          'vscode-context-menu-visible',
-        ),
-      })),
+      frame.evaluate(() =>
+        document.body.classList.contains('vscode-context-menu-visible'),
+      ),
     )
-    .toEqual({ focused: true, menuVisible: false });
+    .toBe(false);
+  await target.focus();
+  await expect
+    .poll(() =>
+      target.evaluate(
+        (element) => document.hasFocus() && document.activeElement === element,
+      ),
+    )
+    .toBe(true);
   // Check rendering and invoke the contributed command with that exact context.
   // VS Code's temporary custom-menu mouseup guard is unrelated to command routing.
-  await vscode.commands.executeCommand(
-    sourceControlCommandId(contextActions[action]),
-    JSON.parse(encoded),
-  );
+  const operations = [
+    Promise.resolve().then(() =>
+      vscode.commands.executeCommand(
+        sourceControlCommandId(contextActions[action]),
+        JSON.parse(encoded),
+      ),
+    ),
+    Promise.resolve().then(() => interact?.()),
+  ];
+
+  try {
+    await Promise.all(operations);
+  } catch (error) {
+    // Cancel the native prompt before joining a command waiting for its answer.
+    await vscode.commands.executeCommand('workbench.action.closeQuickOpen');
+    await Promise.allSettled(operations);
+    throw error;
+  }
 }
 
 describe('Changes context actions', () => {
@@ -246,6 +269,32 @@ describe('Changes context actions', () => {
     }
   });
 
+  it('cancels the stash prompt before cleanup when prompt interaction fails', async () => {
+    const { fixture, frame } = await prepare();
+    const failure = new Error('Prompt interaction failed');
+    const name = frame.page().locator('.quick-input-widget input');
+
+    try {
+      const status = await fixture.runGit(['status', '--porcelain']);
+      const keepIndex = await fixture.runGit(['show', ':keep.txt']);
+
+      await assert.rejects(
+        runContextAction(frame, 'src', 'Stash Selected Files…', async () => {
+          await expect(name).toBeVisible();
+          throw failure;
+        }),
+        (error: unknown) => error === failure,
+      );
+      await expect(name).not.toBeVisible();
+      assert.equal(await fixture.runGit(['status', '--porcelain']), status);
+      assert.equal(await fixture.runGit(['show', ':keep.txt']), keepIndex);
+      assert.equal(await fixture.runGit(['stash', 'list']), '');
+    } finally {
+      await frame.page().keyboard.press('Escape');
+      await dispose(fixture);
+    }
+  });
+
   it('commits and stashes the highlighted files while preserving a different checked and staged file', async () => {
     const { fixture, frame } = await prepare();
 
@@ -281,17 +330,18 @@ describe('Changes context actions', () => {
       await frame
         .getByRole('textbox', { name: 'Commit message' })
         .fill('Keep this commit draft');
-      const stashAction = runContextAction(
+      await runContextAction(
         frame,
         'src',
         'Stash Selected Files…',
-      );
-      const name = frame.page().locator('.quick-input-widget input');
+        async () => {
+          const name = frame.page().locator('.quick-input-widget input');
 
-      await expect(name).toBeVisible();
-      await name.fill('Stash selected files');
-      await name.press('Enter');
-      await stashAction;
+          await expect(name).toBeVisible();
+          await name.fill('Stash selected files');
+          await name.press('Enter');
+        },
+      );
       await expect(
         frame.getByRole('textbox', { name: 'Commit message' }),
       ).toHaveValue('Keep this commit draft');
