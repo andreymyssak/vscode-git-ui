@@ -4,14 +4,15 @@
 
 ## Test locations and commands
 
-| Location                  | What it exercises                                                      | Command                    |
-| ------------------------- | ---------------------------------------------------------------------- | -------------------------- |
-| `test/unit/`              | Pure models and host workflows with controlled dependencies            | `npm run test:unit`        |
-| `test/integration/`       | Disposable real Git repositories, filesystem adapters and tools        | `npm run test:integration` |
-| `test/component/`         | React interactions with Testing Library in jsdom                       | `npm run test:component`   |
-| `test/browser/`           | Compiled webview layout, pointer/keyboard interactions and performance | `npm run test:browser`     |
-| `test/vscode/`            | Extension-host APIs, commands, native editors and Restricted Mode      | `npm run test:vscode`      |
-| `test/vscode/acceptance/` | Scenarios against the installed VSIX                                   | `npm run test:installed`   |
+| Location                  | What it exercises                                                      | Command                       |
+| ------------------------- | ---------------------------------------------------------------------- | ----------------------------- |
+| `test/unit/`              | Pure models and host workflows with controlled dependencies            | `npm run test:unit`           |
+| `test/integration/`       | Disposable real Git repositories, filesystem adapters and tools        | `npm run test:integration`    |
+| `test/component/`         | React interactions with Testing Library in jsdom                       | `npm run test:component`      |
+| `test/browser/`           | Compiled webview layout, pointer/keyboard interactions and performance | `npm run test:browser`        |
+| `test/vscode/`            | Extension-host APIs, commands, native editors and Restricted Mode      | `npm run test:vscode`         |
+| `test/vscode/acceptance/` | Scenarios against the installed VSIX                                   | `npm run test:installed`      |
+| VS Code compatibility     | Authored host code and public Git API against supported release APIs   | `npm run compatibility:check` |
 
 Vitest runs unit, integration and component projects together with `npm run test:local`. Focus a run by filename, such as `npm run test:unit -- history-cache`.
 
@@ -22,6 +23,18 @@ Failed browser tests retain their trace and screenshot under `test-results/`, al
 VS Code tests run inside the desktop editor using Microsoft's `@vscode/test-cli` and `@vscode/test-electron`. Installed-extension tests install the built VSIX into an isolated profile, then run selected VS Code suites and acceptance scenarios. `scripts/test/installed-actions.ts` tests branch actions, notifications and user choices against that installed copy.
 
 CI runs code/local tests, browser tests, native VS Code tests, and installed-package tests in parallel groups on macOS and Windows. A shared build prepares the VSIX and compiled tests once. VS Code jobs use stable. Each job reports its checks and saves results; the overall summary includes every group and fails if a required check fails or does not run.
+
+## VS Code compatibility
+
+Git UI supports VS Code `^1.111.0`, which allows 1.111.0 and later compatible 1.x releases. The required public Git Rebase API is absent in 1.110 and present in 1.111. We keep this minimum until a feature needs a newer API; a new VS Code release alone does not raise it.
+
+`npm run compatibility:check` reads Microsoft's published release list and checks the minimum plus the latest patch in each supported release series. It uses each version's public source tag, or its exact update commit when that tag is unavailable, and records the revision actually checked. Both declarations come from the same revision. Permission, timeout and server errors fail the check. It compiles all authored host/shared code against that version's official `vscode.d.ts` and checks that its public Git API satisfies our adapter contract, including worktree option keys. It excludes the installed VS Code SDK from that compilation so newer declarations cannot conceal missing APIs. No editors are downloaded or launched.
+
+The development SDK is pinned to `@types/vscode` 1.110.0, the nearest published SDK below the minimum. Node types use the 22.x family matching the minimum editor's runtime, separately from the Node version used to develop the extension. Keeping these types at the normal `@types/node` path prevents transitive references from loading a newer host baseline. The actual 1.111 declarations remain part of the required compatibility check.
+
+CI requires the supported-release API check. `npm run compatibility:insiders` checks the current Insiders commit as an advisory job, so an unreleased change can warn us without blocking a Stable release. Its result appears in the workflow job list. Full native and installed-package suites run only on current Stable, on macOS and Windows.
+
+Passing declarations establish API compatibility, not every runtime or workbench behavior. When adopting a newer API or changing the minimum, review the bundled Node/Electron runtime, command availability, and native behavior affected by the change. Keep the manifest, SDK baseline, packaged engine and installed-test drivers aligned. A future VS Code major version needs a compatibility review before expanding the range; it does not automatically require matching extension version numbers or dropping older supported editors.
 
 `npm run package` builds the extension, creates its installable VSIX with Microsoft's `@vscode/vsce`, and checks the contents. `npm run test:installed` then tests that package in VS Code. Both VS Code test commands rebuild and inspect the VSIX before running.
 

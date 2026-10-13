@@ -9,6 +9,43 @@ defaults:
   run:
     shell: bash
 jobs:
+  compatibility:
+    name: API compatibility / supported releases
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: npm run compatibility:check
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: compatibility-results
+          include-hidden-files: true
+          if-no-files-found: ignore
+          path: .artifacts/vscode-compatibility-stable.json
+
+  insiders:
+    name: API compatibility / Insiders (advisory)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - run: npm run compatibility:insiders
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: compatibility-insiders-results
+          include-hidden-files: true
+          if-no-files-found: ignore
+          path: .artifacts/vscode-compatibility-insiders.json
+
   build:
     name: Build extension and VSIX
     runs-on: ubuntu-latest
@@ -237,7 +274,7 @@ jobs:
   summary:
     name: Overall extension checks
     if: always()
-    needs: [build, local, browser, native, installed]
+    needs: [build, local, browser, native, installed, compatibility]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -253,6 +290,7 @@ jobs:
         env:
           CHECK_RESULTS: >-
             [{"name":"Build extension and VSIX","status":"${{ needs.build.result }}"},
+            {"name":"API compatibility (supported releases)","status":"${{ needs.compatibility.result }}"},
             {"name":"Code and local tests (macOS and Windows)","status":"${{ needs.local.result }}"},
             {"name":"Browser tests (macOS and Windows)","status":"${{ needs.browser.result }}"},
             {"name":"Native VS Code tests (macOS and Windows)","status":"${{ needs.native.result }}"},

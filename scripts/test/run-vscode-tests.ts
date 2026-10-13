@@ -10,7 +10,7 @@ import {
   resolveCliPathFromVSCodeExecutablePath,
 } from '@vscode/test-electron';
 
-import { extensionMetadata } from '../shared/extension.ts';
+import { extensionMetadata, vscodeEngine } from '../shared/extension.ts';
 import { isRecord } from '../shared/validation.ts';
 import { runInstalledActions } from './installed-actions.ts';
 
@@ -191,7 +191,7 @@ if (prepared.kind === 'restricted') {
       name: `${extensionMetadata.name}-installed-test-driver`,
       publisher: 'local-fixture',
       version: '0.0.0',
-      engines: { vscode: '^1.140.0' },
+      engines: { vscode: vscodeEngine },
     }),
   );
   const env = { ...prepared.env, GIT_UI_INSTALLED_ROOT: extensions };

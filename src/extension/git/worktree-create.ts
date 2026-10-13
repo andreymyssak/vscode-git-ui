@@ -59,7 +59,7 @@ export async function createBranchWorktree(
   const path = await repo.createWorktree({
     path: action.path,
     commitish: action.name === null ? source.name : action.expectedSha,
-    ...(action.name === null ? {} : { branch: action.name, noTrack: true }),
+    ...(action.name === null ? {} : { branch: action.name }),
   });
   const completed = `Created worktree for "${action.name ?? source.name}" at ${path}.`;
   let failed = 'Its commit could not be verified.';

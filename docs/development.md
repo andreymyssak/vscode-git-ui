@@ -30,6 +30,8 @@ npm run check
 
 CI reads the same `.node-version` through `actions/setup-node`. Development Node/npm are separate from the installed extension's VS Code runtime.
 
+Git UI supports VS Code 1.111.0 and later compatible 1.x releases. Keep API types at or below that minimum. Run `npm run compatibility:check` to check supported release APIs and `npm run compatibility:insiders` for an early warning about Insiders changes. [Compatibility policy](testing.md#vs-code-compatibility) explains these checks and the Stable runtime suites.
+
 ## Build and run
 
 ```sh

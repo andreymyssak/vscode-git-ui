@@ -63,6 +63,8 @@
     "format:check": "prettier . --check",
     "check": "npm run lint && npm run format:check && npm run typecheck && npm run architecture:check && npm run test:local && npm run upstream:verify",
     "typecheck": "tsc -p tsconfig.host.json && tsc -p tsconfig.webview.json && tsc -p tsconfig.test.json && tsc -p tsconfig.vitest.json && tsc -p tsconfig.scripts.json",
+    "compatibility:check": "node scripts/test/vscode-compatibility.ts",
+    "compatibility:insiders": "node scripts/test/vscode-compatibility.ts --insiders",
     "build": "node scripts/build/extension.ts && vite build",
     "build:vscode-tests": "node scripts/test/build-vscode-tests.ts",
     "test:unit": "vitest run --config vitest.config.mts --project unit",
@@ -113,11 +115,11 @@
     "@testing-library/react": "16.3.3",
     "@testing-library/user-event": "14.6.7",
     "@types/mocha": "10.0.10",
-    "@types/node": "26.6.4",
+    "@types/node": "22.20.5",
     "@types/picomatch": "4.0.3",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
-    "@types/vscode": "1.140.0",
+    "@types/vscode": "1.110.0",
     "@types/yauzl": "3.4.0",
     "@vitejs/plugin-react": "6.1.2",
     "@vscode/test-cli": "0.0.15",
@@ -150,7 +152,7 @@
   "publisher": "andreymyssak",
   "main": "./dist/extension.cjs",
   "engines": {
-    "vscode": "^1.140.0"
+    "vscode": "^1.111.0"
   },
   "extensionDependencies": [
     "vscode.git"

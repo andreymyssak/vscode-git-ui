@@ -1,4 +1,4 @@
-import type { Hash } from 'node:crypto';
+import type { BinaryLike } from 'node:crypto';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { basename, dirname, resolve } from 'node:path';
@@ -24,7 +24,7 @@ import {
 } from './validation.ts';
 import { verify } from './verify.ts';
 
-export const hash = (data: Parameters<Hash['update']>[0]): Sha256 =>
+export const hash = (data: BinaryLike): Sha256 =>
   parseSha256(createHash('sha256').update(data).digest('hex'));
 
 export const githubTransport: UpstreamTransport = {

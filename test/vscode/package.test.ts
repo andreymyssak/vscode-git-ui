@@ -49,7 +49,7 @@ describe('private package', () => {
       ][0].name,
       extension.packageJSON.displayName,
     );
-    assert.equal(extension.packageJSON.engines.vscode, '^1.140.0');
+    assert.equal(extension.packageJSON.engines.vscode, '^1.111.0');
     assert.equal(extension.packageJSON.private, true);
     assert.equal(extension.packageJSON.main, './dist/extension.cjs');
     await vscode.commands.executeCommand(`${LOG_VIEW_ID}.focus`);

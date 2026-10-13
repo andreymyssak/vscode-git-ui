@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
-import { extensionMetadata } from '../shared/extension.ts';
+import { extensionMetadata, vscodeEngine } from '../shared/extension.ts';
 import { hasErrorCode, isRecord } from '../shared/validation.ts';
 
 function readResult(value: unknown) {
@@ -62,7 +62,7 @@ export async function runInstalledActions({
       name: `${extensionMetadata.name}-installed-actions-driver`,
       publisher: 'local-fixture',
       version: '0.0.0',
-      engines: { vscode: '^1.140.0' },
+      engines: { vscode: vscodeEngine },
       main: './extension.cjs',
       activationEvents: ['onStartupFinished'],
       extensionDependencies: [extensionMetadata.id],

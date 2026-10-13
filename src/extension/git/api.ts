@@ -72,7 +72,6 @@ export interface GitRepository {
     path?: string;
     commitish?: string;
     branch?: string;
-    noTrack?: boolean;
   }): Promise<string>;
   createBranch(name: string, checkout: boolean, ref?: string): Promise<void>;
   tag(name: string, message: string, ref?: string): Promise<void>;

@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url';
 import type { Metafile } from 'esbuild';
 import yauzl from 'yauzl';
 
-import { extensionMetadata } from '../shared/extension.ts';
+import { extensionMetadata, vscodeEngine } from '../shared/extension.ts';
 import { isRecord } from '../shared/validation.ts';
 
 const allowed = new Set([
@@ -414,7 +414,7 @@ export async function verifyPackage(vsixPath: string): Promise<void> {
 
   assert.equal(manifest.main, './dist/extension.cjs');
   assert.ok(isRecord(manifest.engines), 'Invalid packaged extension engines');
-  assert.equal(manifest.engines.vscode, '^1.140.0');
+  assert.equal(manifest.engines.vscode, vscodeEngine);
   assert.equal(manifest.private, true);
   assert.deepEqual(manifest.extensionDependencies, ['vscode.git']);
   if (manifest.enabledApiProposals != null) {

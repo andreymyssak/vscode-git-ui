@@ -11,6 +11,8 @@ if (
   typeof manifest.name !== 'string' ||
   typeof manifest.publisher !== 'string' ||
   typeof manifest.displayName !== 'string' ||
+  !isRecord(manifest.engines) ||
+  typeof manifest.engines.vscode !== 'string' ||
   !isRecord(manifest.contributes) ||
   !isRecord(manifest.contributes.viewsContainers) ||
   !Array.isArray(manifest.contributes.viewsContainers.panel) ||
@@ -18,6 +20,8 @@ if (
   typeof manifest.contributes.viewsContainers.panel[0].id !== 'string'
 )
   throw new Error('Invalid extension identity in package.json');
+
+export const vscodeEngine = manifest.engines.vscode;
 
 export const extensionMetadata = Object.freeze({
   name: manifest.name,
