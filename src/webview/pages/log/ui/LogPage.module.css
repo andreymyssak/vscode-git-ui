@@ -43,3 +43,7 @@
     left: 33%;
   }
 }
+:global(.vscode-reduce-motion) .history[aria-busy='true']::before {
+  animation: none;
+  left: 33%;
+}

@@ -133,7 +133,7 @@ export class GitViewProvider implements vscode.WebviewViewProvider {
     const nonce = randomBytes(16).toString('hex');
     const fileIcons = attachFileIcons(webview, this.globalStorageUri, dist);
 
-    webview.html = `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource}; font-src ${webview.cspSource}; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';"><link rel="stylesheet" href="${style}"></head><body><main id="app" aria-live="polite">Connecting to Git…</main><script nonce="${nonce}" src="${script}"></script></body></html>`;
+    webview.html = `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource}; font-src ${webview.cspSource}; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';"><link rel="stylesheet" href="${style}"></head><body><main id="app"><p role="status">Connecting to Git…</p></main><script nonce="${nonce}" src="${script}"></script></body></html>`;
     let controller: PanelController | null = null;
     let initializing: Promise<PanelController | null> | null = null;
     let initialization: AbortController | null = null;

@@ -4,6 +4,44 @@ import { expect, test } from '../fixtures/browser';
 
 const sha = (number: number) => number.toString(16).padStart(40, '0');
 
+test('virtualized history exposes absolute row positions and an unknown total while paging', async ({
+  page,
+}) => {
+  await page.goto('/');
+  const history = page.locator('#history');
+
+  await expect(history).toHaveAttribute('aria-rowcount', '-1');
+  await expect(page.locator('[data-commit-row]').first()).toHaveAttribute(
+    'aria-rowindex',
+    '1',
+  );
+  await history.evaluate((node) => {
+    node.scrollTop = 2400;
+  });
+  const row = page.locator('[data-commit-row][data-sha="' + sha(120) + '"]');
+
+  await expect(row).toHaveAttribute('aria-rowindex', '120');
+});
+
+test('the editor Reduce Motion preference stops history loading animation', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.goto('/');
+  await expect(page.locator('[data-commit-row]').first()).toBeVisible();
+  const animation = await page.evaluate(() => {
+    document.body.classList.add('vscode-reduce-motion');
+    const history = document.getElementById('history-pane');
+
+    if (!history) throw new Error('History did not mount');
+    history.setAttribute('aria-busy', 'true');
+
+    return getComputedStyle(history, '::before').animationName;
+  });
+
+  expect(animation).toBe('none');
+});
+
 async function focusAtMountedBoundary(page: Page) {
   await page.goto('/');
   const history = page.locator('#history');

@@ -124,7 +124,7 @@ export class SourceControlViews
       dist,
     );
 
-    webview.html = `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource}; font-src ${webview.cspSource}; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';"><link rel="stylesheet" href="${style}"></head><body data-view="source-control"><main id="app" aria-live="polite">Connecting to Git…</main><script nonce="${nonce}" src="${script}"></script></body></html>`;
+    webview.html = `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource}; font-src ${webview.cspSource}; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';"><link rel="stylesheet" href="${style}"></head><body data-view="source-control"><main id="app"><p role="status">Connecting to Git…</p></main><script nonce="${nonce}" src="${script}"></script></body></html>`;
     this.viewSubscriptions.push(
       fileIcons,
       webview.onDidReceiveMessage((value: unknown) => {

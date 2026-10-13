@@ -96,6 +96,7 @@ export default defineConfig([
     mocha: nativeMocha,
     files: [
       'dist/test/vscode/package.test.cjs',
+      'dist/test/vscode/accessibility.test.cjs',
       'dist/test/vscode/blame.test.cjs',
       'dist/test/vscode/blame-documents.test.cjs',
       'dist/test/vscode/blame-native-editor.test.cjs',

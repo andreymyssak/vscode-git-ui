@@ -251,6 +251,9 @@ function HistoryContent({
         className={styles.viewport}
         role="grid"
         aria-label="Commit history"
+        aria-rowcount={
+          data.loading || data.nextCursor ? -1 : data.commits.length
+        }
         aria-multiselectable={true}
         inert={inactive}
         tabIndex={0}

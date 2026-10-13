@@ -106,6 +106,7 @@ export function HistoryRow({
       data-sha={commit.sha}
       data-vscode-context={JSON.stringify(context)}
       role="row"
+      aria-rowindex={index + 1}
       aria-selected={selected}
       aria-description={highlights || undefined}
       tabIndex={
