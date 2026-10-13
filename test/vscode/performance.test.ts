@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import type { Frame } from '@playwright/test';
 import { expect } from '@playwright/test';
 import * as vscode from 'vscode';
+import { z } from 'zod';
 
 import type { GitAdapter } from '../../src/extension/git/adapter';
 import { createGitAdapter } from '../../src/extension/git/adapter';
@@ -15,11 +16,13 @@ import { createLargeHistory } from '../fixtures/large-history';
 import { nativeBrowser } from '../fixtures/native-panel';
 
 describe('large native history', () => {
-  it('30k commits with merges keep 200-item pages, bounded rows and responsive loading', async () => {
+  it('30k commits with merges keep 200-item pages, bounded rows and responsive loading', async function () {
+    this.timeout(60000);
     const fixture = await createLargeHistory();
     const artifacts = process.env.GIT_UI_TEST_ARTIFACTS ?? '.artifacts';
     let adapter: GitAdapter | undefined;
     let frame: Frame | undefined;
+    let filteredStart: number | undefined;
 
     try {
       adapter = await createGitAdapter();
@@ -82,10 +85,16 @@ describe('large native history', () => {
           const message = event.data as {
             generation?: number;
             requestId?: string;
+            repositoryId?: string;
             body?: {
               kind?: string;
               message?: string;
-              page?: { commits: { sha: string }[] };
+              text?: string;
+              scope?: unknown;
+              page?: {
+                commits: { sha: string }[];
+                nextCursor: string | null;
+              };
               append?: boolean;
               anchor?: unknown;
               sha?: string | null;
@@ -105,8 +114,12 @@ describe('large native history', () => {
               time: performance.now(),
               generation: message.generation,
               requestId: message.requestId,
+              repositoryId: message.repositoryId,
               kind: message.body?.kind,
+              text: message.body?.text,
+              scope: message.body?.scope,
               count: message.body?.page?.commits.length,
+              nextCursor: message.body?.page?.nextCursor,
               firstSha: message.body?.page?.commits[0]?.sha,
               lastSha: message.body?.page?.commits.at(-1)?.sha,
               append: message.body?.append,
@@ -196,6 +209,7 @@ describe('large native history', () => {
       await frame
         .getByRole('searchbox', { name: 'Text or hash' })
         .fill('Large 10');
+      filteredStart = performance.now();
       const loading = await frame.evaluate(async () => {
         const start = performance.now();
         const input = document.getElementById('search') as HTMLInputElement;
@@ -213,7 +227,19 @@ describe('large native history', () => {
         };
       });
 
-      await expect(frame.locator('#status')).not.toContainText('Loading');
+      // Restoring a deep anchor can read every matching Git page. Its completion
+      // budget is separate from the 100 ms loading and rendering budgets below.
+      await expect(frame.locator('#status')).not.toContainText('Loading', {
+        timeout: 15000,
+      });
+      await expect(frame.locator('#history-pane')).toHaveAttribute(
+        'aria-busy',
+        'false',
+      );
+      await expect(frame.locator('#history')).not.toHaveAttribute('inert', '');
+      await expect(content).toHaveCSS('height', `${1111 * 22}px`);
+
+      const filteredHistoryMs = performance.now() - filteredStart;
       const measurements = await frame.evaluate(() => {
         const drain = Reflect.get(
           window,
@@ -231,6 +257,45 @@ describe('large native history', () => {
       const maxRenderMs = measurements.times.length
         ? Math.max(...measurements.times)
         : 0;
+      const messages = z
+        .array(
+          z.object({
+            kind: z.string(),
+            generation: z.number().int(),
+            requestId: z.string(),
+            repositoryId: z.string(),
+            text: z.string().optional(),
+            count: z.number().int().optional(),
+            nextCursor: z.string().nullable().optional(),
+          }),
+        )
+        .parse(measurements.messages);
+      const filteredLoading = [...messages]
+        .reverse()
+        .find(
+          (message) =>
+            message.kind === 'loading' && message.text === 'Large 10',
+        );
+
+      assert.ok(filteredLoading);
+      const filtered = messages.filter(
+        (message) =>
+          message.generation === filteredLoading.generation &&
+          message.requestId === filteredLoading.requestId &&
+          message.repositoryId === id,
+      );
+      const pages = filtered.filter((message) => message.kind === 'history');
+
+      assert.equal(
+        filtered.some((message) => message.kind === 'error'),
+        false,
+      );
+      assert.ok(filtered.some((message) => message.kind === 'history-settled'));
+      assert.equal(
+        pages.reduce((count, page) => count + (page.count ?? 0), 0),
+        1111,
+      );
+      assert.equal(pages.at(-1)?.nextCursor, null);
 
       await writeFile(
         join(artifacts, 'performance.json'),
@@ -248,6 +313,7 @@ describe('large native history', () => {
             tenPageMountedRows: rows,
             gitPageMs,
             loadingResponseMs: loading.elapsed,
+            filteredHistoryMs,
             maxPostDataRenderMs: maxRenderMs,
             renderSamples: measurements.samples,
             historyMessages: measurements.messages,
@@ -263,6 +329,36 @@ describe('large native history', () => {
         'capture at least one post-data render',
       );
       assert.ok(maxRenderMs <= 100, `Post-data render ${maxRenderMs} ms`);
+    } catch (error) {
+      if (filteredStart !== undefined && frame && !frame.isDetached())
+        await writeFile(
+          join(artifacts, 'native-history-filter-failure.json'),
+          JSON.stringify(
+            {
+              elapsedMs: performance.now() - filteredStart,
+              snapshot: await frame.evaluate(() => ({
+                messages: Reflect.get(window, 'historyMessages'),
+                renders: Reflect.get(window, 'renderSamples'),
+                filter: (document.getElementById('search') as HTMLInputElement)
+                  .value,
+                scope: document.getElementById('scope')?.textContent,
+                status: document.getElementById('status')?.textContent,
+                busy: document
+                  .getElementById('history-pane')
+                  ?.getAttribute('aria-busy'),
+                inert: document
+                  .getElementById('history')
+                  ?.hasAttribute('inert'),
+                height: document
+                  .querySelector('[data-history-content]')
+                  ?.getBoundingClientRect().height,
+              })),
+            },
+            null,
+            2,
+          ),
+        );
+      throw error;
     } finally {
       try {
         if (frame && !frame.isDetached()) {
