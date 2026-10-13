@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.2](https://github.com/andreymyssak/vscode-git-ui/compare/v0.3.1...v0.3.2) (2026-10-13)
+
+### Bug Fixes
+
+- **accessibility:** expose commit positions and honor VS Code Reduce Motion ([8d7ced3](https://github.com/andreymyssak/vscode-git-ui/commit/8d7ced3e0ff58488404e85d6ce131690fbe35692))
+- **compatibility:** support VS Code 1.111 and later 1.x releases ([cb419c5](https://github.com/andreymyssak/vscode-git-ui/commit/cb419c5b1f40ba7758fbbeb68ea41247582ce79a))
+- **git:** open repositories with trailing whitespace in folder names ([b3f08e9](https://github.com/andreymyssak/vscode-git-ui/commit/b3f08e9d7616427d4e82fe01ceb9b84e7f6f1cef))
+
+### Performance Improvements
+
+- **log:** coalesce repository changes to keep history refreshes responsive ([6254481](https://github.com/andreymyssak/vscode-git-ui/commit/62544814916f3bc447b41ae4cc15329653f158ff))
+
 ## [0.3.1](https://github.com/andreymyssak/vscode-git-ui/compare/v0.3.0...v0.3.1) (2026-10-12)
 
 ### Bug Fixes
