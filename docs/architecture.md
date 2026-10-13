@@ -21,6 +21,8 @@ The webview sends requests to the extension host. The host validates their repos
 
 The Git adapter uses the installed Git extension where possible and explicit Git calls for API gaps. VS Code provides native diffs and conflict resolution. The [backend ADR](adr/0002-git-operation-backends.md) and [history recovery ADR](adr/0003-history-replay-and-recovery.md) explain those choices.
 
+Repository consumers share one observation per repository. It coalesces metadata reads, checks again when events arrive during a read, and releases its native listener when the last consumer unsubscribes. History loads and completed writes wait for pending observations before using cached history.
+
 The Source Control view works independently of the Log webview and uses ordinary Git stashes. Selected commits and stash creation use a temporary index to exclude unchecked staged changes. Writes share the repository operation queue and a lock across linked worktrees.
 
 `src/extension/git/source-control/index.ts` is the commit/stash backend entry point. Its private implementation owns Git reads, prepared snapshots, live repository checks and queued writes; Source Control owns prompts, drafts and checkbox state. Prepared operations reject repositories closed or replaced during confirmation. Import checks prevent callers from accessing private backend files or using Git infrastructure directly from Source Control.

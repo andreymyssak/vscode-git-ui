@@ -24,10 +24,10 @@ import { GitCli } from './cli';
 import type { CommitSuffixSnapshot } from './commit-suffix';
 import { validateCommitSuffix } from './commit-suffix';
 import { createHistoryQueries } from './history';
-import { historyChangeFilter } from './history-events';
 import { validateMessageEdit } from './message-edit';
 import type { OperationDialogs } from './operations';
 import { createOperations } from './operations';
+import { createRepositoryObservations } from './repository-observations';
 import { readReferences, resolveCommit } from './resolve';
 import type { SquashSnapshot } from './squash';
 import { validateSquash } from './squash';
@@ -86,17 +86,8 @@ export async function createGitAdapter(
   signal?: AbortSignal,
 ): Promise<GitAdapter> {
   const access = await getGitApi(signal);
-  const disposables: Disposable[] = [];
   const cli = new GitCli(access);
   const history = createHistoryQueries(access, cli);
-  const observations = new Map<
-    string,
-    Set<ReturnType<typeof historyChangeFilter>>
-  >();
-  const settleHistoryEvents = (id: string) =>
-    Promise.all(
-      [...(observations.get(id) ?? [])].map((observer) => observer.settled()),
-    );
   const services = squash
     ? {
         runtime: { ...squash.runtime },
@@ -119,6 +110,13 @@ export async function createGitAdapter(
 
   await reconcileRecovery();
   signal?.throwIfAborted();
+  const observations = createRepositoryObservations({
+    access,
+    invalidate: (id) => history.invalidate(id),
+    onEvent: () => {
+      void reconcileRecovery();
+    },
+  });
   const operate = createOperations(access, cli, dialogs, services);
 
   return {
@@ -128,7 +126,7 @@ export async function createGitAdapter(
     repositories: () => access.repositories(),
     references: (id) => readReferences(access, id, cli),
     history: async (id, input, signal) => {
-      await settleHistoryEvents(id);
+      await observations.settled(id);
 
       return history.page(id, input, signal);
     },
@@ -148,7 +146,7 @@ export async function createGitAdapter(
       const result = await operate(id, action, context);
 
       // Deliver the write's queued history events before the panel reloads it.
-      await settleHistoryEvents(id);
+      await observations.settled(id);
 
       return result;
     },
@@ -176,56 +174,8 @@ export async function createGitAdapter(
 
       return validateSquash(access, cli, id, target);
     },
-    subscribe(id, changed) {
-      const repository = access.repository(id);
-      let active = true;
-      const notify = historyChangeFilter(repository, () => {
-        if (!active) return;
-        history.invalidate(id);
-        changed();
-      });
-      const observers = observations.get(id) ?? new Set();
-
-      observers.add(notify);
-      observations.set(id, observers);
-      const subscription = repository.state.onDidChange(() => {
-        void reconcileRecovery();
-        void notify.check();
-      });
-      const disposable = {
-        dispose() {
-          active = false;
-          observers.delete(notify);
-          if (!observers.size) observations.delete(id);
-          subscription.dispose();
-        },
-      };
-
-      disposables.push(disposable);
-
-      return disposable;
-    },
-    subscribeRepositories(changed) {
-      const refresh = () => {
-        void reconcileRecovery();
-        changed();
-      };
-
-      const opened = access.api.onDidOpenRepository(refresh);
-      const closed = access.api.onDidCloseRepository(refresh);
-      const disposable = {
-        dispose() {
-          opened.dispose();
-          closed.dispose();
-        },
-      };
-
-      disposables.push(disposable);
-
-      return disposable;
-    },
-    dispose() {
-      for (const disposable of disposables) disposable.dispose();
-    },
+    subscribe: observations.subscribe,
+    subscribeRepositories: observations.subscribeRepositories,
+    dispose: observations.dispose,
   };
 }

@@ -1,7 +1,8 @@
 import { expect, test } from 'vitest';
 
-import type { GitRef, GitRepository } from '../../src/extension/git/api';
+import type { GitRef } from '../../src/extension/git/api';
 import { historyChangeFilter } from '../../src/extension/git/history-events';
+import { deferred } from '../fixtures/deferred';
 
 test('history status filtering uses live references and ignores reordered, unchanged metadata', async () => {
   const head = { type: 0 as const, name: 'main', commit: 'a'.repeat(40) };
@@ -16,7 +17,7 @@ test('history status filtering uses live references and ignores reordered, uncha
 
       return [...refs];
     },
-  } as unknown as GitRepository;
+  };
   let changes = 0;
   const observation = historyChangeFilter(repository, () => {
     changes++;
@@ -44,4 +45,69 @@ test('history status filtering uses live references and ignores reordered, uncha
   await notify();
   await notify();
   expect(changes, 'a successful read reestablishes the baseline').toBe(4);
+});
+
+test('a burst of unchanged status events shares one fresh reference snapshot', async () => {
+  let reads = 0;
+  const observation = historyChangeFilter(
+    {
+      state: { HEAD: undefined, worktrees: [], remotes: [] },
+      getRefs: async () => {
+        reads++;
+
+        return [];
+      },
+    },
+    () => {
+      throw new Error('Unchanged metadata must not notify');
+    },
+  );
+
+  await observation.settled();
+  await Promise.all(Array.from({ length: 100 }, () => observation.check()));
+  expect(reads).toBe(2);
+});
+
+test('events during an active read take a final fresh snapshot before settling', async () => {
+  const held = deferred<GitRef[]>();
+  const started = deferred<void>();
+  let refs: GitRef[] = [];
+  let reads = 0;
+  let changes = 0;
+  const observation = historyChangeFilter(
+    {
+      state: { HEAD: undefined, worktrees: [], remotes: [] },
+      getRefs: async () => {
+        reads++;
+        if (reads === 2) {
+          started.resolve();
+
+          return held.promise;
+        }
+
+        return [...refs];
+      },
+    },
+    () => {
+      changes++;
+    },
+  );
+
+  await observation.settled();
+  const first = observation.check();
+
+  await started.promise;
+  refs = [{ type: 0, name: 'feature', commit: 'a'.repeat(40) }];
+  const events = Array.from({ length: 20 }, () => observation.check());
+  let settled = false;
+  const barrier = observation.settled().then(() => {
+    settled = true;
+  });
+
+  await Promise.resolve();
+  expect(settled).toBe(false);
+  held.resolve([]);
+  await Promise.all([first, ...events, barrier]);
+  expect(reads).toBe(3);
+  expect(changes).toBe(1);
 });

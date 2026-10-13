@@ -1,10 +1,14 @@
 import type { GitRef, GitRepository } from './api';
 
+type HistoryRepository = Pick<GitRepository, 'getRefs'> & {
+  state: Pick<GitRepository['state'], 'HEAD' | 'worktrees' | 'remotes'>;
+};
+
 /** Status also fires for editor/index activity; only history metadata revokes a query. */
 export function historyChangeFilter(
-  repository: GitRepository,
+  repository: HistoryRepository,
   changed: () => void,
-): { check(): Promise<void>; settled(): Promise<void> } {
+): { check(): Promise<void>; settled(): Promise<void>; dispose(): void } {
   const ref = (value: GitRef | undefined) =>
     value
       ? [value.type, value.name, value.commit, value.remote, value.upstream]
@@ -35,23 +39,53 @@ export function historyChangeFilter(
     );
   };
 
-  let previous = snapshot();
-  let pending = previous.then(() => {});
+  let previous: string | null | undefined;
+  let pending: Promise<void> | null = null;
+  let dirty = true;
+  let active = true;
+  const schedule = () => {
+    if (pending || !active) return;
+    pending = Promise.resolve()
+      .then(async () => {
+        while (dirty && active) {
+          dirty = false;
+          const current = await snapshot();
+
+          if (!active) return;
+          const notify =
+            previous !== undefined &&
+            (previous === null || current === null || previous !== current);
+
+          previous = current;
+          if (notify) changed();
+        }
+      })
+      .finally(() => {
+        pending = null;
+        if (dirty && active) schedule();
+      });
+  };
+
+  const settled = async () => {
+    while (active && pending) await pending;
+  };
+
+  schedule();
 
   return {
-    settled: () => pending,
+    settled,
     check() {
-      const current = snapshot();
-      const before = previous;
+      if (active) {
+        dirty = true;
+        schedule();
+      }
 
-      previous = current;
-      pending = pending.then(async () => {
-        const [oldKey, newKey] = await Promise.all([before, current]);
-
-        if (oldKey === null || newKey === null || oldKey !== newKey) changed();
-      });
-
-      return pending;
+      return settled();
+    },
+    dispose() {
+      active = false;
+      dirty = false;
+      previous = undefined;
     },
   };
 }
