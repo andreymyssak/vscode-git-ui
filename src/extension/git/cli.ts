@@ -186,7 +186,7 @@ export class GitCli {
       )
     )
       .toString('utf8')
-      .trim();
+      .replace(process.platform === 'win32' ? /\r?\n$/ : /\n$/, '');
     const canonical = (path: string) =>
       process.platform === 'win32'
         ? normalize(path).toLowerCase()
