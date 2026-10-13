@@ -1,4 +1,4 @@
-import { test as base } from '@playwright/test';
+import { type Request, test as base } from '@playwright/test';
 
 import { recoverBrowserNavigation } from './browser-navigation';
 
@@ -9,6 +9,26 @@ export const test = base.extend({
     page.goto = (...args) =>
       recoverBrowserNavigation({
         navigate: () => navigate(...args),
+        observeFailures: (record) => {
+          const failed = (request: Request) => {
+            const failure = request.failure();
+
+            if (
+              failure &&
+              ['document', 'script', 'stylesheet'].includes(
+                request.resourceType(),
+              ) &&
+              request.frame() === page.mainFrame()
+            )
+              record(new Error(`${request.url()}: ${failure.errorText}`));
+          };
+
+          page.on('requestfailed', failed);
+
+          return () => {
+            page.off('requestfailed', failed);
+          };
+        },
         report: (error) => {
           testInfo.annotations.push({
             type: 'navigation recovery',

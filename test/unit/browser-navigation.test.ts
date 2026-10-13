@@ -50,3 +50,121 @@ test.each([
   expect(navigate).toHaveBeenCalledTimes(1);
   expect(report).not.toHaveBeenCalled();
 });
+
+test('a bootstrap socket failure retries once and releases both request observers', async () => {
+  const error = new Error('fake-vscode-host.js: net::ERR_NO_BUFFER_SPACE');
+  let failed: ((error: Error) => void) | undefined;
+  let attempts = 0;
+  const stop = vi.fn();
+  const observeFailures = vi.fn((record: (error: Error) => void) => {
+    failed = record;
+
+    return stop;
+  });
+  const navigate = vi.fn(async () => {
+    if (++attempts === 1) failed?.(error);
+
+    return 'loaded';
+  });
+  const report = vi.fn();
+
+  await expect(
+    recoverBrowserNavigation({ navigate, report, observeFailures }),
+  ).resolves.toBe('loaded');
+  expect(navigate).toHaveBeenCalledTimes(2);
+  expect(report).toHaveBeenCalledExactlyOnceWith(error);
+  expect(stop).toHaveBeenCalledTimes(2);
+});
+
+test.each(['net::ERR_FAILED', 'net::ERR_NO_BUFFER_SPACE'])(
+  'a persistent bootstrap failure propagates with bounded recovery: %s',
+  async (reason) => {
+    const error = new Error(`fake-vscode-host.js: ${reason}`);
+    let failed: ((error: Error) => void) | undefined;
+    const stop = vi.fn();
+    const observeFailures = (record: (error: Error) => void) => {
+      failed = record;
+
+      return stop;
+    };
+
+    const navigate = vi.fn(async () => {
+      failed?.(error);
+
+      return 'loaded';
+    });
+    const attempts = reason === 'net::ERR_NO_BUFFER_SPACE' ? 2 : 1;
+
+    await expect(
+      recoverBrowserNavigation({ navigate, report: vi.fn(), observeFailures }),
+    ).rejects.toBe(error);
+    expect(navigate).toHaveBeenCalledTimes(attempts);
+    expect(stop).toHaveBeenCalledTimes(attempts);
+  },
+);
+
+test.each([
+  { socketFirst: true, navigationRejects: false },
+  { socketFirst: false, navigationRejects: false },
+  { socketFirst: true, navigationRejects: true },
+  { socketFirst: false, navigationRejects: true },
+])(
+  'ordinary bootstrap failures prevent recovery: %j',
+  async ({ socketFirst, navigationRejects }) => {
+    const socketError = new Error(
+      'fake-vscode-host.js: net::ERR_NO_BUFFER_SPACE',
+    );
+    const ordinaryError = new Error('webview.js: net::ERR_FAILED');
+    let failed: ((error: Error) => void) | undefined;
+    const stop = vi.fn();
+    const observeFailures = (record: (error: Error) => void) => {
+      failed = record;
+
+      return stop;
+    };
+
+    const navigate = vi.fn(async () => {
+      for (const error of socketFirst
+        ? [socketError, ordinaryError]
+        : [ordinaryError, socketError])
+        failed?.(error);
+
+      if (navigationRejects) throw socketError;
+
+      return 'loaded';
+    });
+    const report = vi.fn();
+
+    await expect(
+      recoverBrowserNavigation({ navigate, report, observeFailures }),
+    ).rejects.toBe(ordinaryError);
+    expect(navigate).toHaveBeenCalledTimes(1);
+    expect(report).not.toHaveBeenCalled();
+    expect(stop).toHaveBeenCalledTimes(1);
+  },
+);
+
+test('an ordinary navigation error takes precedence over an observed socket failure', async () => {
+  const socketError = new Error(
+    'fake-vscode-host.js: net::ERR_NO_BUFFER_SPACE',
+  );
+  const ordinaryError = new Error('page.goto: net::ERR_FAILED');
+  let failed: ((error: Error) => void) | undefined;
+  const observeFailures = (record: (error: Error) => void) => {
+    failed = record;
+
+    return vi.fn();
+  };
+
+  const navigate = vi.fn(async () => {
+    failed?.(socketError);
+    throw ordinaryError;
+  });
+  const report = vi.fn();
+
+  await expect(
+    recoverBrowserNavigation({ navigate, report, observeFailures }),
+  ).rejects.toBe(ordinaryError);
+  expect(navigate).toHaveBeenCalledTimes(1);
+  expect(report).not.toHaveBeenCalled();
+});
