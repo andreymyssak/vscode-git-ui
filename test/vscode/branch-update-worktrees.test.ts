@@ -81,7 +81,8 @@ describe('Update with an uncheckable worktree', () => {
         .filter({ hasText: 'Cannot check worktree' });
 
       await expect(notification).toHaveCount(1);
-      await expect(notification).toContainText(path);
+      // Git reports worktree paths with forward slashes on Windows.
+      await expect(notification).toContainText(path.replaceAll('\\', '/'));
       await expect(notification).toContainText('Git metadata');
       await expect(notification).toContainText('Update stopped');
       await expect(notification).toContainText(/repair.*refresh/i);

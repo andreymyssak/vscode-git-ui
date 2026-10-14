@@ -2,12 +2,13 @@ import assert from 'node:assert/strict';
 import { mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { expect } from '@playwright/test';
+import { expect, type Frame } from '@playwright/test';
 import * as vscode from 'vscode';
 
 import { getGitApi } from '../../src/extension/git/api';
 import { createSourceControlBackend } from '../../src/extension/git/source-control/index';
 import { sourceControlCommandId } from '../../src/shared/extension-identity';
+import { captureNativeActionFailure } from '../fixtures/native-action-diagnostic';
 import { closeFixtureEditors } from '../fixtures/owned-editors';
 import { createFixture, type Fixture } from '../fixtures/repository';
 import { sourceControlFrame } from '../fixtures/source-control-view';
@@ -15,47 +16,84 @@ import { sourceControlFrame } from '../fixtures/source-control-view';
 async function prepare() {
   const fixture = await createFixture({ prefix: 'git-ui-conflict-menu-' });
 
-  await mkdir(join(fixture.root, 'src'));
-  for (const path of ['src/a.txt', 'src/b.txt', 'keep.txt'])
-    await writeFile(join(fixture.root, path), 'base\n');
-  await fixture.runGit(['add', '.']);
-  await fixture.runGit(['commit', '-m', 'Base']);
-  await fixture.runGit(['checkout', '-b', 'incoming']);
-  for (const path of ['src/a.txt', 'src/b.txt'])
-    await writeFile(join(fixture.root, path), 'incoming\n');
-  await fixture.runGit(['commit', '-am', 'Incoming']);
-  await fixture.runGit(['checkout', '-b', 'current', 'HEAD~']);
-  for (const path of ['src/a.txt', 'src/b.txt'])
-    await writeFile(join(fixture.root, path), 'current\n');
-  await fixture.runGit(['commit', '-am', 'Current']);
-  await assert.rejects(fixture.runGit(['merge', 'incoming']));
-  await writeFile(join(fixture.root, 'keep.txt'), 'keep staged\n');
-  await fixture.runGit(['add', 'keep.txt']);
-  const access = await getGitApi();
-  const repository = await access.api.openRepository(
-    vscode.Uri.file(fixture.root),
-  );
+  try {
+    await mkdir(join(fixture.root, 'src'));
+    for (const path of ['src/a.txt', 'src/b.txt', 'keep.txt'])
+      await writeFile(join(fixture.root, path), 'base\n');
+    await fixture.runGit(['add', '.']);
+    await fixture.runGit(['commit', '-m', 'Base']);
+    await fixture.runGit(['checkout', '-b', 'incoming']);
+    for (const path of ['src/a.txt', 'src/b.txt'])
+      await writeFile(join(fixture.root, path), 'incoming\n');
+    await fixture.runGit(['commit', '-am', 'Incoming']);
+    await fixture.runGit(['checkout', '-b', 'current', 'HEAD~']);
+    for (const path of ['src/a.txt', 'src/b.txt'])
+      await writeFile(join(fixture.root, path), 'current\n');
+    await fixture.runGit(['commit', '-am', 'Current']);
+    await assert.rejects(fixture.runGit(['merge', 'incoming']));
+    await writeFile(join(fixture.root, 'keep.txt'), 'keep staged\n');
+    await fixture.runGit(['add', 'keep.txt']);
+    const access = await getGitApi();
+    const repository = await access.api.openRepository(
+      vscode.Uri.file(fixture.root),
+    );
 
-  assert.ok(repository);
-  await repository.status();
-  await vscode.commands.executeCommand(
-    sourceControlCommandId('refresh-changes'),
-  );
+    assert.ok(repository);
+    await repository.status();
+    await vscode.commands.executeCommand(
+      sourceControlCommandId('refresh-changes'),
+    );
 
-  return { fixture, frame: await sourceControlFrame() };
+    return { fixture, frame: await sourceControlFrame() };
+  } catch (error) {
+    try {
+      await dispose(fixture);
+    } catch (cleanupError) {
+      throw new AggregateError(
+        [error, cleanupError],
+        'Could not prepare or retire the conflict fixture.',
+        { cause: cleanupError },
+      );
+    }
+
+    throw error;
+  }
 }
 
 async function dispose(fixture: Fixture) {
-  await closeFixtureEditors({ roots: [fixture.root] });
-  await vscode.commands.executeCommand('notifications.clearAll');
-  await vscode.commands.executeCommand(
-    'git.close',
-    vscode.Uri.file(fixture.root),
-  );
-  await fixture.dispose();
-  await vscode.commands.executeCommand(
-    sourceControlCommandId('refresh-changes'),
-  );
+  try {
+    await closeFixtureEditors({ roots: [fixture.root] });
+    await vscode.commands.executeCommand('notifications.clearAll');
+    await vscode.commands.executeCommand(
+      'git.close',
+      vscode.Uri.file(fixture.root),
+    );
+  } finally {
+    await fixture.dispose();
+    await vscode.commands.executeCommand(
+      sourceControlCommandId('refresh-changes'),
+    );
+  }
+}
+
+async function activateFileAction(frame: Frame, action: string) {
+  const row = frame.getByRole('treeitem', { name: 'src/a.txt', exact: true });
+
+  await row.focus();
+  await expect(row).toBeFocused();
+  await expect.poll(() => frame.evaluate(() => document.hasFocus())).toBe(true);
+  await row.press('Shift+F10');
+  const item = frame
+    .page()
+    .getByRole('menuitem', { name: action, exact: true });
+
+  await expect(item).toBeVisible();
+  await expect(item).toBeEnabled();
+  // Hover updates the native ActionBar's active item before keyboard activation.
+  await item.hover();
+  await item.focus();
+  await expect(item).toBeFocused();
+  await item.press('Enter');
 }
 
 describe('Native Changes conflict actions', () => {
@@ -83,15 +121,7 @@ describe('Native Changes conflict actions', () => {
           return input instanceof vscode.TabInputText ? input.uri.fsPath : null;
         })
         .toBe(vscode.Uri.file(join(fixture.root, 'src/a.txt')).fsPath);
-      await row.focus();
-      await row.press('Shift+F10');
-      const item = frame.page().getByRole('menuitem', {
-        name: 'Resolve in Merge Editor',
-        exact: true,
-      });
-
-      await expect(item).toBeVisible();
-      await item.click({ delay: 150 });
+      await activateFileAction(frame, 'Resolve in Merge Editor');
       await expect(frame.page().locator('.merge-editor')).toBeVisible();
       await expect
         .poll(() =>
@@ -102,34 +132,31 @@ describe('Native Changes conflict actions', () => {
           ),
         )
         .toBe(true);
+    } catch (error) {
+      await captureNativeActionFailure({
+        frame,
+        name: 'conflict-merge-editor',
+      });
+      throw error;
     } finally {
-      await config.update(
-        'mergeEditor',
-        previous,
-        vscode.ConfigurationTarget.Global,
-      );
-      await dispose(fixture);
+      try {
+        await config.update(
+          'mergeEditor',
+          previous,
+          vscode.ConfigurationTarget.Global,
+        );
+      } finally {
+        await dispose(fixture);
+      }
     }
-  });
+  }).timeout(90000);
 
   for (const choice of ['Current', 'Incoming'])
     it(`accepts all ${choice.toLowerCase()} changes in the selected file and stages only that resolution`, async () => {
       const { fixture, frame } = await prepare();
 
       try {
-        const row = frame.getByRole('treeitem', {
-          name: 'src/a.txt',
-          exact: true,
-        });
-
-        await row.focus();
-        await row.press('Shift+F10');
-        const item = frame
-          .page()
-          .getByRole('menuitem', { name: `Accept All ${choice}`, exact: true });
-
-        await expect(item).toBeVisible();
-        await item.click({ delay: 150 });
+        await activateFileAction(frame, `Accept All ${choice}`);
         const uri = vscode.Uri.file(join(fixture.root, 'src/a.txt'));
         const document = await vscode.workspace.openTextDocument(uri);
 
@@ -145,12 +172,7 @@ describe('Native Changes conflict actions', () => {
         await expect(
           frame.getByRole('tab', { name: 'Commit', exact: true }),
         ).toBeEnabled();
-        await row.focus();
-        await row.press('Shift+F10');
-        await frame
-          .page()
-          .getByRole('menuitem', { name: 'Stage Changes', exact: true })
-          .click({ delay: 150 });
+        await activateFileAction(frame, 'Stage Changes');
         await expect
           .poll(() =>
             fixture.runGit(['ls-files', '--unmerged', '--', 'src/a.txt']),
@@ -174,10 +196,16 @@ describe('Native Changes conflict actions', () => {
           await readFile(join(fixture.root, 'src/b.txt'), 'utf8'),
           /<<<<<<< /,
         );
+      } catch (error) {
+        await captureNativeActionFailure({
+          frame,
+          name: `conflict-${choice.toLowerCase()}`,
+        });
+        throw error;
       } finally {
         await dispose(fixture);
       }
-    });
+    }).timeout(90000);
   it('keeps longer conflict markers unstaged', async () => {
     const { fixture, frame } = await prepare();
 

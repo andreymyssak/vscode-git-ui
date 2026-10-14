@@ -8,6 +8,7 @@ import * as vscode from 'vscode';
 
 import { getGitApi } from '../../src/extension/git/api';
 import { sourceControlCommandId } from '../../src/shared/extension-identity';
+import { captureNativeActionFailure } from '../fixtures/native-action-diagnostic';
 import { createFixture, type Fixture } from '../fixtures/repository';
 import { sourceControlFrame } from '../fixtures/source-control-view';
 
@@ -456,6 +457,7 @@ describe('Source Control repository actions', () => {
     const fixture = await createFixture({ prefix: 'git-ui-quick-tags-' });
     const other = await createFixture({ prefix: 'git-ui-quick-tags-other-' });
     const remote = fixture.root + '-remote.git';
+    let frame: Frame | undefined;
 
     try {
       await fixture.runGit(['init', '--bare', remote]);
@@ -463,7 +465,8 @@ describe('Source Control repository actions', () => {
       await fixture.runGit(['push', '-u', 'origin', 'main']);
       await fixture.runGit(['push', 'origin', 'HEAD:remote-topic']);
       const head = (await fixture.runGit(['rev-parse', 'HEAD'])).trim();
-      const frame = await openSelected(fixture, other);
+
+      frame = await openSelected(fixture, other);
       const page = await tagsMenu(frame);
       const widget = page.locator('.quick-input-widget:visible');
       const input = widget.locator('input').first();
@@ -533,6 +536,13 @@ describe('Source Control repository actions', () => {
         'placeholder',
         'Select a remote tag to delete',
       );
+      // Native Git loads remote refs after showing the picker placeholder.
+      await expect(widget.getByText(/quick-tag/).first()).toBeVisible();
+      await expect(input).toBeVisible();
+      await expect(input).toBeFocused();
+      await expect
+        .poll(() => page.evaluate(() => document.hasFocus()))
+        .toBe(true);
       await input.fill('quick-tag');
       await widget
         .getByText(/quick-tag/, { exact: false })
@@ -615,6 +625,10 @@ describe('Source Control repository actions', () => {
       );
       assert.equal(await other.runGit(['branch', '--show-current']), 'main\n');
       assert.equal(await other.runGit(['tag', '--list']), '');
+    } catch (error) {
+      if (frame)
+        await captureNativeActionFailure({ frame, name: 'repository-tags' });
+      throw error;
     } finally {
       await dispose(fixture, other);
       await rm(remote, { recursive: true, force: true });
