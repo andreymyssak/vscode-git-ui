@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.0](https://github.com/andreymyssak/vscode-git-ui/compare/v0.3.2...v0.4.0) (2026-10-14)
+
+### Features
+
+- add Pull, Push, Fetch, Branch, and Tags actions to Git UI Changes with separate branch creation and checkout ([df24728](https://github.com/andreymyssak/vscode-git-ui/commit/df24728e2d05a1e8479795f7f8187ffa844932e5))
+- **log:** cherry-pick or revert selected files from commit history ([d6aebd4](https://github.com/andreymyssak/vscode-git-ui/commit/d6aebd4942b4140548da829a8229e2cb09527493))
+- **source-control:** stage files, resolve conflicts, move files to Trash, and abort operations ([7d1507d](https://github.com/andreymyssak/vscode-git-ui/commit/7d1507d3e272102a1a9c12ac078de31e21b79389))
+
+### Bug Fixes
+
+- **branches:** explain broken worktrees when Update cannot safely check branch use ([f932a8f](https://github.com/andreymyssak/vscode-git-ui/commit/f932a8f3c107f871da48635a17f5f942c6b38d5e))
+- **log:** remove empty graph spacing while keeping Author and Date aligned ([221e806](https://github.com/andreymyssak/vscode-git-ui/commit/221e8066669f58797facc8bf6262a21d058a66a5))
+
 ## [0.3.2](https://github.com/andreymyssak/vscode-git-ui/compare/v0.3.1...v0.3.2) (2026-10-13)
 
 ### Bug Fixes
