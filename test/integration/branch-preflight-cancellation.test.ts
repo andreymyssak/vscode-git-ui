@@ -23,10 +23,10 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-async function outcome(operation: Promise<OperationResult>) {
+async function outcome(operation: Promise<OperationResult>, timeout = 500) {
   return Promise.race([
     operation,
-    delay(500).then(() => ({ kind: 'timeout' })),
+    delay(timeout).then(() => ({ kind: 'timeout' })),
   ]);
 }
 
@@ -120,7 +120,8 @@ test.each(['merge-branch', 'rebase-branch', 'create-worktree'] as const)(
       context.abort();
       second = run('fixture', next);
       expect((await outcome(first)).kind).toBe('cancelled');
-      expect((await outcome(second)).kind).toBe('success');
+      // This successor performs real Git reads and a write on the runner.
+      expect((await outcome(second, 5000)).kind).toBe('success');
       expect((await f.runGit(['rev-parse', 'refs/heads/next'])).trim()).toBe(
         f.c,
       );
@@ -175,7 +176,8 @@ test.each(['merge-branch', 'rebase-branch', 'create-worktree'] as const)(
       context.abort();
       second = run('fixture', next);
       expect((await outcome(first)).kind).toBe('cancelled');
-      expect((await outcome(second)).kind).toBe('success');
+      // Keep the first preflight held until the real successor finishes.
+      expect((await outcome(second, 5000)).kind).toBe('success');
       expect(readSignal).toBe(context.signal);
       held.resolve(kind === 'create-worktree' ? '' : 'refs/heads/main\n');
       await delay(0);

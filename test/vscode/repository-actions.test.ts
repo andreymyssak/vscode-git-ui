@@ -9,7 +9,10 @@ import * as vscode from 'vscode';
 import { getGitApi } from '../../src/extension/git/api';
 import { sourceControlCommandId } from '../../src/shared/extension-identity';
 import { captureNativeActionFailure } from '../fixtures/native-action-diagnostic';
-import { activateNativeMenu } from '../fixtures/native-menu';
+import {
+  acceptNativeQuickPick,
+  activateNativeMenu,
+} from '../fixtures/native-menu';
 import { createFixture, type Fixture } from '../fixtures/repository';
 import { sourceControlFrame } from '../fixtures/source-control-view';
 
@@ -235,7 +238,7 @@ describe('Source Control repository actions', () => {
       );
       await expect(widget).toBeVisible();
       await input.fill('main');
-      await widget.getByText('main', { exact: true }).click();
+      await acceptNativeQuickPick({ widget, input, label: 'main' });
       await expect
         .poll(() => fixture.runGit(['branch', '--show-current']))
         .toBe('main\n');
@@ -320,7 +323,7 @@ describe('Source Control repository actions', () => {
         'Select a branch to delete',
       );
       await input.fill('quick-topic');
-      await widget.getByText('quick-topic', { exact: true }).click();
+      await acceptNativeQuickPick({ widget, input, label: 'quick-topic' });
       await expect
         .poll(() =>
           fixture.runGit([
@@ -507,7 +510,7 @@ describe('Source Control repository actions', () => {
         'placeholder',
         'Pick a remote to publish the branch "main" to:',
       );
-      await widget.getByText('origin', { exact: true }).click();
+      await acceptNativeQuickPick({ widget, input, label: 'origin' });
       await expect(
         frame.getByRole('tab', { name: 'Commit', exact: true }),
       ).toBeEnabled();
@@ -527,10 +530,7 @@ describe('Source Control repository actions', () => {
         .poll(() => page.evaluate(() => document.hasFocus()))
         .toBe(true);
       await input.fill('quick-tag');
-      await widget
-        .getByText(/quick-tag/, { exact: false })
-        .first()
-        .click();
+      await acceptNativeQuickPick({ widget, input, label: /quick-tag/ });
       await expect
         .poll(() => fixture.runGit(['--git-dir', remote, 'tag', '--list']))
         .toBe('');
@@ -547,7 +547,7 @@ describe('Source Control repository actions', () => {
         'Select a tag to delete',
       );
       await input.fill('quick-tag');
-      await widget.getByText('quick-tag', { exact: true }).click();
+      await acceptNativeQuickPick({ widget, input, label: 'quick-tag' });
       await expect.poll(() => fixture.runGit(['tag', '--list'])).toBe('');
       await expect(
         frame.getByRole('tab', { name: 'Commit', exact: true }),
@@ -564,7 +564,11 @@ describe('Source Control repository actions', () => {
         'Select a remote branch to delete',
       );
       await input.fill('origin/remote-topic');
-      await widget.getByText('origin/remote-topic', { exact: true }).click();
+      await acceptNativeQuickPick({
+        widget,
+        input,
+        label: 'origin/remote-topic',
+      });
       await expect
         .poll(() =>
           fixture.runGit([

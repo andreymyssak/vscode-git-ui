@@ -31,6 +31,10 @@ async function capture({ frame, name }: FailureContext) {
       document.querySelectorAll('.notification-list-item'),
       (item) => item.textContent,
     ),
+    dialogs: Array.from(
+      document.querySelectorAll('.monaco-dialog-box'),
+      (dialog) => dialog.textContent,
+    ),
     menus: Array.from(
       document.querySelectorAll('[role="menuitem"]'),
       (item) => ({
@@ -51,6 +55,10 @@ async function capture({ frame, name }: FailureContext) {
       selected: row.getAttribute('aria-selected'),
       disabled: row.getAttribute('aria-disabled'),
       context: row.getAttribute('data-vscode-context'),
+    })),
+    buttons: Array.from(document.querySelectorAll('button'), (button) => ({
+      label: button.getAttribute('aria-label') ?? button.textContent,
+      disabled: button.disabled,
     })),
   }));
 

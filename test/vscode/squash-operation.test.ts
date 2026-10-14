@@ -292,17 +292,29 @@ describe('queued squash through the installed Git API and bundled runtime', () =
           sha: string,
         ) => {
           const contents = await readFile(todo, 'utf8');
+          const replay = `${command} ${sha}`;
 
-          assert.equal(
-            contents.split('\n')[0]!.startsWith(`${command} ${sha}`),
-            true,
-          );
+          if (!contents.split('\n')[0]?.startsWith(replay)) {
+            // Some Git versions consume the manually committed entry themselves.
+            // It must be the last completed action and absent from the remaining todo.
+            const done = await readFile(join(rebase, 'done'), 'utf8');
+
+            assert.equal(
+              done.trimEnd().split('\n').at(-1)?.startsWith(replay),
+              true,
+              `Expected completed ${replay}. Done: ${done}. Todo: ${contents}`,
+            );
+            assert.equal(
+              contents.split('\n').some((line) => line.startsWith(replay)),
+              false,
+            );
+
+            return;
+          }
+
           // Model a user editing Git's todo: the staged patch has already
           // been committed manually, so omit its rescheduled second replay.
-          await writeFile(
-            todo,
-            contents.replace(`${command} ${sha}`, `drop ${sha}`),
-          );
+          await writeFile(todo, contents.replace(replay, `drop ${sha}`));
         };
 
         assert.equal(

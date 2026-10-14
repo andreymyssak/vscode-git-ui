@@ -607,7 +607,7 @@ export class SourceControlService implements vscode.Disposable {
     let runtime: SourceControlBackend | null = null;
 
     try {
-      // Settle native title actions before a Git command opens a quick picker.
+      // Publish busy contexts before a native Git command opens a quick picker.
       await publishSourceControlContexts(this.model);
       runtime = await this.initialize();
       if (this.disposed) return;

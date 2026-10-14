@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import type { Frame } from '@playwright/test';
 import { expect } from '@playwright/test';
 import * as vscode from 'vscode';
 
@@ -11,12 +12,17 @@ import {
   LOG_VIEW_ID,
   sourceControlCommandId,
 } from '../../../src/shared/extension-identity';
+import { captureNativeActionFailure } from '../../fixtures/native-action-diagnostic';
+import { activateNativeButton } from '../../fixtures/native-menu';
 import { selectNativeRepository } from '../../fixtures/native-panel';
 import { createFixture } from '../../fixtures/repository';
 import { sourceControlFrame } from '../../fixtures/source-control-view';
 
 export async function run(): Promise<string[]> {
   const passed: string[] = [];
+  const completion = expect.configure({
+    timeout: process.platform === 'win32' ? 15000 : 5000,
+  });
 
   for (const kind of [
     'selected-revert',
@@ -29,6 +35,7 @@ export async function run(): Promise<string[]> {
   ] as const) {
     const f = await createFixture({ prefix: 'git-ui-abort-' });
     const selected = kind.startsWith('selected') || kind === 'legacy';
+    let activeFrame: Frame | undefined;
 
     try {
       const base = (await f.runGit(['rev-parse', 'HEAD'])).trim();
@@ -113,6 +120,8 @@ export async function run(): Promise<string[]> {
       );
       await vscode.commands.executeCommand('notifications.clearAll');
       const frame = await sourceControlFrame();
+
+      activeFrame = frame;
       const page = frame.page();
       const label =
         kind === 'selected-revert'
@@ -132,13 +141,15 @@ export async function run(): Promise<string[]> {
       const before = await f.runGit(['status', '--porcelain']);
 
       if (kind === 'selected-revert') {
-        await button.click({ delay: 150 });
-        await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+        await activateNativeButton(button);
+        await activateNativeButton(
+          page.getByRole('button', { name: 'Cancel', exact: true }),
+        );
         await expect(
           frame.getByRole('tab', { name: 'Commit', exact: true }),
         ).toBeEnabled();
         assert.equal(await f.runGit(['status', '--porcelain']), before);
-        await button.click({ delay: 150 });
+        await activateNativeButton(button);
         const confirm = page.getByRole('button', { name: label, exact: true });
 
         await expect(confirm).toBeVisible();
@@ -146,7 +157,7 @@ export async function run(): Promise<string[]> {
           join(f.root, 'sample.txt'),
           'edited during confirmation\n',
         );
-        await confirm.click();
+        await activateNativeButton(confirm);
         await expect(page.locator('.notifications-toasts')).toContainText(
           'changed while confirming',
         );
@@ -160,29 +171,14 @@ export async function run(): Promise<string[]> {
         await vscode.commands.executeCommand('notifications.clearAll');
       }
 
-      await button.click({ delay: 150 });
+      await activateNativeButton(button);
       const confirmation = page.getByRole('button', {
         name: label.replace('…', ''),
         exact: true,
       });
 
-      try {
-        await expect(confirmation).toBeVisible({ timeout: 5000 });
-      } catch (error) {
-        await page.screenshot({
-          path: join(
-            process.env.GIT_UI_TEST_ARTIFACTS ?? '.artifacts',
-            `abort-${kind}-dialog-failure.png`,
-          ),
-        });
-        throw new Error(
-          `Missing ${label} dialog. Dialogs: ${await page.locator('.monaco-dialog-box').allTextContents()}. Notifications: ${await page.locator('.notifications-toasts').allTextContents()}. Commit enabled: ${await frame.getByRole('tab', { name: 'Commit', exact: true }).isEnabled()}`,
-          { cause: error },
-        );
-      }
-
-      await confirmation.click();
-      await expect(button).toHaveCount(0);
+      await activateNativeButton(confirmation);
+      await completion(button).toHaveCount(0);
       assert.equal(await f.runGit(['ls-files', '-u']), '');
       assert.equal((await f.runGit(['rev-parse', 'HEAD'])).trim(), head);
       assert.equal(
@@ -213,6 +209,13 @@ export async function run(): Promise<string[]> {
       passed.push(
         `${label} uses its own confirmation and cancels the matching operation`,
       );
+    } catch (error) {
+      if (activeFrame)
+        await captureNativeActionFailure({
+          frame: activeFrame,
+          name: `abort-${kind}`,
+        });
+      throw error;
     } finally {
       await vscode.commands.executeCommand('workbench.action.closeAllEditors');
       await vscode.commands.executeCommand('notifications.clearAll');
