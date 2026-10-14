@@ -331,7 +331,7 @@ describe('native selected commit changes', () => {
     );
     assert.equal(
       repository.state.mergeChanges[0]!.uri.fsPath,
-      join(fixture.root, 'a.txt'),
+      vscode.Uri.file(join(fixture.root, 'a.txt')).fsPath,
     );
     assert.match(
       await readFile(join(fixture.root, 'a.txt'), 'utf8'),
