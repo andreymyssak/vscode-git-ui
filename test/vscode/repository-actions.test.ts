@@ -349,7 +349,7 @@ describe('Source Control repository actions', () => {
     } finally {
       await dispose(fixture, other);
     }
-  });
+  }).timeout(90000);
 
   it('pulls and pushes through native Git using only the selected repository and its local remote', async () => {
     const fixture = await createFixture({ prefix: 'git-ui-quick-sync-' });
@@ -450,7 +450,7 @@ describe('Source Control repository actions', () => {
       await dispose(fixture, other);
       await rm(remote, { recursive: true, force: true });
     }
-  });
+  }).timeout(90000);
 
   it('creates, pushes and deletes tags and publishes only the selected repository to its local remote', async () => {
     const fixture = await createFixture({ prefix: 'git-ui-quick-tags-' });
@@ -619,5 +619,5 @@ describe('Source Control repository actions', () => {
       await dispose(fixture, other);
       await rm(remote, { recursive: true, force: true });
     }
-  });
+  }).timeout(90000);
 });

@@ -12,6 +12,7 @@ import {
   refreshNativeHistory,
   selectNativeRepository,
 } from '../fixtures/native-panel';
+import { closeFixtureEditors } from '../fixtures/owned-editors';
 import type { Fixture } from '../fixtures/repository';
 import { createFixture } from '../fixtures/repository';
 
@@ -61,16 +62,7 @@ describe('native selected commit changes', () => {
 
   afterEach(async () => {
     if (workbench) await workbench.keyboard.press('Escape');
-    for (const document of vscode.workspace.textDocuments) {
-      if (document.isDirty && document.uri.fsPath.startsWith(fixture.root)) {
-        await vscode.window.showTextDocument(document);
-        await vscode.commands.executeCommand(
-          'workbench.action.revertAndCloseActiveEditor',
-        );
-      }
-    }
-
-    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+    await closeFixtureEditors({ roots: [fixture.root] });
     await vscode.commands.executeCommand('notifications.clearAll');
     await vscode.commands.executeCommand(
       'git.close',

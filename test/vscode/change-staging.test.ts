@@ -16,6 +16,7 @@ import * as vscode from 'vscode';
 import { getGitApi } from '../../src/extension/git/api';
 import { createSourceControlBackend } from '../../src/extension/git/source-control/index';
 import { sourceControlCommandId } from '../../src/shared/extension-identity';
+import { closeFixtureEditors } from '../fixtures/owned-editors';
 import { createFixture, type Fixture } from '../fixtures/repository';
 import { sourceControlFrame } from '../fixtures/source-control-view';
 
@@ -35,10 +36,7 @@ async function open(fixture: Fixture) {
 }
 
 async function finish(fixture: Fixture) {
-  for (const document of vscode.workspace.textDocuments)
-    if (document.uri.fsPath.startsWith(fixture.root) && document.isDirty)
-      await document.save();
-  await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+  await closeFixtureEditors({ roots: [fixture.root] });
   await vscode.commands.executeCommand('notifications.clearAll');
   await vscode.commands.executeCommand(
     'git.close',

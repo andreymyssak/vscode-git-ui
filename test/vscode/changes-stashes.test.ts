@@ -10,6 +10,7 @@ import { getGitApi } from '../../src/extension/git/api';
 import { sourceControlCommandId } from '../../src/shared/extension-identity';
 import type { Fixture } from '../fixtures/repository';
 import { createFixture } from '../fixtures/repository';
+import { observeReveal } from '../fixtures/reveal-diagnostic';
 import { sourceControlFrame } from '../fixtures/source-control-view';
 
 // Git writes spawn several processes; wait for their result before fixture cleanup.
@@ -197,13 +198,41 @@ describe('combined Commit and Stash view', () => {
       await vscode.window.showTextDocument(
         vscode.Uri.file(join(fixture.root, 'nested', 'deeper', 'new.txt')),
       );
-      await frame
-        .getByRole('button', {
+      const diagnostic = await observeReveal({ frame, root: fixture.root });
+
+      try {
+        await expect
+          .poll(() => {
+            const input =
+              vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+
+            return input instanceof vscode.TabInputText
+              ? input.uri.fsPath
+              : null;
+          })
+          .toBe(
+            vscode.Uri.file(join(fixture.root, 'nested', 'deeper', 'new.txt'))
+              .fsPath,
+          );
+        const reveal = frame.getByRole('button', {
           name: 'Select Opened File in Changes View',
           exact: true,
-        })
-        .press('Enter');
-      await expect(file(frame, 'nested/deeper/new.txt')).toBeFocused();
+        });
+
+        await expect(reveal).toBeEnabled();
+        await reveal.press('Enter');
+        await expect(file(frame, 'nested/deeper/new.txt')).toBeFocused();
+      } catch (error) {
+        await diagnostic.capture().catch((diagnosticError: unknown) => {
+          console.warn('Could not capture reveal diagnostics', diagnosticError);
+        });
+        throw error;
+      } finally {
+        await diagnostic.dispose().catch((diagnosticError: unknown) => {
+          console.warn('Could not dispose reveal diagnostics', diagnosticError);
+        });
+      }
+
       await expect(
         file(frame, 'nested/deeper/new.txt').getByRole('checkbox'),
       ).not.toBeChecked();

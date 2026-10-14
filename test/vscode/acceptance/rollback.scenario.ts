@@ -97,21 +97,64 @@ export async function run(): Promise<string[]> {
     });
 
     await expect(added).toBeVisible();
-    const newContext = await added.getAttribute('data-vscode-context');
+    const row = await added.evaluate((node) => ({
+      context: node.getAttribute('data-vscode-context'),
+      snapshot: node.getAttribute('data-snapshot'),
+      disabled: node.getAttribute('aria-disabled'),
+    }));
+    const newContext = row.context;
 
     assert.ok(newContext);
     const remove = vscode.commands.executeCommand(
       sourceControlCommandId('rollback-selected'),
       JSON.parse(newContext),
     );
+    const outcome = { state: 'pending' };
 
-    await page
-      .getByRole('button', {
-        name: 'Rollback and Delete New Files',
-        exact: true,
-      })
-      .click();
-    await remove;
+    void Promise.resolve(remove).then(
+      () => {
+        outcome.state = 'completed';
+      },
+      (error: unknown) => {
+        outcome.state = String(error);
+      },
+    );
+
+    try {
+      await page
+        .getByRole('button', {
+          name: 'Rollback and Delete New Files',
+          exact: true,
+        })
+        .click();
+      await remove;
+    } catch (error) {
+      const artifacts = process.env.GIT_UI_TEST_ARTIFACTS ?? '.artifacts';
+
+      try {
+        await page.screenshot({
+          path: join(artifacts, 'rollback-new-file-failure.png'),
+        });
+        await writeFile(
+          join(artifacts, 'rollback-new-file-failure.json'),
+          JSON.stringify({
+            row,
+            outcome: outcome.state,
+            dialogs: await page.locator('.monaco-dialog-box').allTextContents(),
+            notifications: await page
+              .locator('.notifications-toasts')
+              .allTextContents(),
+            changes: await frame.locator('[data-source-control]').innerText(),
+            status: await fixture.runGit(['status', '--porcelain']),
+          }),
+        );
+      } catch (diagnosticError) {
+        console.warn('Could not capture rollback diagnostics', diagnosticError);
+      }
+
+      throw error;
+    }
+
     await assert.rejects(readFile(join(fixture.root, 'src/new.txt')), {
       code: 'ENOENT',
     });
