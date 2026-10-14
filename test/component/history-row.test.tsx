@@ -39,7 +39,6 @@ test('row activation sends complete identity and renders literal subject', async
       commit={commit}
       graph={graph}
       index={0}
-      graphWidth={22}
       columns={[400, 100, 130]}
       viewportHeight={280}
       onIntent={onIntent}
@@ -76,7 +75,6 @@ test('an optional revision cell shows an abbreviated value with the full identit
       commit={commit}
       graph={new GraphAdapter().layout([commit], 'history')[0]!}
       index={0}
-      graphWidth={22}
       columns={[400, 100, 130]}
       viewportHeight={280}
       onIntent={vi.fn()}
@@ -109,7 +107,6 @@ test('highlight descriptions reflect Git annotations without selecting a row', (
     commit,
     graph: new GraphAdapter().layout([commit], 'history')[0]!,
     index: 0,
-    graphWidth: 22,
     columns: [400, 100, 130] as [number, number, number],
     viewportHeight: 280,
     onIntent: vi.fn(),

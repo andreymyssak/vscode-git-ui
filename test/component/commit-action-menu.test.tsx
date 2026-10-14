@@ -34,7 +34,6 @@ test('commit menu exposes every selected identity and refuses a merge member', (
     commit: data.commits[0]!,
     graph: new GraphAdapter().layout(data.commits, 'history')[0]!,
     index: 0,
-    graphWidth: 22,
     columns: [400, 100, 130] as [number, number, number],
     viewportHeight: 280,
     onIntent: vi.fn(),

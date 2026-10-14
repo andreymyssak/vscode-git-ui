@@ -103,6 +103,7 @@ function HistoryContent({
   const hasReferences =
     data.refs.length > 0 ||
     data.commits.some((commit) => commit.sha === data.repository?.headSha);
+  // The column must fit its widest graph; each row keeps its own SVG width.
   const minimum = width + 106 + (hasReferences ? 40 : 0);
   const revisionWidth = data.showHash
     ? Math.min(
@@ -322,7 +323,6 @@ function HistoryContent({
                 commit={commit}
                 graph={graph}
                 index={index}
-                graphWidth={width}
                 columns={columns}
                 viewportHeight={viewport.height}
                 revisionWidth={revisionWidth}

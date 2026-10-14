@@ -25,7 +25,6 @@ interface Props {
   commit: CommitRecord;
   graph: GraphRow;
   index: number;
-  graphWidth: number;
   columns: Columns;
   viewportHeight: number;
   revisionWidth?: number;
@@ -47,7 +46,6 @@ export function HistoryRow({
   commit,
   graph,
   index,
-  graphWidth,
   columns,
   viewportHeight,
   revisionWidth = 100,
@@ -194,7 +192,7 @@ export function HistoryRow({
       }}
     >
       <span role="cell" data-history-cell="" className={styles['history-cell']}>
-        <GraphDrawing row={graph} width={graphWidth} />
+        <GraphDrawing row={graph} />
         <span data-subject="" className={styles.subject}>
           <span data-subject-message="" className={styles['subject-message']}>
             {commit.message.split('\n')[0]}

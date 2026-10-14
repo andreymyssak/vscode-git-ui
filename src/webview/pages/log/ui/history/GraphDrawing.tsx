@@ -4,13 +4,7 @@ import type { GraphRow } from '../../lib/graph/adapter';
 import { renderGraph } from '../../lib/graph/rows';
 import styles from './HistoryPane.module.css';
 
-export function GraphDrawing({
-  row,
-  width,
-}: {
-  row: GraphRow;
-  width?: number;
-}) {
+export function GraphDrawing({ row }: { row: GraphRow }) {
   const ref = useRef<HTMLSpanElement>(null);
 
   useLayoutEffect(() => {
@@ -30,7 +24,6 @@ export function GraphDrawing({
       data-commit-graph=""
       data-graph-kind={row.viewModel.kind}
       className={styles['commit-graph']}
-      style={width === undefined ? undefined : { width }}
     />
   );
 }

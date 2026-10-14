@@ -11,9 +11,88 @@ import {
   refreshNativeHistory,
   selectNativeRepository,
 } from '../fixtures/native-panel';
-import { createFixture, type Fixture } from '../fixtures/repository';
+import {
+  commitLinearHistory,
+  createFixture,
+  type Fixture,
+} from '../fixtures/repository';
 
 describe('native graph interactions', () => {
+  it('keeps the first commit message next to its graph when an older merge has many lanes', async () => {
+    const fixture = await createFixture({
+      prefix: 'git-ui-native row graph widths ',
+    });
+    const root = vscode.Uri.file(fixture.root);
+
+    try {
+      const base = (await fixture.runGit(['rev-parse', 'HEAD'])).trim();
+      const tree = (await fixture.runGit(['rev-parse', 'HEAD^{tree}'])).trim();
+      const parents: string[] = [];
+
+      for (let index = 0; index < 12; index++)
+        parents.push(
+          (
+            await fixture.runGit([
+              'commit-tree',
+              tree,
+              '-p',
+              base,
+              '-m',
+              `Branch ${index}`,
+            ])
+          ).trim(),
+        );
+      const merge = (
+        await fixture.runGit([
+          'commit-tree',
+          tree,
+          ...parents.flatMap((sha) => ['-p', sha]),
+          '-m',
+          'Wide merge',
+        ])
+      ).trim();
+      const headSha = await commitLinearHistory(
+        fixture,
+        merge,
+        Array.from({ length: 45 }, (_, index) => ({
+          message: `Narrow row ${index + 1}`,
+          date: `${Date.UTC(2026, 9, 14, 9, index) / 1000} +0000`,
+        })),
+      );
+
+      await fixture.runGit(['update-ref', 'refs/heads/main', headSha, base]);
+      const access = await getGitApi();
+
+      await access.api.openRepository(root);
+      await access.repository(root.toString()).status();
+      await vscode.commands.executeCommand(`${LOG_VIEW_ID}.focus`);
+      const frame = await selectNativeRepository(root.toString());
+      const head = await refreshNativeHistory(frame, root.toString());
+
+      await expect(head).toHaveAttribute('data-sha', headSha);
+      const geometry = await head.evaluate((node) => {
+        const graph = node.querySelector('[data-commit-graph]');
+        const message = node.querySelector('[data-subject-message]');
+
+        if (!graph || !message) throw new Error('History row did not render');
+        const bounds = graph.getBoundingClientRect();
+
+        return {
+          graphWidth: bounds.width,
+          graphRight: bounds.right,
+          messageLeft: message.getBoundingClientRect().left,
+        };
+      });
+
+      assert.equal(geometry.graphWidth, 22);
+      assert.ok(Math.abs(geometry.messageLeft - geometry.graphRight) < 1);
+      await expect(head.locator('[data-author]')).toContainText('Fixture');
+      await expect(head.locator('[data-date]')).toBeVisible();
+    } finally {
+      await fixture.dispose();
+    }
+  });
+
   it('marks the checkout and opens details through graph dots without a hover popup', async () => {
     const fixture = await createFixture({
       prefix: 'git-ui-native graph hover ',

@@ -79,7 +79,6 @@ test('row gestures retain Shift and context semantics without giving inactive ra
       commit={commits[1]!}
       graph={graph}
       index={1}
-      graphWidth={22}
       columns={[400, 100, 130]}
       viewportHeight={280}
       onIntent={onIntent}
