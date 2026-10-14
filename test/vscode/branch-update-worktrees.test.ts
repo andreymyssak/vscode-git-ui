@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFile, rm, writeFile } from 'node:fs/promises';
+import { open, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { expect } from '@playwright/test';
@@ -12,6 +12,24 @@ import {
   selectNativeRepository,
 } from '../fixtures/native-panel';
 
+async function overwriteMarker({
+  path,
+  contents,
+}: {
+  path: string;
+  contents: string;
+}) {
+  // Git can mark .git hidden on Windows, where opening it with 'w' fails.
+  const file = await open(join(path, '.git'), 'r+');
+
+  try {
+    await file.truncate(0);
+    await file.writeFile(contents);
+  } finally {
+    await file.close();
+  }
+}
+
 describe('Update with an uncheckable worktree', () => {
   it('shows the broken worktree in a native notification and preserves checkout, edits, staging and refs', async () => {
     const f = await divergentFixture('topic');
@@ -21,7 +39,10 @@ describe('Update with an uncheckable worktree', () => {
     try {
       await f.runGit(['worktree', 'add', '--detach', path, f.base]);
       originalGit = await readFile(join(path, '.git'), 'utf8');
-      await writeFile(join(path, '.git'), `gitdir: ${path}-missing-metadata\n`);
+      await overwriteMarker({
+        path,
+        contents: `gitdir: ${path}-missing-metadata\n`,
+      });
       await writeFile(join(f.root, 'sample.txt'), 'staged local work\n');
       await f.runGit(['add', 'sample.txt']);
       await writeFile(join(f.root, 'sample.txt'), 'unstaged local work\n');
@@ -79,12 +100,18 @@ describe('Update with an uncheckable worktree', () => {
         `gitdir: ${path}-missing-metadata\n`,
       );
     } finally {
-      await vscode.commands.executeCommand('notifications.clearAll');
-      await vscode.commands.executeCommand('notifications.hideList');
-      if (originalGit !== undefined)
-        await writeFile(join(path, '.git'), originalGit);
-      await f.dispose();
-      await rm(path, { recursive: true, force: true });
+      try {
+        await vscode.commands.executeCommand('notifications.clearAll');
+        await vscode.commands.executeCommand('notifications.hideList');
+        if (originalGit !== undefined)
+          await overwriteMarker({ path, contents: originalGit });
+      } finally {
+        try {
+          await f.dispose();
+        } finally {
+          await rm(path, { recursive: true, force: true });
+        }
+      }
     }
   });
 });
