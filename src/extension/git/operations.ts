@@ -19,6 +19,7 @@ import { GitPartialCompletion } from './partial-completion';
 import { isReadCancellation, readWithCancellation } from './read-cancellation';
 import { withRepositoryOperation } from './repository-operations';
 import { readReferences } from './resolve';
+import { applySelectedCommitChanges } from './selected-commit-changes';
 import type { SquashServices } from './squash-operation';
 import { runSquash } from './squash-operation';
 import {
@@ -54,25 +55,28 @@ export function createOperations(
 
   return (id, requested, context) => {
     const action =
-      requested.kind === 'delete-worktrees'
-        ? {
-            ...requested,
-            worktrees: requested.worktrees.map((item) => ({ ...item })),
-          }
-        : requested.kind === 'delete-branches'
+      requested.kind === 'cherry-pick-files' ||
+      requested.kind === 'revert-files'
+        ? { ...requested, files: requested.files.map((file) => ({ ...file })) }
+        : requested.kind === 'delete-worktrees'
           ? {
               ...requested,
-              branches: requested.branches.map((branch) => ({ ...branch })),
+              worktrees: requested.worktrees.map((item) => ({ ...item })),
             }
-          : 'target' in requested
+          : requested.kind === 'delete-branches'
             ? {
                 ...requested,
-                target: {
-                  ...requested.target,
-                  shas: [...requested.target.shas],
-                },
+                branches: requested.branches.map((branch) => ({ ...branch })),
               }
-            : requested;
+            : 'target' in requested
+              ? {
+                  ...requested,
+                  target: {
+                    ...requested.target,
+                    shas: [...requested.target.shas],
+                  },
+                }
+              : requested;
 
     return withRepositoryOperation<OperationResult>(
       cli,
@@ -400,6 +404,16 @@ export function createOperations(
                 context,
               );
               break;
+            case 'cherry-pick-files':
+            case 'revert-files':
+              await applySelectedCommitChanges(
+                access,
+                cli,
+                id,
+                action,
+                context,
+              );
+              break;
             default: {
               const exhaustive: never = action;
 
@@ -496,6 +510,8 @@ export function createOperations(
                         'tag-from-commit',
                         'cherry-pick',
                         'cherry-pick-commits',
+                        'cherry-pick-files',
+                        'revert-files',
                         'drop-commits',
                         'edit-commit-message',
                         'squash-commits',

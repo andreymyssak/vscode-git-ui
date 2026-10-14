@@ -52,6 +52,8 @@ export function activate(context: vscode.ExtensionContext): void {
   for (const kind of [
     'copy-sha',
     'cherry-pick',
+    'cherry-pick-files',
+    'revert-files',
     'edit-commit-message',
     'squash-commits',
     'branch-from-commit',

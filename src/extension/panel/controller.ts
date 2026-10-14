@@ -526,16 +526,19 @@ export class PanelController {
     request: PanelRequest,
   ): Promise<void> {
     const rangeRevision = this.session.rangeRevision;
-    const reviewed = await this.actions!.review(action, request);
-    const operation = reviewed.action;
-
-    if (!operation) return;
     const rewritesHistory = isHistoryRewrite(action);
-    const pause = rewritesHistory
-      ? this.repositoryRefresh.pause(request.repositoryId)
-      : null;
+    let pause =
+      action.kind === 'cherry-pick-files' || action.kind === 'revert-files'
+        ? this.repositoryRefresh.pause(request.repositoryId)
+        : null;
 
     try {
+      const reviewed = await this.actions!.review(action, request);
+      const operation = reviewed.action;
+
+      if (!operation) return;
+      if (rewritesHistory)
+        pause = this.repositoryRefresh.pause(request.repositoryId);
       if (
         operation.kind === 'edit-commit-message' &&
         (!this.session.current(request.repositoryId, request.generation) ||
@@ -603,6 +606,7 @@ export class PanelController {
         reportInfo: deletionReported
           ? undefined
           : this.options.reportActionInfo,
+        revealSourceControl: this.options.revealSourceControl,
       });
     } finally {
       pause?.dispose();

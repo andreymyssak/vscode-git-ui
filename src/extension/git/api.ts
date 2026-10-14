@@ -58,6 +58,10 @@ export interface GitRepository {
   };
   status(): Promise<void>;
   clean(paths: string[]): Promise<void>;
+  apply(
+    patchPath: string,
+    options?: { threeWay?: boolean; reverse?: boolean },
+  ): Promise<void>;
   getBranch(name: string): Promise<GitRef>;
   getRefs(query: { pattern?: string }): Promise<GitRef[]>;
   log(options?: GitLogOptions): Promise<GitCommit[]>;

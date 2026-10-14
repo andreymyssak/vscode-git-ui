@@ -43,6 +43,12 @@ test('active icon changes update images while preserving the selected file and c
   const { container } = render(
     <FileIconThemeProvider bridge={bridge}>
       <FileTree
+        context={{
+          repositoryId: 'fixture',
+          generation: 1,
+          commitSha: 'a'.repeat(40),
+          canApply: false,
+        }}
         files={files}
         selectedPath="src/file.ts"
         onOpen={() => undefined}
@@ -70,7 +76,11 @@ test('active icon changes update images while preserving the selected file and c
   expect(image).toHaveAttribute('src', 'https://webview.test/typescript.svg');
   await userEvent
     .setup()
-    .click(screen.getByRole('treeitem', { name: 'src 1 file' }));
+    .click(
+      screen
+        .getByRole('treeitem', { name: 'src 1 file' })
+        .querySelector('[data-tree-disclosure]')!,
+    );
   const folder = container.querySelector('details')!;
 
   expect(folder.open).toBe(false);
@@ -106,7 +116,17 @@ test('obsolete stylesheet loads cannot replace the newest theme and unmount remo
   onTestFinished(() => bridge.dispose());
   const { container, unmount } = render(
     <FileIconThemeProvider bridge={bridge}>
-      <FileTree files={files} selectedPath={null} onOpen={() => undefined} />
+      <FileTree
+        context={{
+          repositoryId: 'fixture',
+          generation: 1,
+          commitSha: 'a'.repeat(40),
+          canApply: false,
+        }}
+        files={files}
+        selectedPath={null}
+        onOpen={() => undefined}
+      />
     </FileIconThemeProvider>,
   );
   const send = (uri: string, stylesheet: string | null) =>
@@ -153,7 +173,17 @@ test('a theme without folder icons follows Explorer while unavailable themes kee
   onTestFinished(() => bridge.dispose());
   const { container } = render(
     <FileIconThemeProvider bridge={bridge}>
-      <FileTree files={files} selectedPath={null} onOpen={() => undefined} />
+      <FileTree
+        context={{
+          repositoryId: 'fixture',
+          generation: 1,
+          commitSha: 'a'.repeat(40),
+          canApply: false,
+        }}
+        files={files}
+        selectedPath={null}
+        onOpen={() => undefined}
+      />
     </FileIconThemeProvider>,
   );
   const folderIcon = container.querySelector('[data-file-icon="folder"]');
@@ -191,7 +221,17 @@ test('the None theme suppresses file icons instead of substituting generic icons
   onTestFinished(() => bridge.dispose());
   const { container } = render(
     <FileIconThemeProvider bridge={bridge}>
-      <FileTree files={files} selectedPath={null} onOpen={() => undefined} />
+      <FileTree
+        context={{
+          repositoryId: 'fixture',
+          generation: 1,
+          commitSha: 'a'.repeat(40),
+          canApply: false,
+        }}
+        files={files}
+        selectedPath={null}
+        onOpen={() => undefined}
+      />
     </FileIconThemeProvider>,
   );
 
@@ -234,7 +274,17 @@ test('a declared but unavailable folder asset uses the generic folder fallback',
   onTestFinished(() => bridge.dispose());
   const { container } = render(
     <FileIconThemeProvider bridge={bridge}>
-      <FileTree files={files} selectedPath={null} onOpen={() => undefined} />
+      <FileTree
+        context={{
+          repositoryId: 'fixture',
+          generation: 1,
+          commitSha: 'a'.repeat(40),
+          canApply: false,
+        }}
+        files={files}
+        selectedPath={null}
+        onOpen={() => undefined}
+      />
     </FileIconThemeProvider>,
   );
 

@@ -47,6 +47,7 @@ export interface ActionPrompts extends WorktreeCreationPrompts {
     failure?: string,
   ) => void;
   reportActionInfo?: (message: string) => void | Promise<void>;
+  revealSourceControl?: () => Promise<void>;
 }
 
 export function isHistoryRewrite(action: GitAction | UserAction): boolean {
@@ -68,6 +69,7 @@ export async function publishOperationResult(
     reportError:
       ((message: string, sourceControl?: boolean) => Promise<void>) | undefined;
     reportInfo?: ((message: string) => void | Promise<void>) | undefined;
+    revealSourceControl?: (() => Promise<void>) | undefined;
   },
 ): Promise<void> {
   const nativeResult = [
@@ -87,6 +89,12 @@ export async function publishOperationResult(
   ].includes(kind);
 
   await Promise.all([
+    (kind === 'cherry-pick-files' || kind === 'revert-files') &&
+    (result.kind === 'success' ||
+      result.kind === 'conflict' ||
+      (result.kind === 'error' && result.recovery === 'source-control'))
+      ? lifecycle.revealSourceControl?.()
+      : undefined,
     result.kind === 'error' || result.kind === 'conflict'
       ? lifecycle.reportError?.(
           result.message,
@@ -117,6 +125,50 @@ export class PanelActions {
     action: UserAction,
     request: Request<RequestBody>,
   ): Promise<{ action: GitAction | null; context?: AbortSignal }> {
+    if (action.kind === 'cherry-pick-files' || action.kind === 'revert-files') {
+      const repo = this.session.repositoryInfo;
+      const handles = action.fileIds.map((id) => this.session.files.get(id));
+      const first = handles[0];
+
+      if (
+        !this.session.current(request.repositoryId, request.generation) ||
+        !repo?.headSha ||
+        !repo.branch ||
+        !first ||
+        handles.some(
+          (handle) =>
+            !handle ||
+            handle.sha !== this.session.selectedSha ||
+            handle.sha !== first.sha ||
+            handle.parentSha !== first.parentSha,
+        )
+      )
+        throw new Error(
+          'Select files from one current commit comparison and check out a target branch.',
+        );
+      const files = handles.map((handle) => {
+        if (!handle)
+          throw new Error('The selected file is no longer available.');
+
+        return { ...handle.file };
+      });
+
+      return {
+        action: {
+          kind: action.kind,
+          sha: first.sha,
+          parentSha: first.parentSha,
+          files,
+          expectedHeadSha: repo.headSha,
+          expectedBranch: repo.branch,
+        },
+        context: AbortSignal.any([
+          this.session.abort.signal,
+          this.session.detailAbort.signal,
+        ]),
+      };
+    }
+
     if (action.kind === 'delete-worktrees') {
       if (!isWorktreeSelection(action.worktreeIds))
         throw new Error('Select worktrees from the current list.');
@@ -267,6 +319,8 @@ export class PanelActions {
       action.kind === 'delete-worktrees' ||
       action.kind === 'squash-commits' ||
       action.kind === 'cherry-pick-commits' ||
+      action.kind === 'cherry-pick-files' ||
+      action.kind === 'revert-files' ||
       action.kind === 'drop-commits'
     )
       throw new Error('This action requires a reviewed commit range.');

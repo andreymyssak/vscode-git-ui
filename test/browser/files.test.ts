@@ -33,6 +33,42 @@ async function showChangedFiles(page: Page, files = changedFiles) {
   }, files);
 }
 
+test('Log file ranges and individual additions preserve the native action target', async ({
+  page,
+}) => {
+  await showChangedFiles(
+    page,
+    ['a.ts', 'b.ts', 'c.ts'].map((path) => ({
+      id: path,
+      status: 'modified' as const,
+      oldPath: path,
+      newPath: path,
+    })),
+  );
+  const row = (name: string) =>
+    page.getByRole('treeitem', { name: `Modified · ${name}`, exact: true });
+
+  await row('a.ts').click();
+  await row('c.ts').click({ modifiers: ['Shift'] });
+  await expect(
+    page.locator('#files [data-file][aria-selected="true"]'),
+  ).toHaveCount(3);
+  await row('b.ts').click({ modifiers: ['Meta'] });
+  await expect(
+    page.locator('#files [data-file][aria-selected="true"]'),
+  ).toHaveCount(2);
+  await row('c.ts').click({ button: 'right' });
+  const context: unknown = JSON.parse(
+    (await row('c.ts').getAttribute('data-vscode-context'))!,
+  );
+
+  expect(context).toMatchObject({
+    webviewSection: 'commit-file',
+    fileIds: ['a.ts', 'c.ts'],
+    fileSelectionCount: 2,
+  });
+});
+
 test('a host file selection expands its folders and scrolls the selected row into view', async ({
   page,
 }) => {

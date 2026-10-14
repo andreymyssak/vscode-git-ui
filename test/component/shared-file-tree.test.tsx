@@ -5,6 +5,88 @@ import { expect, test, vi } from 'vitest';
 import { FileTree as CommitFiles } from '../../src/webview/pages/log/ui/details/FileTree';
 import { ChangeTree } from '../../src/webview/pages/source-control/ui/ChangeTree';
 
+test('a range extends from the file selected by the host when the tree opens', () => {
+  const files = ['a.ts', 'b.ts'].map((path) => ({
+    id: path,
+    newPath: path,
+    oldPath: path,
+    status: 'modified' as const,
+  }));
+
+  render(
+    <CommitFiles
+      files={files}
+      selectedPath="a.ts"
+      onOpen={vi.fn()}
+      context={{
+        repositoryId: 'fixture',
+        generation: 1,
+        commitSha: 'a'.repeat(40),
+        canApply: true,
+      }}
+    />,
+  );
+  const second = screen.getByRole('treeitem', { name: 'Modified · b.ts' });
+
+  fireEvent.click(second, { shiftKey: true });
+  expect(screen.getAllByRole('treeitem', { selected: true })).toHaveLength(2);
+  fireEvent.contextMenu(second);
+  expect(
+    JSON.parse(second.getAttribute('data-vscode-context') ?? '{}'),
+  ).toMatchObject({
+    fileIds: ['a.ts', 'b.ts'],
+    fileSelectionCount: 2,
+  });
+});
+
+test('a host-selected file replaces the existing range and native menu target', () => {
+  const files = ['src/a.ts', 'src/b.ts', 'docs/c.ts'].map((path) => ({
+    id: path,
+    newPath: path,
+    oldPath: path,
+    status: 'modified' as const,
+  }));
+  const context = {
+    repositoryId: 'fixture',
+    generation: 1,
+    commitSha: 'a'.repeat(40),
+    canApply: true,
+  };
+  const onOpen = vi.fn();
+  const view = render(
+    <CommitFiles
+      files={files}
+      context={context}
+      selectedPath={null}
+      onOpen={onOpen}
+    />,
+  );
+  const row = (name: string) =>
+    screen.getByRole('treeitem', { name: `Modified · ${name}` });
+
+  fireEvent.click(row('a.ts'));
+  fireEvent.click(row('b.ts'), { shiftKey: true });
+  expect(screen.getAllByRole('treeitem', { selected: true })).toHaveLength(2);
+  view.rerender(
+    <CommitFiles
+      files={files}
+      context={context}
+      selectedPath="docs/c.ts"
+      onOpen={onOpen}
+    />,
+  );
+  expect(screen.getAllByRole('treeitem', { selected: true })).toEqual([
+    row('c.ts'),
+  ]);
+  fireEvent.contextMenu(row('c.ts'));
+  expect(
+    JSON.parse(row('c.ts').getAttribute('data-vscode-context') ?? '{}'),
+  ).toMatchObject({
+    fileIds: ['docs/c.ts'],
+    fileSelectionCount: 1,
+  });
+});
+
 test('commit details and checked changes share row styling, compact folders and file activation', async () => {
   const user = userEvent.setup();
   const onOpen = vi.fn();
@@ -19,6 +101,12 @@ test('commit details and checked changes share row styling, compact folders and 
     <>
       <section aria-label="Commit details">
         <CommitFiles
+          context={{
+            repositoryId: 'fixture',
+            generation: 1,
+            commitSha: 'a'.repeat(40),
+            canApply: false,
+          }}
           files={[
             {
               id: 'file',

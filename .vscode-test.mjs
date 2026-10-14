@@ -106,6 +106,7 @@ export default defineConfig([
       'dist/test/vscode/stash-editing.test.cjs',
       'dist/test/vscode/change-menus.test.cjs',
       'dist/test/vscode/commit-menu.test.cjs',
+      'dist/test/vscode/selected-commit-changes.test.cjs',
       'dist/test/vscode/history-editing.test.cjs',
       'dist/test/vscode/branch-restore.test.cjs',
       'dist/test/vscode/notifications.test.cjs',

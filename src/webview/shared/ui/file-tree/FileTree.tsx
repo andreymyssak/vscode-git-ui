@@ -56,8 +56,12 @@ interface Props<T> {
   role?: 'tree' | 'group';
 }
 
-export function navigateFileTree(event: KeyboardEvent<HTMLDivElement>) {
+export function navigateFileTree(
+  event: KeyboardEvent<HTMLDivElement>,
+  tree: HTMLElement = event.currentTarget,
+) {
   if (
+    event.defaultPrevented ||
     ![
       'ArrowUp',
       'ArrowDown',
@@ -71,12 +75,12 @@ export function navigateFileTree(event: KeyboardEvent<HTMLDivElement>) {
     return;
   const target = event.target.closest<HTMLElement>('[role="treeitem"]');
   const rows = [
-    ...event.currentTarget.querySelectorAll<HTMLElement>('[role="treeitem"]'),
+    ...tree.querySelectorAll<HTMLElement>('[role="treeitem"]'),
   ].filter((row) => {
     if (row.closest('[hidden]')) return false;
     let parent = row.parentElement;
 
-    while (parent && parent !== event.currentTarget) {
+    while (parent && parent !== tree) {
       if (
         parent instanceof HTMLDetailsElement &&
         !parent.open &&
@@ -228,7 +232,14 @@ export function FileTree<T>(props: Props<T>) {
   };
 
   visit(nodes);
-  const rowSelection = useRowSelection([...visible.keys()]);
+  const externalFile = props.multiSelect
+    ? props.files.find((file) => props.pathOf(file) === props.selectedPath)
+    : undefined;
+  const rowSelection = useRowSelection(
+    [...visible.keys()],
+    externalFile ? JSON.stringify(['file', props.fileKey(externalFile)]) : null,
+  );
+
   const selectedFiles = (
     node: FileTreeNode<T>,
     selected = rowSelection.selected,
@@ -556,22 +567,33 @@ export function FileTree<T>(props: Props<T>) {
       role={props.role ?? 'tree'}
       ref={treeRef}
       aria-label={props.label}
-      aria-multiselectable={props.multiSelect || undefined}
+      aria-multiselectable={
+        props.role !== 'group' ? props.multiSelect || undefined : undefined
+      }
       className={clsx(
         styles.tree,
         hasFiles && !hasFolders && styles.alignFileIcons,
         !!props.selection && styles.checkable,
       )}
       onKeyDown={
-        props.role === 'group'
+        props.role === 'group' && !props.multiSelect
           ? undefined
           : (event) => {
-              const next = navigateFileTree(event);
+              const tree =
+                props.role === 'group'
+                  ? (event.currentTarget.closest<HTMLElement>(
+                      '[role="tree"]',
+                    ) ?? event.currentTarget)
+                  : event.currentTarget;
+              const next = navigateFileTree(event, tree);
+
+              if (event.defaultPrevented) event.stopPropagation();
               const key = next?.dataset.treeRowKey;
 
               if (
                 props.multiSelect &&
                 key !== undefined &&
+                visible.has(key) &&
                 (event.shiftKey || !(event.metaKey || event.ctrlKey))
               )
                 rowSelection.select(key, event);

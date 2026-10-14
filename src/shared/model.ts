@@ -142,6 +142,14 @@ export type GitAction =
       expectedBranch: string;
     }
   | {
+      kind: 'cherry-pick-files' | 'revert-files';
+      sha: string;
+      parentSha: string | null;
+      files: readonly FileChange[];
+      expectedHeadSha: string;
+      expectedBranch: string;
+    }
+  | {
       kind: 'squash-commits';
       target: CommitRangeTarget;
       message: string;

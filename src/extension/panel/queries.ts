@@ -26,12 +26,15 @@ export class QuerySession {
   repositoryInfo: RepositoryInfo | null = null;
   readonly refs = new Map<string, Reference>();
   detailEpoch = 0;
+  detailAbort = new AbortController();
   abort = new AbortController();
   readonly commits = new Map<string, CommitRecord>();
   historyShas: string[] = [];
   readonly files = new Map<string, FileHandle>();
   readonly worktrees = new Map<string, WorktreeInfo>();
   begin(repositoryId: string, generation = this.generation + 1): void {
+    this.detailAbort.abort();
+    this.detailAbort = new AbortController();
     this.rangeAbort.abort();
     this.rangeAbort = new AbortController();
     this.rangeRevision++;
@@ -79,6 +82,8 @@ export class QuerySession {
   }
 
   private selectActive(sha: string): number {
+    this.detailAbort.abort();
+    this.detailAbort = new AbortController();
     this.selectedSha = sha;
     this.selection = { sha, parentSha: null, filePath: null };
     this.files.clear();
@@ -95,6 +100,7 @@ export class QuerySession {
   }
 
   dispose(): void {
+    this.detailAbort.abort();
     this.rangeAbort.abort();
     this.abort.abort();
     this.files.clear();

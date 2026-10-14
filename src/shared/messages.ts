@@ -41,6 +41,8 @@ export type BranchActionKind =
 export type CommitActionKind =
   | 'copy-sha'
   | 'cherry-pick'
+  | 'cherry-pick-files'
+  | 'revert-files'
   | 'edit-commit-message'
   | 'squash-commits'
   | 'branch-from-commit'
@@ -58,6 +60,8 @@ export type UserAction =
   | { kind: 'delete-branches'; refIds: string[] }
   | { kind: 'copy-sha'; sha: string }
   | { kind: 'cherry-pick'; sha: string }
+  | { kind: 'cherry-pick-files'; fileIds: string[] }
+  | { kind: 'revert-files'; fileIds: string[] }
   | { kind: 'edit-commit-message'; sha: string }
   | { kind: 'branch-from-commit'; sha: string }
   | { kind: 'tag-from-commit'; sha: string }

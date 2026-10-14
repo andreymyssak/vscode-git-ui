@@ -185,6 +185,8 @@ describe('installed file icon themes', () => {
       await expect(file).toHaveAttribute('aria-selected', 'true');
       await frame
         .getByRole('treeitem', { name: 'src 1 file' })
+        .locator(':scope > span')
+        .first()
         .evaluate((node) => (node as HTMLElement).click());
       await configuration.update(
         'iconTheme',
@@ -216,6 +218,8 @@ describe('installed file icon themes', () => {
       );
       await frame
         .getByRole('treeitem', { name: 'src 1 file' })
+        .locator(':scope > span')
+        .first()
         .evaluate((node) => (node as HTMLElement).click());
       const nativeFolder = workbench
         .locator('.scm-view .monaco-icon-label.folder-icon')

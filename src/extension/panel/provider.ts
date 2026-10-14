@@ -205,6 +205,9 @@ export class GitViewProvider implements vscode.WebviewViewProvider {
         reportBranchDeleted: showBranchDeleted,
         reportActionError: showOperationError,
         reportActionInfo: showOperationInfo,
+        revealSourceControl: async () => {
+          await vscode.commands.executeCommand('workbench.view.scm');
+        },
         openWorktree,
         confirmWorktreeDeletion: async (items) =>
           (await vscode.window.showWarningMessage(

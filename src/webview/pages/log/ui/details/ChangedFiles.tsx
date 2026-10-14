@@ -125,6 +125,16 @@ function ParentGroup({
             <FileTree
               files={files}
               selectedPath={selectedPath}
+              context={{
+                repositoryId: data.repository?.id ?? '',
+                generation: data.generation,
+                commitSha: commit.sha,
+                canApply:
+                  !inactive &&
+                  !data.loading &&
+                  !!data.repository?.branch &&
+                  !!data.repository.headSha,
+              }}
               onOpen={(fileId, preview) =>
                 onIntent({
                   kind: 'request',
@@ -162,9 +172,11 @@ export function ChangedFiles({ data, onIntent, inactive = false }: Props) {
   return (
     <div
       id="files"
+      data-vscode-context='{"preventDefaultContextMenuItems":true}'
       className={clsx(styles.files, treeStyles.tree)}
       role="tree"
       aria-label="Changed files"
+      aria-multiselectable="true"
       onKeyDown={navigateFileTree}
     >
       {parents.map((parent, index) => (

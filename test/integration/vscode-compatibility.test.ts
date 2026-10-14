@@ -192,6 +192,29 @@ test('checks host calls against the candidate SDK and rejects an incompatible Gi
   expect(await checkDeclarations(options)).toContainEqual(
     expect.objectContaining({ code: 2322 }),
   );
+
+  await writeFile(
+    join(root, 'src/extension/git/api.ts'),
+    'export interface GitAPI { repositories: { apply(path: string, options?: { threeWay?: boolean }): Promise<void> }[] }\n',
+  );
+  await writeFile(
+    gitDeclarations,
+    'export interface API { repositories: { apply(path: string, options?: {}): Promise<void> }[] }\n',
+  );
+  expect(await checkDeclarations(options)).toContainEqual(
+    expect.objectContaining({ code: 2322 }),
+  );
+  await writeFile(
+    join(root, 'src/extension/git/api.ts'),
+    'export interface GitAPI { repositories: { apply(path: string, options?: { threeWay?: boolean; reverse?: boolean }): Promise<void> }[] }\n',
+  );
+  await writeFile(
+    gitDeclarations,
+    'export interface API { repositories: { apply(path: string, options?: { threeWay?: boolean }): Promise<void> }[] }\n',
+  );
+  expect(await checkDeclarations(options)).toContainEqual(
+    expect.objectContaining({ code: 2322 }),
+  );
 });
 
 test('host Node baseline rejects APIs introduced after the minimum editor runtime', async () => {

@@ -41,6 +41,16 @@ function isSha(value: unknown): value is string {
   );
 }
 
+function fileSelection(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.length <= 400 &&
+    value.every((id: unknown) => isText(id, 128) && id.length > 0) &&
+    new Set(value).size === value.length
+  );
+}
+
 function commitRange(value: Record<string, unknown>, minimum = 1): boolean {
   return (
     Array.isArray(value.shas) &&
@@ -102,6 +112,9 @@ function isUserAction(value: unknown): value is UserAction {
     case 'copy-sha':
     case 'edit-commit-message':
       return keys(value, ['kind', 'sha']) && isSha(value.sha);
+    case 'cherry-pick-files':
+    case 'revert-files':
+      return keys(value, ['kind', 'fileIds']) && fileSelection(value.fileIds);
     case 'squash-commits':
       return (
         keys(value, ['kind', 'shas', 'activeSha']) && commitRange(value, 2)
@@ -161,6 +174,23 @@ export function commitMenuRequest(
   value: unknown,
 ): Request<RequestBody> | null {
   if (!isRecord(value)) return null;
+
+  if (kind === 'cherry-pick-files' || kind === 'revert-files') {
+    if (
+      !fileSelection(value.fileIds) ||
+      value.fileSelectionCount !== value.fileIds.length ||
+      (value.fileId !== undefined &&
+        (!isText(value.fileId, 128) || !value.fileIds.includes(value.fileId)))
+    )
+      return null;
+
+    return parseRequest({
+      requestId: 'file-menu',
+      repositoryId: value.repositoryId,
+      generation: value.generation,
+      body: { kind: 'action', action: { kind, fileIds: value.fileIds } },
+    });
+  }
 
   if (
     kind === 'squash-commits' ||

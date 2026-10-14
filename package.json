@@ -244,6 +244,16 @@
         "title": "Copy Revision Number"
       },
       {
+        "command": "gitUI.cherry-pick-files",
+        "title": "Cherry-Pick Selected Changes",
+        "enablement": "isWorkspaceTrusted && fileCanApplyChanges && fileSelectionCount > 0"
+      },
+      {
+        "command": "gitUI.revert-files",
+        "title": "Revert Selected Changes",
+        "enablement": "isWorkspaceTrusted && fileCanApplyChanges && fileSelectionCount > 0"
+      },
+      {
         "command": "gitUI.cherry-pick",
         "title": "Cherry-Pick",
         "enablement": "commitCanCherryPick"
@@ -434,6 +444,16 @@
     "menus": {
       "webview/context": [
         {
+          "command": "gitUI.cherry-pick-files",
+          "when": "webviewId == gitUI.log && (webviewSection == commit-file || webviewSection == commit-folder)",
+          "group": "1_changes@1"
+        },
+        {
+          "command": "gitUI.revert-files",
+          "when": "webviewId == gitUI.log && (webviewSection == commit-file || webviewSection == commit-folder)",
+          "group": "1_changes@2"
+        },
+        {
           "command": "gitUI.rebase-branch",
           "when": "webviewId == gitUI.log && webviewSection == branch && refSelectionCount == 1",
           "group": "2_integrate@1"
@@ -600,6 +620,14 @@
         }
       ],
       "commandPalette": [
+        {
+          "command": "gitUI.cherry-pick-files",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.revert-files",
+          "when": "false"
+        },
         {
           "command": "gitUI.merge-branch",
           "when": "false"

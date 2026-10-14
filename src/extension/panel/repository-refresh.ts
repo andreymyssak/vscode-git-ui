@@ -1,6 +1,6 @@
 import type { Disposable } from 'vscode';
 
-/** Coalesce repository notifications while a reviewed history write is completing. */
+/** Coalesce repository notifications while a captured Git write is completing. */
 export class DeferredRepositoryRefresh {
   private readonly paused = new Map<
     string,

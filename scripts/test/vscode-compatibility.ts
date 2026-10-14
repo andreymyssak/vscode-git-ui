@@ -184,6 +184,12 @@ export async function checkDeclarations({
       'type MissingOptions = Exclude<WorktreeKeys<Local>, WorktreeKeys<Native>>;',
       'const optionKeys: MissingOptions extends never ? true : false = true;',
       'void optionKeys;',
+      'type ObjectKeys<T> = T extends object ? keyof T : never;',
+      'type SecondOptionKeys<F> = F extends (...args: infer A) => unknown ? ObjectKeys<NonNullable<A[1]>> : never;',
+      'type ApplyKeys<R> = R extends { apply: infer F } ? SecondOptionKeys<F> : never;',
+      'type MissingApplyOptions = Exclude<ApplyKeys<Local>, ApplyKeys<Native>>;',
+      'const applyOptions: MissingApplyOptions extends never ? true : false = true;',
+      'void applyOptions;',
     ].join('\n'),
   );
 

@@ -1,9 +1,22 @@
 import { useState } from 'react';
 
 /** Highlighting targets context actions; inclusion checkboxes remain independent. */
-export function useRowSelection(order: readonly string[]) {
-  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
-  const [anchor, setAnchor] = useState<string | null>(null);
+export function useRowSelection(
+  order: readonly string[],
+  external: string | null = null,
+) {
+  const [previousExternal, setPreviousExternal] = useState(external);
+  const [selected, setSelected] = useState<ReadonlySet<string>>(
+    () => new Set(external ? [external] : []),
+  );
+  const [anchor, setAnchor] = useState<string | null>(external);
+
+  if (previousExternal !== external) {
+    setPreviousExternal(external);
+    setSelected(new Set(external ? [external] : []));
+    setAnchor(external);
+  }
+
   const select = (
     path: string,
     modifiers: {

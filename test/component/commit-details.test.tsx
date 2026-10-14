@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { StrictMode } from 'react';
 import { expect, test, vi } from 'vitest';
@@ -18,6 +18,59 @@ const commit = {
   authorDate: null,
   commitDate: null,
 };
+
+test('changed files select Shift ranges and Cmd groups for their native context action', () => {
+  const files = ['a.ts', 'b.ts', 'c.ts'].map((path) => ({
+    id: path,
+    status: 'modified' as const,
+    oldPath: path,
+    newPath: path,
+  }));
+  const onIntent = vi.fn();
+
+  render(
+    <CommitDetails
+      data={{
+        ...initialView(),
+        repository: {
+          id: 'repo',
+          label: 'Repo',
+          rootUri: 'file:///repo',
+          branch: 'main',
+          headSha: parent,
+        },
+        selectedSha: sha,
+        details: { ...commit, parents: [parent] },
+        files: { [parent]: files },
+      }}
+      onIntent={onIntent}
+    />,
+  );
+  const row = (name: string) =>
+    screen.getByRole('treeitem', { name: `Modified · ${name}` });
+
+  fireEvent.click(row('a.ts'));
+  fireEvent.click(row('c.ts'), { shiftKey: true });
+  expect(screen.getAllByRole('treeitem', { selected: true })).toHaveLength(3);
+  fireEvent.click(row('b.ts'), { metaKey: true });
+  expect(screen.getAllByRole('treeitem', { selected: true })).toHaveLength(2);
+  expect(onIntent).toHaveBeenCalledTimes(1);
+  fireEvent.contextMenu(row('c.ts'));
+  expect(
+    JSON.parse(row('c.ts').getAttribute('data-vscode-context') ?? '{}'),
+  ).toMatchObject({
+    webviewSection: 'commit-file',
+    repositoryId: 'repo',
+    commitSha: sha,
+    fileIds: ['a.ts', 'c.ts'],
+    fileSelectionCount: 2,
+    fileCanApplyChanges: true,
+  });
+  fireEvent.click(row('a.ts'));
+  fireEvent.keyDown(row('a.ts'), { key: 'ArrowDown', shiftKey: true });
+  expect(screen.getAllByRole('treeitem', { selected: true })).toHaveLength(2);
+  expect(onIntent).toHaveBeenCalledTimes(2);
+});
 
 for (const [authorDate, commitDate] of [
   [null, '2026-08-20T12:19:00Z'],
