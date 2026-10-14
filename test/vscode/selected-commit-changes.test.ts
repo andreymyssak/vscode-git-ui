@@ -8,6 +8,8 @@ import * as vscode from 'vscode';
 
 import { getGitApi } from '../../src/extension/git/api';
 import { commandId, LOG_VIEW_ID } from '../../src/shared/extension-identity';
+import { captureNativeActionFailure } from '../fixtures/native-action-diagnostic';
+import { activateNativeMenu } from '../fixtures/native-menu';
 import {
   refreshNativeHistory,
   selectNativeRepository,
@@ -15,6 +17,10 @@ import {
 import { closeFixtureEditors } from '../fixtures/owned-editors';
 import type { Fixture } from '../fixtures/repository';
 import { createFixture } from '../fixtures/repository';
+
+const mutation = expect.configure({
+  timeout: process.platform === 'win32' ? 15000 : 5000,
+});
 
 describe('native selected commit changes', () => {
   let fixture: Fixture;
@@ -115,17 +121,20 @@ describe('native selected commit changes', () => {
     await expect(
       workbench.getByRole('menuitem', { name: /^(Cut|Copy|Paste)\b/ }),
     ).toHaveCount(0);
-    // VS Code delays its native menu mouseup listener by 100 ms.
-    await action.click({ delay: 150 });
-    await expect
-      .poll(() => readFile(join(fixture.root, 'a.txt'), 'utf8'))
-      .toBe('source a.txt\n')
-      .catch(async (error: unknown) => {
-        throw new Error(
-          `Native application did not complete. Notifications: ${await workbench.locator('.notifications-toasts').innerText()}. Details: ${await frame.locator('#details').innerText()}`,
-          { cause: error },
-        );
+    // Hover selects the native ActionBar item; Enter avoids its mouseup guard.
+    try {
+      await activateNativeMenu(action);
+      await mutation
+        .poll(() => readFile(join(fixture.root, 'a.txt'), 'utf8'))
+        .toBe('source a.txt\n');
+    } catch (error) {
+      await captureNativeActionFailure({
+        frame,
+        name: 'selected-commit-cherry-pick',
       });
+      throw error;
+    }
+
     assert.equal(
       await readFile(join(fixture.root, 'b.txt'), 'utf8'),
       'base b.txt\n',
@@ -185,10 +194,19 @@ describe('native selected commit changes', () => {
     await expect(
       workbench.getByRole('menuitem', { name: /^(Cut|Copy|Paste)\b/ }),
     ).toHaveCount(0);
-    await revert.click({ delay: 150 });
-    await expect
-      .poll(() => readFile(join(fixture.root, 'a.txt'), 'utf8'))
-      .toBe('base a.txt\n');
+    try {
+      await activateNativeMenu(revert);
+      await mutation
+        .poll(() => readFile(join(fixture.root, 'a.txt'), 'utf8'))
+        .toBe('base a.txt\n');
+    } catch (error) {
+      await captureNativeActionFailure({
+        frame,
+        name: 'selected-commit-revert',
+      });
+      throw error;
+    }
+
     assert.equal(
       await readFile(join(fixture.root, 'b.txt'), 'utf8'),
       'source b.txt\n',

@@ -48,6 +48,7 @@ async function capture({ frame, name }: FailureContext) {
     text: document.body.innerText.slice(0, 5000),
     rows: Array.from(document.querySelectorAll('[data-file]'), (row) => ({
       path: row.getAttribute('data-file'),
+      selected: row.getAttribute('aria-selected'),
       disabled: row.getAttribute('aria-disabled'),
       context: row.getAttribute('data-vscode-context'),
     })),

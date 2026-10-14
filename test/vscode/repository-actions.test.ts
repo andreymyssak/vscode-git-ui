@@ -9,6 +9,7 @@ import * as vscode from 'vscode';
 import { getGitApi } from '../../src/extension/git/api';
 import { sourceControlCommandId } from '../../src/shared/extension-identity';
 import { captureNativeActionFailure } from '../fixtures/native-action-diagnostic';
+import { activateNativeMenu } from '../fixtures/native-menu';
 import { createFixture, type Fixture } from '../fixtures/repository';
 import { sourceControlFrame } from '../fixtures/source-control-view';
 
@@ -168,9 +169,9 @@ describe('Source Control repository actions', () => {
         await expect(
           page.getByRole('menuitem', { name, exact: true }),
         ).toBeEnabled();
-      await page
-        .getByRole('menuitem', { name: 'New Branch', exact: true })
-        .click({ delay: 150 });
+      await activateNativeMenu(
+        page.getByRole('menuitem', { name: 'New Branch', exact: true }),
+      );
       const widget = page.locator('.quick-input-widget:visible');
       const input = widget.locator('input').first();
 
@@ -208,9 +209,12 @@ describe('Source Control repository actions', () => {
         frame.getByRole('tab', { name: 'Commit', exact: true }),
       ).toBeEnabled();
       await branchMenu(frame);
-      await page
-        .getByRole('menuitem', { name: 'New Branch and Checkout', exact: true })
-        .click({ delay: 150 });
+      await activateNativeMenu(
+        page.getByRole('menuitem', {
+          name: 'New Branch and Checkout',
+          exact: true,
+        }),
+      );
       await expect(widget).toContainText('Please provide a new branch name');
       await input.fill('quick-checkout');
       await input.press('Enter');
@@ -226,9 +230,9 @@ describe('Source Control repository actions', () => {
         frame.getByRole('tab', { name: 'Commit', exact: true }),
       ).toBeEnabled();
       await menu(frame);
-      await page
-        .getByRole('menuitem', { name: 'Checkout', exact: true })
-        .click({ delay: 150 });
+      await activateNativeMenu(
+        page.getByRole('menuitem', { name: 'Checkout', exact: true }),
+      );
       await expect(widget).toBeVisible();
       await input.fill('main');
       await widget.getByText('main', { exact: true }).click();
@@ -254,9 +258,9 @@ describe('Source Control repository actions', () => {
         ['Rebase', 'placeholder', 'Select a branch to rebase onto'],
       ] as const) {
         await branchMenu(frame);
-        await page
-          .getByRole('menuitem', { name, exact: true })
-          .click({ delay: 150 });
+        await activateNativeMenu(
+          page.getByRole('menuitem', { name, exact: true }),
+        );
         try {
           await expect(widget).toBeVisible();
           if (field === 'prompt') await expect(widget).toContainText(text);
@@ -277,31 +281,10 @@ describe('Source Control repository actions', () => {
             frame.getByRole('tab', { name: 'Commit', exact: true }),
           ).toBeEnabled();
         } catch (error) {
-          const directory = process.env.GIT_UI_TEST_ARTIFACTS ?? '.artifacts';
-
-          await page.screenshot({
-            path: join(directory, 'repository-cancellation-failure.png'),
+          await captureNativeActionFailure({
+            frame,
+            name: `repository-cancellation-${name.toLowerCase().replaceAll(' ', '-')}`,
           });
-          await writeFile(
-            join(directory, 'repository-cancellation-failure.json'),
-            JSON.stringify({
-              action: name,
-              placeholder: await page
-                .locator('.quick-input-widget input')
-                .first()
-                .getAttribute('placeholder'),
-              picker: await page
-                .locator('.quick-input-widget')
-                .allTextContents(),
-              focus: await page.evaluate(() => ({
-                focused: document.hasFocus(),
-                activeElement: document.activeElement?.outerHTML,
-              })),
-              sourceControl: await frame
-                .locator('[data-source-control]')
-                .textContent(),
-            }),
-          );
           throw error;
         }
       }
@@ -315,9 +298,9 @@ describe('Source Control repository actions', () => {
         '',
       );
       await branchMenu(frame);
-      await page
-        .getByRole('menuitem', { name: 'Rename', exact: true })
-        .click({ delay: 150 });
+      await activateNativeMenu(
+        page.getByRole('menuitem', { name: 'Rename', exact: true }),
+      );
       await expect(widget).toBeVisible();
       await input.fill('quick-renamed');
       await input.press('Enter');
@@ -329,9 +312,9 @@ describe('Source Control repository actions', () => {
         frame.getByRole('tab', { name: 'Commit', exact: true }),
       ).toBeEnabled();
       await branchMenu(frame);
-      await page
-        .getByRole('menuitem', { name: 'Delete Branch', exact: true })
-        .click({ delay: 150 });
+      await activateNativeMenu(
+        page.getByRole('menuitem', { name: 'Delete Branch', exact: true }),
+      );
       await expect(input).toHaveAttribute(
         'placeholder',
         'Select a branch to delete',
@@ -369,9 +352,9 @@ describe('Source Control repository actions', () => {
       const frame = await openSelected(fixture, other);
       const page = await menu(frame);
 
-      await page
-        .getByRole('menuitem', { name: 'Push', exact: true })
-        .click({ delay: 150 });
+      await activateNativeMenu(
+        page.getByRole('menuitem', { name: 'Push', exact: true }),
+      );
       await expect
         .poll(async () =>
           (
@@ -408,9 +391,9 @@ describe('Source Control repository actions', () => {
         .repository(vscode.Uri.file(fixture.root).toString())
         .status();
       await menu(frame);
-      await page
-        .getByRole('menuitem', { name: 'Fetch', exact: true })
-        .click({ delay: 150 });
+      await activateNativeMenu(
+        page.getByRole('menuitem', { name: 'Fetch', exact: true }),
+      );
       await expect
         .poll(async () =>
           (
@@ -430,9 +413,9 @@ describe('Source Control repository actions', () => {
         frame.getByRole('tab', { name: 'Commit', exact: true }),
       ).toBeEnabled();
       await menu(frame);
-      await page
-        .getByRole('menuitem', { name: 'Pull', exact: true })
-        .click({ delay: 150 });
+      await activateNativeMenu(
+        page.getByRole('menuitem', { name: 'Pull', exact: true }),
+      );
       await expect
         .poll(async () => (await fixture.runGit(['rev-parse', 'HEAD'])).trim())
         .toBe(incoming);
@@ -480,9 +463,9 @@ describe('Source Control repository actions', () => {
         await expect(
           page.getByRole('menuitem', { name, exact: true }),
         ).toBeEnabled();
-      await page
-        .getByRole('menuitem', { name: 'Create Tag', exact: true })
-        .click({ delay: 150 });
+      await activateNativeMenu(
+        page.getByRole('menuitem', { name: 'Create Tag', exact: true }),
+      );
       await expect(input).toHaveAttribute('placeholder', 'Tag name');
       await input.fill('cancelled-tag');
       await input.press('Escape');
@@ -491,9 +474,9 @@ describe('Source Control repository actions', () => {
       ).toBeEnabled();
       assert.equal(await fixture.runGit(['tag', '--list']), '');
       await tagsMenu(frame);
-      await page
-        .getByRole('menuitem', { name: 'Create Tag', exact: true })
-        .click({ delay: 150 });
+      await activateNativeMenu(
+        page.getByRole('menuitem', { name: 'Create Tag', exact: true }),
+      );
       await expect(input).toHaveAttribute('placeholder', 'Tag name');
       await input.fill('quick-tag');
       await input.press('Enter');
@@ -512,9 +495,9 @@ describe('Source Control repository actions', () => {
         frame.getByRole('tab', { name: 'Commit', exact: true }),
       ).toBeEnabled();
       await tagsMenu(frame);
-      await page
-        .getByRole('menuitem', { name: 'Push Tags', exact: true })
-        .click({ delay: 150 });
+      await activateNativeMenu(
+        page.getByRole('menuitem', { name: 'Push Tags', exact: true }),
+      );
       await expect
         .poll(() => fixture.runGit(['--git-dir', remote, 'tag', '--list']))
         .toBe('quick-tag\n');
@@ -529,9 +512,9 @@ describe('Source Control repository actions', () => {
         frame.getByRole('tab', { name: 'Commit', exact: true }),
       ).toBeEnabled();
       await tagsMenu(frame);
-      await page
-        .getByRole('menuitem', { name: 'Delete Remote Tag', exact: true })
-        .click({ delay: 150 });
+      await activateNativeMenu(
+        page.getByRole('menuitem', { name: 'Delete Remote Tag', exact: true }),
+      );
       await expect(input).toHaveAttribute(
         'placeholder',
         'Select a remote tag to delete',
@@ -556,9 +539,9 @@ describe('Source Control repository actions', () => {
         frame.getByRole('tab', { name: 'Commit', exact: true }),
       ).toBeEnabled();
       await tagsMenu(frame);
-      await page
-        .getByRole('menuitem', { name: 'Delete Tag', exact: true })
-        .click({ delay: 150 });
+      await activateNativeMenu(
+        page.getByRole('menuitem', { name: 'Delete Tag', exact: true }),
+      );
       await expect(input).toHaveAttribute(
         'placeholder',
         'Select a tag to delete',
@@ -570,9 +553,12 @@ describe('Source Control repository actions', () => {
         frame.getByRole('tab', { name: 'Commit', exact: true }),
       ).toBeEnabled();
       await branchMenu(frame);
-      await page
-        .getByRole('menuitem', { name: 'Delete Remote Branch', exact: true })
-        .click({ delay: 150 });
+      await activateNativeMenu(
+        page.getByRole('menuitem', {
+          name: 'Delete Remote Branch',
+          exact: true,
+        }),
+      );
       await expect(input).toHaveAttribute(
         'placeholder',
         'Select a remote branch to delete',
@@ -600,9 +586,9 @@ describe('Source Control repository actions', () => {
         .repository(vscode.Uri.file(fixture.root).toString())
         .status();
       await branchMenu(frame);
-      await page
-        .getByRole('menuitem', { name: 'Publish Branch', exact: true })
-        .click({ delay: 150 });
+      await activateNativeMenu(
+        page.getByRole('menuitem', { name: 'Publish Branch', exact: true }),
+      );
       await expect
         .poll(async () =>
           (

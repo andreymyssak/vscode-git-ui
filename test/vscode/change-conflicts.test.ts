@@ -9,6 +9,7 @@ import { getGitApi } from '../../src/extension/git/api';
 import { createSourceControlBackend } from '../../src/extension/git/source-control/index';
 import { sourceControlCommandId } from '../../src/shared/extension-identity';
 import { captureNativeActionFailure } from '../fixtures/native-action-diagnostic';
+import { activateNativeMenu } from '../fixtures/native-menu';
 import { closeFixtureEditors } from '../fixtures/owned-editors';
 import { createFixture, type Fixture } from '../fixtures/repository';
 import { sourceControlFrame } from '../fixtures/source-control-view';
@@ -87,13 +88,7 @@ async function activateFileAction(frame: Frame, action: string) {
     .page()
     .getByRole('menuitem', { name: action, exact: true });
 
-  await expect(item).toBeVisible();
-  await expect(item).toBeEnabled();
-  // Hover updates the native ActionBar's active item before keyboard activation.
-  await item.hover();
-  await item.focus();
-  await expect(item).toBeFocused();
-  await item.press('Enter');
+  await activateNativeMenu(item);
 }
 
 describe('Native Changes conflict actions', () => {
