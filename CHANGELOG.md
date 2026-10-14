@@ -12,6 +12,7 @@
 
 - **branches:** explain broken worktrees when Update cannot safely check branch use ([f932a8f](https://github.com/andreymyssak/vscode-git-ui/commit/f932a8f3c107f871da48635a17f5f942c6b38d5e))
 - **log:** remove empty graph spacing while keeping Author and Date aligned ([221e806](https://github.com/andreymyssak/vscode-git-ui/commit/221e8066669f58797facc8bf6262a21d058a66a5))
+- **source-control:** keep actions disabled until the latest status refresh finishes ([c986df0](https://github.com/andreymyssak/vscode-git-ui/commit/c986df0de1af6e2a80498a4637470bf0f450aedd))
 
 ## [0.3.2](https://github.com/andreymyssak/vscode-git-ui/compare/v0.3.1...v0.3.2) (2026-10-13)
 
