@@ -57,7 +57,13 @@ function prepare(label: 'installed' | 'restricted') {
   );
   const common = {
     env,
-    launchArgs: strings(prepared.config.launchArgs, 'launch arguments'),
+    launchArgs: [
+      ...strings(prepared.config.launchArgs, 'launch arguments'),
+      // Match Microsoft's test-electron launcher for downloaded Linux editors.
+      ...(process.platform === 'linux'
+        ? ['--no-sandbox', '--disable-gpu-sandbox']
+        : []),
+    ],
     extensionTestsPath: prepared.extensionTestsPath,
   };
 

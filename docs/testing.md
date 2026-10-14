@@ -22,7 +22,7 @@ Failed browser tests retain their trace and screenshot under `test-results/`, al
 
 VS Code tests run inside the desktop editor using Microsoft's `@vscode/test-cli` and `@vscode/test-electron`. Installed-extension tests install the built VSIX into an isolated profile, then run selected VS Code suites and acceptance scenarios. `scripts/test/installed-actions.ts` tests branch actions, notifications and user choices against that installed copy.
 
-CI runs code/local tests, browser tests, native VS Code tests, and installed-package tests in parallel groups on macOS and Windows. A shared build prepares the VSIX and compiled tests once. VS Code jobs use stable. Each job reports its checks and saves results; the overall summary includes every group and fails if a required check fails or does not run.
+CI runs code/local tests, browser tests, native VS Code tests, and installed-package tests in parallel groups on Linux, macOS and Windows. A shared build prepares the VSIX and compiled tests once. VS Code jobs use Stable. Linux browser jobs install Chromium's system dependencies; native, Restricted Mode and installed-package tests run under Xvfb with a 1920×1080 virtual display. The Linux test launchers use Microsoft's `test-electron` sandbox flags for downloaded editors; these flags apply only to test windows. Each job reports its checks and saves results; the overall summary includes every platform and group and fails if a required check fails or does not run.
 
 ## VS Code compatibility
 
@@ -32,7 +32,7 @@ Git UI supports VS Code `^1.111.0`, which allows 1.111.0 and later compatible 1.
 
 The development SDK is pinned to `@types/vscode` 1.110.0, the nearest published SDK below the minimum. Node types use the 22.x family matching the minimum editor's runtime, separately from the Node version used to develop the extension. Keeping these types at the normal `@types/node` path prevents transitive references from loading a newer host baseline. The actual 1.111 declarations remain part of the required compatibility check.
 
-CI requires the supported-release API check. `npm run compatibility:insiders` checks the current Insiders commit as an advisory job, so an unreleased change can warn us without blocking a Stable release. Its result appears in the workflow job list. Full native and installed-package suites run only on current Stable, on macOS and Windows.
+CI requires the supported-release API check. `npm run compatibility:insiders` checks the current Insiders commit as an advisory job, so an unreleased change can warn us without blocking a Stable release. Its result appears in the workflow job list. Full native and installed-package suites run only on current Stable, on Linux, macOS and Windows.
 
 Passing declarations establish API compatibility, not every runtime or workbench behavior. When adopting a newer API or changing the minimum, review the bundled Node/Electron runtime, command availability, and native behavior affected by the change. Keep the manifest, SDK baseline, packaged engine and installed-test drivers aligned. A future VS Code major version needs a compatibility review before expanding the range; it does not automatically require matching extension version numbers or dropping older supported editors.
 

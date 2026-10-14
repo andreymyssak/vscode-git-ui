@@ -75,7 +75,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -123,7 +123,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v7
         with:
@@ -136,7 +136,7 @@ jobs:
           name: extension-build
       - name: Install Chromium for webview tests
         id: chromium
-        run: npx playwright install chromium
+        run: npx playwright install ${{ runner.os == 'Linux' && '--with-deps' || '' }} chromium
       - name: Browser tests
         id: tests
         run: npx playwright test
@@ -172,7 +172,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     env:
       VSCODE_TEST_VERSION: stable
     steps:
@@ -187,11 +187,11 @@ jobs:
           name: extension-build
       - name: Native VS Code tests
         id: tests
-        run: npx vscode-test --label native 2>&1 | tee .artifacts/native-tests.log
+        run: ${{ runner.os == 'Linux' && 'xvfb-run -a --server-args="-screen 0 1920x1080x24"' || '' }} npx vscode-test --label native 2>&1 | tee .artifacts/native-tests.log
       - name: Restricted Mode tests
         id: restricted
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: node scripts/test/run-vscode-tests.ts --restricted 2>&1 | tee .artifacts/restricted-tests.log
+        run: ${{ runner.os == 'Linux' && 'xvfb-run -a --server-args="-screen 0 1920x1080x24"' || '' }} node scripts/test/run-vscode-tests.ts --restricted 2>&1 | tee .artifacts/restricted-tests.log
       - uses: actions/upload-artifact@v7
         id: archive
         if: always()
@@ -226,7 +226,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
     env:
       VSCODE_TEST_VERSION: stable
     steps:
@@ -244,7 +244,7 @@ jobs:
         run: npm run package:verify
       - name: Installed-package tests
         id: tests
-        run: node scripts/test/run-vscode-tests.ts --installed 2>&1 | tee .artifacts/installed-tests.log
+        run: ${{ runner.os == 'Linux' && 'xvfb-run -a --server-args="-screen 0 1920x1080x24"' || '' }} node scripts/test/run-vscode-tests.ts --installed 2>&1 | tee .artifacts/installed-tests.log
       - uses: actions/upload-artifact@v7
         id: archive
         if: always()
@@ -291,7 +291,7 @@ jobs:
           CHECK_RESULTS: >-
             [{"name":"Build extension and VSIX","status":"${{ needs.build.result }}"},
             {"name":"API compatibility (supported releases)","status":"${{ needs.compatibility.result }}"},
-            {"name":"Code and local tests (macOS and Windows)","status":"${{ needs.local.result }}"},
-            {"name":"Browser tests (macOS and Windows)","status":"${{ needs.browser.result }}"},
-            {"name":"Native VS Code tests (macOS and Windows)","status":"${{ needs.native.result }}"},
-            {"name":"Installed-package tests (macOS and Windows)","status":"${{ needs.installed.result }}"}]
+            {"name":"Code and local tests (Linux, macOS and Windows)","status":"${{ needs.local.result }}"},
+            {"name":"Browser tests (Linux, macOS and Windows)","status":"${{ needs.browser.result }}"},
+            {"name":"Native VS Code tests (Linux, macOS and Windows)","status":"${{ needs.native.result }}"},
+            {"name":"Installed-package tests (Linux, macOS and Windows)","status":"${{ needs.installed.result }}"}]
