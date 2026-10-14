@@ -210,9 +210,9 @@ if (prepared.kind === 'restricted') {
       workspace,
     ],
     env,
-    // Bound the complete suite, including startup, within the 20-minute CI job.
-    // Windows can exceed five minutes without any individual test timing out.
-    timeout: 600000,
+    // Bound startup and the complete suite without shortening individual test deadlines.
+    // Slower Windows runners need room for all cases before the separate action window.
+    timeout: 900000,
   });
   if (process.exitCode === 0)
     await runInstalledActions({
