@@ -2,6 +2,7 @@ import type {
   SourceControlRequest,
   SourceControlState,
 } from '../../src/shared/source-control';
+import { parseSourceControlResponse } from '../../src/shared/source-control-protocol';
 
 const sha = 'a'.repeat(40);
 // A real webview receives these values from the workbench's active theme.
@@ -53,6 +54,7 @@ const state: SourceControlState = {
       checked: [],
       draft: '',
       draftEditId: null,
+      operation: { kind: 'ready', items: [] },
       commitMode: { kind: 'new' },
       changes: {
         kind: 'ready',
@@ -93,6 +95,13 @@ const state: SourceControlState = {
   ],
 };
 let saved: unknown;
+
+window.addEventListener('message', (event: MessageEvent) => {
+  const response = parseSourceControlResponse(event.data);
+
+  if (response) Object.assign(state, response.state);
+});
+
 const requests: SourceControlRequest[] = [];
 const publish = () =>
   window.dispatchEvent(

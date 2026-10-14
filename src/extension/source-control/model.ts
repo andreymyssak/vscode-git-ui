@@ -2,6 +2,7 @@ import type { RepositoryInfo } from '../../shared/model';
 import type {
   CommitMode,
   Loaded,
+  SourceControlOperation,
   SourceControlRepository,
   SourceControlState,
   SourceControlTab,
@@ -23,6 +24,7 @@ export interface RepositorySession {
   info: RepositoryInfo;
   changes: Loaded<WorkingFile>;
   stashes: Loaded<StashEntry>;
+  operation: Loaded<SourceControlOperation>;
   checked: CheckedFiles<WorkingFile>;
   commitMode: CommitMode;
 }
@@ -94,7 +96,8 @@ export class SourceControlModel {
         info: repo.info,
         changes: repo.changes,
         stashes: repo.stashes,
-        checked: repo.checked.selected().map((file) => file.path),
+        operation: repo.operation,
+        checked: [...new Set(repo.checked.selected().map((file) => file.path))],
         draft: this.draft(repo.info.id),
         draftEditId: this.draftEditIds.get(repo.info.id) ?? null,
         commitMode: repo.commitMode,
@@ -119,6 +122,7 @@ export class SourceControlModel {
       else
         this.repositories.set(info.id, {
           info,
+          operation: { kind: 'ready', items: [] },
           changes: { kind: 'loading' },
           stashes: { kind: 'loading' },
           checked: new CheckedFiles<WorkingFile>(),
@@ -141,23 +145,34 @@ export class SourceControlModel {
     return repo;
   }
 
-  workingFiles(id: string, paths: readonly string[]): WorkingFile[] {
+  workingFiles(
+    id: string,
+    paths: readonly string[],
+    section?: 'index' | 'working',
+  ): WorkingFile[] {
     const repo = this.requireRepository(id);
 
     if (repo.changes.kind !== 'ready')
       throw new Error('Wait for changes to load before selecting files.');
-    const files = paths.map((path) =>
-      repo.changes.kind === 'ready'
-        ? repo.changes.items.find((file) => file.path === path)
-        : undefined,
+    const items = repo.changes.items;
+    const files = [...new Set(paths)].map((path) =>
+      items.filter(
+        (file) =>
+          file.path === path &&
+          (section === 'index'
+            ? file.staged
+            : section === 'working'
+              ? file.working || file.untracked
+              : true),
+      ),
     );
 
-    if (files.some((file) => file === undefined))
+    if (files.some((entries) => !entries.length))
       throw new Error(
         'Changed files are unavailable. Refresh and check them again.',
       );
 
-    return files.filter((file) => file !== undefined);
+    return files.flat();
   }
 
   selectedFiles(id: string): WorkingFile[] {

@@ -75,8 +75,10 @@ async function finish(
   );
 }
 
-function file(frame: Frame, path: string) {
-  return frame.getByRole('treeitem', { name: path, exact: true });
+function file(frame: Frame, path: string, section = 'Changes') {
+  return frame
+    .getByRole('tree', { name: section, exact: true })
+    .getByRole('treeitem', { name: path, exact: true });
 }
 
 async function activate(frame: Frame, name: string): Promise<void> {
@@ -91,20 +93,6 @@ async function settled(frame: Frame): Promise<void> {
   await mutation(
     frame.getByRole('tab', { name: 'Commit', exact: true }),
   ).toBeEnabled();
-}
-
-async function contextAction(
-  frame: Frame,
-  path: string,
-  command: 'open-index-change',
-): Promise<void> {
-  const encoded = await file(frame, path).getAttribute('data-vscode-context');
-
-  assert.ok(encoded);
-  await vscode.commands.executeCommand(
-    sourceControlCommandId(command),
-    JSON.parse(encoded),
-  );
 }
 
 describe('combined Commit and Stash view', () => {
@@ -413,18 +401,6 @@ describe('combined Commit and Stash view', () => {
             : '';
         })
         .toBe(vscode.Uri.file(join(fixture.root, 'chosen', 'same.txt')).fsPath);
-      await contextAction(frame, 'sample.txt', 'open-index-change');
-      await expect
-        .poll(async () => {
-          const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
-
-          return input instanceof vscode.TabInputTextDiff
-            ? (
-                await vscode.workspace.openTextDocument(input.modified)
-              ).getText()
-            : '';
-        })
-        .toBe('unchecked staged\n');
       const message = frame.getByRole('textbox', { name: 'Commit message' });
 
       await message.fill('Commit checked folders\n\nKeep unchecked staging.');
@@ -492,7 +468,7 @@ describe('combined Commit and Stash view', () => {
 
       await expect(stash).toBeVisible();
       await stash.getByRole('button', { name: /Changes/ }).click();
-      const saved = file(frame, 'chosen/same.txt');
+      const saved = file(frame, 'chosen/same.txt', 'Saved files');
 
       await expect(saved).toBeVisible();
       await frame

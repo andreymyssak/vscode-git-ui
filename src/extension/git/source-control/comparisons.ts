@@ -38,19 +38,32 @@ export async function workingChangeUris(
   index = false,
 ): Promise<{ original: vscode.Uri; modified: vscode.Uri }> {
   const current = fileUri(access, id, file.path);
-  const old = fileUri(access, id, file.originalPath);
+  const originalPath =
+    index || /[RC]/.test(file.status[1] ?? '') ? file.originalPath : file.path;
+  const old = fileUri(access, id, originalPath);
   const head = access.repository(id).state.HEAD?.commit;
-  const existed = head
-    ? Boolean(
+  const originalRef = index ? head : '';
+  const existed = index
+    ? head
+      ? Boolean(
+          await cli.run(id, [
+            'ls-tree',
+            '-z',
+            head,
+            '--',
+            `:(literal)${originalPath}`,
+          ]),
+        )
+      : false
+    : Boolean(
         await cli.run(id, [
-          'ls-tree',
+          'ls-files',
+          '--stage',
           '-z',
-          head,
           '--',
-          `:(literal)${file.originalPath}`,
+          `:(literal)${originalPath}`,
         ]),
-      )
-    : false;
+      );
   let present: boolean;
   let working = current;
 
@@ -90,8 +103,8 @@ export async function workingChangeUris(
 
   return {
     original:
-      existed && head
-        ? access.api.toGitUri(old, head)
+      existed && originalRef !== undefined
+        ? access.api.toGitUri(old, originalRef)
         : empty(id, file.path, 'original'),
     modified: present
       ? index

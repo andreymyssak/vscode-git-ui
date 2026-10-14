@@ -28,10 +28,17 @@ const actions = [
   'copy-relative-path',
   'stash-checked',
   'show-changes',
-  'open-working-change',
-  'open-working-file',
   'discard-working-change',
-  'open-index-change',
+  'resolve-conflicts',
+  'accept-current',
+  'accept-incoming',
+  'stage-files',
+  'unstage-files',
+  'delete-files',
+  'reveal-in-explorer',
+  'reveal-in-os.mac',
+  'reveal-in-os.windows',
+  'reveal-in-os.linux',
   'open-stash-change',
   'apply-stash',
   'apply-stash-files',
@@ -223,19 +230,26 @@ export class SourceControlViews
               ? (context.copyPaths ?? context.paths ?? [context.path])
               : context.paths,
         });
-      case 'open-working-change':
-      case 'open-index-change':
+      case 'delete-files':
+      case 'resolve-conflicts':
+      case 'accept-current':
+      case 'accept-incoming':
+      case 'stage-files':
+      case 'unstage-files':
         return parseSourceControlRequest({
-          kind: 'open-working-files',
+          kind,
           repositoryId,
-          paths: context.paths ?? [context.path],
-          index: kind === 'open-index-change',
+          paths: context.paths,
         });
-      case 'open-working-file':
+      case 'reveal-in-explorer':
+      case 'reveal-in-os.mac':
+      case 'reveal-in-os.windows':
+      case 'reveal-in-os.linux':
         return parseSourceControlRequest({
-          kind: 'open-files',
+          kind: kind === 'reveal-in-explorer' ? kind : 'reveal-in-os',
           repositoryId,
-          paths: context.paths ?? [context.path],
+          path: context.path,
+          paths: context.paths,
         });
       case 'discard-working-change':
         return parseSourceControlRequest({

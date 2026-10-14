@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import type { Frame } from '@playwright/test';
@@ -11,8 +11,14 @@ import { sourceControlCommandId } from '../../src/shared/extension-identity';
 import { createFixture, type Fixture } from '../fixtures/repository';
 import { sourceControlFrame } from '../fixtures/source-control-view';
 
-async function prepare() {
-  const fixture = await createFixture({ prefix: 'git-ui-change-menu-' });
+async function prepare(inWorkspace = false) {
+  const workspace = vscode.workspace.workspaceFolders?.[0];
+
+  if (inWorkspace) assert.ok(workspace);
+  const fixture = await createFixture({
+    prefix: 'git-ui-change-menu-',
+    ...(inWorkspace && workspace ? { directory: workspace.uri.fsPath } : {}),
+  });
 
   try {
     await mkdir(join(fixture.root, 'src'));
@@ -57,11 +63,11 @@ const row = (frame: Frame, path: string) =>
   frame.getByRole('treeitem', { name: path, exact: true });
 
 const contextActions = {
-  'Open File': 'open-working-file',
   'Copy Relative Path': 'copy-relative-path',
-  'Show Changes': 'open-working-change',
-  'Commit Selected Files…': 'commit-selected',
-  'Stash Selected Files…': 'stash-selected',
+  Delete: 'delete-files',
+  'Reveal in Explorer View': 'reveal-in-explorer',
+  Commit: 'commit-selected',
+  Stash: 'stash-selected',
   'Apply Selected Files': 'apply-stash-files',
 } as const;
 
@@ -166,7 +172,14 @@ async function runContextAction(
   try {
     await Promise.all(operations);
   } catch (error) {
-    // Cancel the native prompt before joining a command waiting for its answer.
+    // Cancel both modal confirmations and quick inputs before joining their commands.
+    await frame.page().screenshot({
+      path: join(
+        process.env.GIT_UI_TEST_ARTIFACTS ?? '.artifacts',
+        'change-action-failure.png',
+      ),
+    });
+    await frame.page().keyboard.press('Escape');
     await vscode.commands.executeCommand('workbench.action.closeQuickOpen');
     await Promise.allSettled(operations);
     throw error;
@@ -174,37 +187,6 @@ async function runContextAction(
 }
 
 describe('Changes context actions', () => {
-  it('opens existing selected working files when another file in their folder was deleted', async () => {
-    const { fixture, frame } = await prepare();
-
-    try {
-      await rm(join(fixture.root, 'src/a.txt'));
-      await vscode.commands.executeCommand(
-        sourceControlCommandId('refresh-changes'),
-      );
-      await expect(row(frame, 'src/a.txt')).toHaveAttribute(
-        'data-status',
-        'deleted',
-      );
-      await runContextAction(frame, 'src', 'Open File');
-      const uri = vscode.Uri.file(join(fixture.root, 'src/b.txt')).toString();
-
-      await expect
-        .poll(() =>
-          vscode.window.tabGroups.all
-            .flatMap((group) => group.tabs)
-            .some(
-              (tab) =>
-                tab.input instanceof vscode.TabInputText &&
-                tab.input.uri.toString() === uri,
-            ),
-        )
-        .toBe(true);
-    } finally {
-      await frame.page().keyboard.press('Escape');
-      await dispose(fixture);
-    }
-  });
   it('copies the highlighted range and folder path through native menus without changing inclusion', async () => {
     const { fixture, frame } = await prepare();
     const clipboard = await vscode.env.clipboard.readText();
@@ -233,31 +215,25 @@ describe('Changes context actions', () => {
       await expect
         .poll(async () => (await vscode.env.clipboard.readText()) === 'src')
         .toBe(true);
-      await runContextAction(frame, 'Changes', 'Show Changes');
-      await expect
-        .poll(
-          () =>
-            vscode.window.tabGroups.all
-              .flatMap((group) => group.tabs)
-              .filter((tab) => tab.input instanceof vscode.TabInputTextDiff)
-              .length,
-        )
-        .toBe(3);
       await row(frame, 'keep.txt').press('Shift+F10');
       await expect(
-        frame
-          .page()
-          .getByRole('menuitem', { name: 'Show Staged Changes', exact: true }),
+        frame.page().getByRole('menuitem', { name: 'Delete', exact: true }),
       ).toBeVisible();
       await expect(
         frame.page().getByRole('menuitem', {
-          name: 'Commit Selected Files…',
+          name: 'Reveal in Explorer View',
           exact: true,
         }),
       ).toBeVisible();
       await expect(
         frame.page().getByRole('menuitem', {
-          name: 'Stash Selected Files…',
+          name: 'Commit',
+          exact: true,
+        }),
+      ).toBeVisible();
+      await expect(
+        frame.page().getByRole('menuitem', {
+          name: 'Stash',
           exact: true,
         }),
       ).toBeVisible();
@@ -265,6 +241,37 @@ describe('Changes context actions', () => {
     } finally {
       await frame.page().keyboard.press('Escape');
       await vscode.env.clipboard.writeText(clipboard);
+      await dispose(fixture);
+    }
+  });
+
+  it('reveals a clicked file within a selection and its folder in the native Explorer', async () => {
+    const { fixture, frame } = await prepare(true);
+
+    try {
+      await row(frame, 'src/a.txt').click({ modifiers: ['ControlOrMeta'] });
+      await row(frame, 'src/b.txt').click({ modifiers: ['Shift'] });
+      await runContextAction(frame, 'src/a.txt', 'Reveal in Explorer View');
+      await expect(
+        frame
+          .page()
+          .getByRole('tree', { name: 'Files Explorer' })
+          .locator('.monaco-list-row.focused'),
+      ).toContainText('a.txt');
+      const reopened = await sourceControlFrame();
+
+      await runContextAction(reopened, 'src', 'Reveal in Explorer View');
+      await expect(
+        frame.page().getByRole('tree', { name: 'Files Explorer' }),
+      ).toBeVisible();
+      await expect(
+        frame
+          .page()
+          .getByRole('tree', { name: 'Files Explorer' })
+          .locator('.monaco-list-row.focused'),
+      ).toContainText('src');
+    } finally {
+      await frame.page().keyboard.press('Escape');
       await dispose(fixture);
     }
   });
@@ -279,7 +286,7 @@ describe('Changes context actions', () => {
       const keepIndex = await fixture.runGit(['show', ':keep.txt']);
 
       await assert.rejects(
-        runContextAction(frame, 'src', 'Stash Selected Files…', async () => {
+        runContextAction(frame, 'src', 'Stash', async () => {
           await expect(name).toBeVisible();
           throw failure;
         }),
@@ -306,7 +313,7 @@ describe('Changes context actions', () => {
       await frame
         .getByRole('textbox', { name: 'Commit message' })
         .fill('Commit selected files');
-      await runContextAction(frame, 'src', 'Commit Selected Files…');
+      await runContextAction(frame, 'src', 'Commit');
       await expect
         .poll(() => fixture.runGit(['log', '-1', '--format=%s']))
         .toBe('Commit selected files\n');
@@ -330,18 +337,13 @@ describe('Changes context actions', () => {
       await frame
         .getByRole('textbox', { name: 'Commit message' })
         .fill('Keep this commit draft');
-      await runContextAction(
-        frame,
-        'src',
-        'Stash Selected Files…',
-        async () => {
-          const name = frame.page().locator('.quick-input-widget input');
+      await runContextAction(frame, 'src', 'Stash', async () => {
+        const name = frame.page().locator('.quick-input-widget input');
 
-          await expect(name).toBeVisible();
-          await name.fill('Stash selected files');
-          await name.press('Enter');
-        },
-      );
+        await expect(name).toBeVisible();
+        await name.fill('Stash selected files');
+        await name.press('Enter');
+      });
       await expect(
         frame.getByRole('textbox', { name: 'Commit message' }),
       ).toHaveValue('Keep this commit draft');

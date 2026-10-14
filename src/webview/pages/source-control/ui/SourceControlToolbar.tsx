@@ -13,6 +13,8 @@ import {
 } from '@floating-ui/react';
 import { useState } from 'react';
 
+import type { SourceControlOperation } from '@contracts/source-control';
+import { operationPresentation } from '@contracts/source-control-operation';
 import { ActionButton, FileTreeCheckbox } from '@webview/shared/ui';
 
 import styles from './SourceControlPage.module.css';
@@ -27,6 +29,8 @@ type Props = {
 } & (
   | {
       kind: 'commit';
+      operation: SourceControlOperation | null;
+      onAbort(this: void): void;
       canStash: boolean;
       onStash(this: void): void;
       onReveal(this: void): void;
@@ -43,6 +47,10 @@ export function SourceControlToolbar(props: Props) {
   const { disabled, groupByDirectory, onGroupingChange, onExpand, onCollapse } =
     props;
   const section = props.kind === 'commit' ? 'Changes' : 'Stashes';
+  const abort =
+    props.kind === 'commit' && props.operation
+      ? operationPresentation(props.operation.kind)
+      : null;
   const treeDisabled =
     disabled || (props.kind === 'stash' && !props.hasStashes);
   const [open, setOpen] = useState(false);
@@ -129,6 +137,18 @@ export function SourceControlToolbar(props: Props) {
         disabled={treeDisabled}
         onClick={onCollapse}
       />
+      {props.kind === 'commit' && abort && (
+        <span className={styles.abortAction}>
+          <ActionButton
+            label={abort.label}
+            tooltip={`${abort.label}. ${abort.tooltip}`}
+            icon="debug-stop"
+            className={`${styles.iconButton} ${styles.abortButton}`}
+            disabled={disabled}
+            onClick={props.onAbort}
+          />
+        </span>
+      )}
       {open && (
         <FloatingPortal>
           <FloatingFocusManager

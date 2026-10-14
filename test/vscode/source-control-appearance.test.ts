@@ -225,10 +225,21 @@ describe('Source Control appearance', () => {
           new RegExp(theme.bodyClass),
         );
         for (const { path, name } of cases) {
-          const customRow = frame.getByRole('treeitem', {
-            name: path,
-            exact: true,
-          });
+          const section = [
+            'renamed/new-name.txt',
+            'staged/only.txt',
+            'staged',
+          ].includes(path)
+            ? 'Staged Changes'
+            : path.startsWith('conflicted')
+              ? 'Merge Changes'
+              : 'Changes';
+          const customRow = frame
+            .getByRole('tree', { name: section, exact: true })
+            .getByRole('treeitem', {
+              name: path,
+              exact: true,
+            });
           const customLabel = customRow
             .locator(':scope > span')
             .filter({ hasText: name })

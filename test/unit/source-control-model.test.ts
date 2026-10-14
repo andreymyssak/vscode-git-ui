@@ -423,3 +423,32 @@ test('a recovered card keeps its identity when another rewrite reuses an absent 
     recoveredId,
   );
 });
+
+test('whole-file inclusion keeps all Git records for a recreated staged deletion, while row actions select their side', () => {
+  const { model, first } = fixture();
+  const deletion = {
+    ...working('one.txt'),
+    status: 'D ',
+    staged: true,
+    working: false,
+  };
+  const recreated = { ...working('one.txt'), status: '??', untracked: true };
+
+  model.updateChanges(first.id, {
+    kind: 'ready',
+    items: [deletion, recreated],
+  });
+  model.requireRepository(first.id).checked.setFile('one.txt', true);
+  expect(model.state().repositories[0]!.checked).toEqual(['one.txt']);
+  expect(model.workingFiles(first.id, ['one.txt'])).toEqual([
+    deletion,
+    recreated,
+  ]);
+  expect(model.selectedFiles(first.id)).toEqual([deletion, recreated]);
+  expect(model.workingFiles(first.id, ['one.txt'], 'index')).toEqual([
+    deletion,
+  ]);
+  expect(model.workingFiles(first.id, ['one.txt'], 'working')).toEqual([
+    recreated,
+  ]);
+});

@@ -1,4 +1,4 @@
-import { mkdir, readFile, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { expect, test } from 'vitest';
@@ -534,4 +534,91 @@ test('conflicting selected changes leave native Git conflict stages and keep HEA
       .runGit(['rev-parse', '--verify', '--quiet', 'CHERRY_PICK_HEAD'])
       .catch(() => ''),
   ).toBe('');
+  const recoveryPath = (
+    await f.runGit([
+      'rev-parse',
+      '--path-format=absolute',
+      '--git-path',
+      'git-ui-selected-changes.json',
+    ])
+  ).trim();
+  const recovery = await readFile(recoveryPath, 'utf8').catch(() => null);
+
+  expect(recovery).not.toBeNull();
+  expect(JSON.parse(recovery ?? '{}')).toMatchObject({
+    kind: 'cherry-pick-files',
+    head,
+    paths: ['sample.txt'],
+  });
 });
+
+test.each(['folder-to-file', 'file-to-folder'] as const)(
+  'rejects selected %s replacements before applying any files',
+  async (kind) => {
+    const f = await setup();
+
+    const oldPath = kind === 'folder-to-file' ? 'NODE/child.txt' : 'NODE';
+    const newPath = kind === 'folder-to-file' ? 'NODE' : 'NODE/child.txt';
+
+    if (kind === 'folder-to-file') await mkdir(join(f.root, 'NODE'));
+    await writeFile(join(f.root, oldPath), 'child\n');
+    await f.runGit(['add', '.']);
+    await f.runGit(['commit', '-m', 'Directory base']);
+    const base = (await f.runGit(['rev-parse', 'HEAD'])).trim();
+
+    await f.runGit(['switch', '-c', 'source']);
+    await rm(join(f.root, 'NODE'), { recursive: true });
+    if (kind === 'file-to-folder') await mkdir(join(f.root, 'NODE'));
+    await writeFile(join(f.root, newPath), 'replacement\n');
+    await writeFile(join(f.root, 'sample.txt'), 'source\n');
+    await f.runGit(['add', '.']);
+    await f.runGit(['commit', '-m', 'Directory replacement']);
+    const sha = (await f.runGit(['rev-parse', 'HEAD'])).trim();
+
+    await f.runGit(['switch', 'main']);
+    await writeFile(join(f.root, 'sample.txt'), 'target\n');
+    await f.runGit(['add', '.']);
+    await f.runGit(['commit', '-m', 'Target']);
+    const head = (await f.runGit(['rev-parse', 'HEAD'])).trim();
+    const result = await f.operate('fixture', {
+      kind: 'cherry-pick-files',
+      sha,
+      parentSha: base,
+      expectedBranch: 'main',
+      expectedHeadSha: head,
+      files: [
+        {
+          id: 'sample',
+          status: 'modified',
+          oldPath: 'sample.txt',
+          newPath: 'sample.txt',
+        },
+        {
+          id: 'delete',
+          status: 'deleted',
+          oldPath,
+          newPath: null,
+        },
+        { id: 'add', status: 'added', oldPath: null, newPath },
+      ],
+    });
+
+    expect(result.kind).toBe('error');
+    if (result.kind !== 'error')
+      throw new Error('Expected unsafe patch rejection');
+    expect(result.message).toMatch(/whole commit/i);
+    expect(await f.runGit(['status', '--porcelain'])).toBe('');
+    expect(await readFile(join(f.root, oldPath), 'utf8')).toBe('child\n');
+    expect(await readFile(join(f.root, 'sample.txt'), 'utf8')).toBe('target\n');
+    const path = (
+      await f.runGit([
+        'rev-parse',
+        '--path-format=absolute',
+        '--git-path',
+        'git-ui-selected-changes.json',
+      ])
+    ).trim();
+
+    await expect(readFile(path)).rejects.toMatchObject({ code: 'ENOENT' });
+  },
+);

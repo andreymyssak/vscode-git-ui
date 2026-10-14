@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 
 import type {
   Loaded,
+  SourceControlOperation,
   SourceControlRequest,
   SourceControlState,
   Stash,
@@ -16,12 +17,13 @@ import {
   type SourceControlBackend,
 } from '../git/source-control/index';
 import { generateCommitMessage } from '../native/commit-message';
-import { openWorkingFiles } from '../native/open-working-files';
 import { openedChangePath } from '../native/opened-change';
 import { showOperationError } from '../native/operation-feedback';
 import { formatPathLabel } from '../native/path-label';
 import { openSourceControlDiff } from '../native/source-control-diffs';
+import { abortOperation } from './abort';
 import { discardWorking } from './discard';
+import { inspectWorkingFiles, writeWorkingFiles } from './file-actions';
 import { toggleAmend } from './message-tools';
 import { SourceControlModel } from './model';
 import { SourceControlNotifications } from './notifications';
@@ -173,6 +175,20 @@ export class SourceControlService implements vscode.Disposable {
 
     try {
       switch (request.kind) {
+        case 'abort-operation':
+          await this.write(
+            request.repositoryId,
+            'Aborting operation…',
+            (runtime) =>
+              abortOperation({
+                runtime,
+                model: this.model,
+                id: request.repositoryId,
+                token: request.token,
+              }),
+          );
+
+          return;
         case 'ready':
           this.amendGeneration++;
           this.cancelGeneration();
@@ -312,28 +328,6 @@ export class SourceControlService implements vscode.Disposable {
           await this.openWorking(request);
 
           return;
-        case 'open-working-files': {
-          const files = this.model.workingFiles(
-            request.repositoryId,
-            request.paths,
-          );
-
-          for (const file of files) {
-            if (request.index && !file.staged) continue;
-            await this.openWorking(
-              {
-                kind: 'open-working',
-                repositoryId: request.repositoryId,
-                path: file.path,
-                index: request.index || (!file.working && file.staged),
-              },
-              files.length === 1,
-            );
-          }
-
-          return;
-        }
-
         case 'copy-paths': {
           const runtime = await this.initialize();
 
@@ -345,31 +339,35 @@ export class SourceControlService implements vscode.Disposable {
           return;
         }
 
-        case 'open-files': {
+        case 'resolve-conflicts':
+        case 'reveal-in-os':
+        case 'reveal-in-explorer': {
           const runtime = await this.initialize();
 
-          requireLiveRepository(runtime, this.model, request.repositoryId);
-          const files = this.model.workingFiles(
+          await inspectWorkingFiles({ runtime, model: this.model, request });
+
+          return;
+        }
+
+        case 'delete-files':
+        case 'accept-current':
+        case 'accept-incoming':
+        case 'stage-files':
+        case 'unstage-files':
+          await this.write(
             request.repositoryId,
-            request.paths,
-          );
-
-          await openWorkingFiles(runtime.root(request.repositoryId), files);
-
-          return;
-        }
-
-        case 'open-file': {
-          const runtime = await this.initialize();
-
-          requireLiveRepository(runtime, this.model, request.repositoryId);
-          await openWorkingFiles(
-            runtime.root(request.repositoryId),
-            this.model.workingFiles(request.repositoryId, [request.path]),
+            request.kind === 'delete-files'
+              ? 'Moving files to Trash…'
+              : request.kind === 'stage-files'
+                ? 'Staging changes…'
+                : request.kind === 'unstage-files'
+                  ? 'Unstaging changes…'
+                  : 'Resolving selected conflicts…',
+            (runtime) =>
+              writeWorkingFiles({ runtime, model: this.model, request }),
           );
 
           return;
-        }
 
         case 'rollback':
           await this.write(
@@ -483,17 +481,19 @@ export class SourceControlService implements vscode.Disposable {
       this.publish();
       const results = await Promise.all(
         infos.map(async (info) => {
-          const [changes, stashes] = await Promise.all([
+          const [changes, stashes, operation] = await Promise.all([
             loaded<WorkingFile>(runtime.workingChanges(info.id)),
             loaded<Stash>(runtime.stashes(info.id)),
+            loaded<SourceControlOperation>(runtime.operation(info.id)),
           ]);
 
-          return { id: info.id, changes, stashes };
+          return { id: info.id, changes, stashes, operation };
         }),
       );
 
       if (this.disposed || epoch !== this.refreshGeneration) return;
       for (const result of results) {
+        this.model.requireRepository(result.id).operation = result.operation;
         this.model.updateChanges(result.id, result.changes);
         this.model.updateStashes(result.id, result.stashes);
         const label = this.model.requireRepository(result.id).info.label;
@@ -737,18 +737,34 @@ export class SourceControlService implements vscode.Disposable {
     const runtime = await this.initialize();
 
     requireLiveRepository(runtime, this.model, request.repositoryId);
-    const file = this.model.workingFiles(request.repositoryId, [
-      request.path,
-    ])[0];
+    const file = this.model.workingFiles(
+      request.repositoryId,
+      [request.path],
+      request.index ? 'index' : 'working',
+    )[0];
 
     if (!file) return;
+    if (/U|AA|DD/.test(file.status)) {
+      await runtime.status(request.repositoryId);
+      requireLiveRepository(runtime, this.model, request.repositoryId);
+      await vscode.commands.executeCommand(
+        'git.openChange',
+        vscode.Uri.joinPath(
+          runtime.root(request.repositoryId),
+          ...file.path.split('/'),
+        ),
+      );
+
+      return;
+    }
+
     await openSourceControlDiff(
       await runtime.workingComparison(
         request.repositoryId,
         file,
         request.index,
       ),
-      `${file.path} (${request.index ? 'HEAD ↔ staged' : 'HEAD ↔ working'})`,
+      `${file.path} (${request.index ? 'HEAD ↔ staged' : 'staged ↔ working'})`,
       preview,
     );
   }

@@ -337,18 +337,6 @@
         "icon": "$(archive)"
       },
       {
-        "command": "gitUI.open-working-change",
-        "title": "Show Changes",
-        "category": "Git UI",
-        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
-      },
-      {
-        "command": "gitUI.open-index-change",
-        "title": "Show Staged Changes",
-        "category": "Git UI",
-        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
-      },
-      {
         "command": "gitUI.open-stash-change",
         "title": "Open Saved Changes",
         "category": "Git UI",
@@ -373,12 +361,6 @@
         "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
       },
       {
-        "command": "gitUI.open-working-file",
-        "title": "Open File",
-        "category": "Git UI",
-        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
-      },
-      {
         "command": "gitUI.discard-working-change",
         "title": "Discard Changes",
         "category": "Git UI",
@@ -386,13 +368,13 @@
       },
       {
         "command": "gitUI.commit-selected",
-        "title": "Commit Selected Files\u2026",
+        "title": "Commit",
         "category": "Git UI",
         "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
       },
       {
         "command": "gitUI.stash-selected",
-        "title": "Stash Selected Files\u2026",
+        "title": "Stash",
         "category": "Git UI",
         "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
       },
@@ -439,6 +421,66 @@
         "command": "gitUI.open-current-blame-commit",
         "title": "Git UI: Open Line Commit",
         "enablement": "isWorkspaceTrusted && config.git.enabled && gitOpenRepositoryCount > 0 && (resourceScheme == file || resourceScheme == git) && gitUI.blame-enabled"
+      },
+      {
+        "command": "gitUI.resolve-conflicts",
+        "title": "Resolve in Merge Editor",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
+      },
+      {
+        "command": "gitUI.accept-current",
+        "title": "Accept All Current",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
+      },
+      {
+        "command": "gitUI.accept-incoming",
+        "title": "Accept All Incoming",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
+      },
+      {
+        "command": "gitUI.stage-files",
+        "title": "Stage Changes",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
+      },
+      {
+        "command": "gitUI.unstage-files",
+        "title": "Unstage Changes",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
+      },
+      {
+        "command": "gitUI.delete-files",
+        "title": "Delete",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
+      },
+      {
+        "command": "gitUI.reveal-in-explorer",
+        "title": "Reveal in Explorer View",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
+      },
+      {
+        "command": "gitUI.reveal-in-os.mac",
+        "title": "Reveal in Finder",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
+      },
+      {
+        "command": "gitUI.reveal-in-os.windows",
+        "title": "Reveal in File Explorer",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
+      },
+      {
+        "command": "gitUI.reveal-in-os.linux",
+        "title": "Open Containing Folder",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
       }
     ],
     "menus": {
@@ -554,16 +596,6 @@
           "group": "1_worktree@3"
         },
         {
-          "command": "gitUI.open-working-change",
-          "when": "webviewId == gitUI.changes && webviewSection == working-change",
-          "group": "1_inspect@1"
-        },
-        {
-          "command": "gitUI.open-index-change",
-          "when": "webviewId == gitUI.changes && webviewSection == working-change && staged",
-          "group": "1_inspect@2"
-        },
-        {
           "command": "gitUI.apply-stash",
           "when": "webviewId == gitUI.changes && webviewSection == stash",
           "group": "1_restore@1"
@@ -582,11 +614,6 @@
           "command": "gitUI.apply-stash-files",
           "when": "webviewId == gitUI.changes && webviewSection == stash-file",
           "group": "1_restore@1"
-        },
-        {
-          "command": "gitUI.open-working-file",
-          "when": "webviewId == gitUI.changes && webviewSection == working-change",
-          "group": "1_inspect@3"
         },
         {
           "command": "gitUI.commit-selected",
@@ -617,6 +644,56 @@
           "command": "gitUI.delete-stash-files",
           "when": "webviewId == gitUI.changes && webviewSection == stash-file && changeSelectionCount > 0",
           "group": "2_manage@1"
+        },
+        {
+          "command": "gitUI.resolve-conflicts",
+          "when": "webviewId == gitUI.changes && webviewSection == working-change && changeSelectionCount > 0 && changeOnlyConflicts && changeCanMergeEditor",
+          "group": "1_conflicts@1"
+        },
+        {
+          "command": "gitUI.accept-current",
+          "when": "webviewId == gitUI.changes && webviewSection == working-change && changeSelectionCount > 0 && changeOnlyConflicts && changeCanMergeEditor",
+          "group": "1_conflicts@2"
+        },
+        {
+          "command": "gitUI.accept-incoming",
+          "when": "webviewId == gitUI.changes && webviewSection == working-change && changeSelectionCount > 0 && changeOnlyConflicts && changeCanMergeEditor",
+          "group": "1_conflicts@3"
+        },
+        {
+          "command": "gitUI.stage-files",
+          "when": "webviewId == gitUI.changes && webviewSection == working-change && changeSelectionCount > 0 && changeCanStage",
+          "group": "2_stage@1"
+        },
+        {
+          "command": "gitUI.unstage-files",
+          "when": "webviewId == gitUI.changes && webviewSection == working-change && changeSelectionCount > 0 && changeCanUnstage",
+          "group": "2_stage@2"
+        },
+        {
+          "command": "gitUI.delete-files",
+          "when": "webviewId == gitUI.changes && webviewSection == working-change && changeSelectionCount > 0 && changeCanDelete",
+          "group": "2_modify@4"
+        },
+        {
+          "command": "gitUI.reveal-in-os.mac",
+          "when": "webviewId == gitUI.changes && webviewSection == working-change && changeSelectionCount > 0 && changeCanReveal && isMac",
+          "group": "3_reveal@1"
+        },
+        {
+          "command": "gitUI.reveal-in-os.windows",
+          "when": "webviewId == gitUI.changes && webviewSection == working-change && changeSelectionCount > 0 && changeCanReveal && isWindows",
+          "group": "3_reveal@1"
+        },
+        {
+          "command": "gitUI.reveal-in-os.linux",
+          "when": "webviewId == gitUI.changes && webviewSection == working-change && changeSelectionCount > 0 && changeCanReveal && isLinux",
+          "group": "3_reveal@1"
+        },
+        {
+          "command": "gitUI.reveal-in-explorer",
+          "when": "webviewId == gitUI.changes && webviewSection == working-change && changeSelectionCount > 0 && changeCanReveal",
+          "group": "3_reveal@2"
         }
       ],
       "commandPalette": [
@@ -709,14 +786,6 @@
           "when": "false"
         },
         {
-          "command": "gitUI.open-working-change",
-          "when": "false"
-        },
-        {
-          "command": "gitUI.open-index-change",
-          "when": "false"
-        },
-        {
           "command": "gitUI.open-stash-change",
           "when": "false"
         },
@@ -730,10 +799,6 @@
         },
         {
           "command": "gitUI.delete-stash",
-          "when": "false"
-        },
-        {
-          "command": "gitUI.open-working-file",
           "when": "false"
         },
         {
@@ -779,6 +844,46 @@
         {
           "command": "gitUI.open-current-blame-commit",
           "when": "isWorkspaceTrusted && config.git.enabled && gitOpenRepositoryCount > 0 && (resourceScheme == file || resourceScheme == git) && gitUI.blame-enabled"
+        },
+        {
+          "command": "gitUI.resolve-conflicts",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.accept-current",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.accept-incoming",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.stage-files",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.delete-files",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.reveal-in-explorer",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.reveal-in-os.mac",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.reveal-in-os.windows",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.reveal-in-os.linux",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.unstage-files",
+          "when": "false"
         }
       ],
       "scm/resourceState/context": [

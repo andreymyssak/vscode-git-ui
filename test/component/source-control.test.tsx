@@ -65,8 +65,13 @@ const repository = {
   checked: ['src/b.ts'],
   draft: '',
   draftEditId: null,
+  operation: { kind: 'ready' as const, items: [] },
   commitMode: { kind: 'new' as const },
 };
+
+function workingTree() {
+  return within(screen.getByRole('tree', { name: 'Changes' }));
+}
 
 function initialState(): SourceControlState {
   return {
@@ -149,6 +154,108 @@ function session(
   };
 }
 
+test('separates merge, index and working changes while linking whole-file checkboxes', async () => {
+  const user = userEvent.setup();
+  const state = initialState();
+  const repo = state.repositories[0]!;
+
+  repo.draft = 'Checked files';
+  repo.changes = {
+    kind: 'ready',
+    items: [
+      ...repository.changes.items,
+      {
+        path: 'conflict.txt',
+        originalPath: 'conflict.txt',
+        status: 'UU',
+        staged: true,
+        working: true,
+        untracked: false,
+      },
+    ],
+  };
+  const app = session(state);
+  const merge = within(screen.getByRole('tree', { name: 'Merge Changes' }));
+  const staged = within(screen.getByRole('tree', { name: 'Staged Changes' }));
+  const working = within(screen.getByRole('tree', { name: 'Changes' }));
+
+  expect(merge.getByRole('treeitem', { name: 'conflict.txt' })).toBeVisible();
+  expect(staged.queryByRole('treeitem', { name: 'conflict.txt' })).toBeNull();
+  expect(working.queryByRole('treeitem', { name: 'conflict.txt' })).toBeNull();
+  expect(staged.getByRole('treeitem', { name: 'staged.txt' })).toBeVisible();
+  expect(working.queryByRole('treeitem', { name: 'staged.txt' })).toBeNull();
+  await user.click(
+    staged.getByRole('checkbox', { name: 'Include src/nested/a.ts' }),
+  );
+  expect(
+    working.getByRole('checkbox', { name: 'Include src/nested/a.ts' }),
+  ).toBeChecked();
+  expect(app.requests.at(-1)).toEqual({
+    kind: 'check',
+    repositoryId: 'root',
+    paths: ['src/nested/a.ts'],
+    checked: true,
+  });
+  expect(
+    screen.getByRole('status', { name: 'Checked files summary' }),
+  ).toHaveTextContent('M 2');
+  await user.click(screen.getByRole('button', { name: 'Commit' }));
+  expect(app.requests.at(-1)).toEqual({ kind: 'commit', repositoryId: 'root' });
+  await user.click(staged.getByRole('treeitem', { name: 'src/nested/a.ts' }));
+  expect(app.requests.at(-1)).toEqual({
+    kind: 'open-working',
+    repositoryId: 'root',
+    path: 'src/nested/a.ts',
+    index: true,
+  });
+  await user.click(working.getByRole('treeitem', { name: 'src/nested/a.ts' }));
+  expect(app.requests.at(-1)).toEqual({
+    kind: 'open-working',
+    repositoryId: 'root',
+    path: 'src/nested/a.ts',
+    index: false,
+  });
+});
+
+test('Stage and Unstage actions use their section without changing commit inclusion', async () => {
+  const user = userEvent.setup();
+  const app = session();
+  const staged = within(screen.getByRole('tree', { name: 'Staged Changes' }));
+  const working = within(screen.getByRole('tree', { name: 'Changes' }));
+  const workingRow = working.getByRole('treeitem', { name: 'src/nested/a.ts' });
+  const stagedRow = staged.getByRole('treeitem', { name: 'src/nested/a.ts' });
+
+  await user.click(
+    within(workingRow).getByRole('button', { name: 'Stage Changes' }),
+  );
+  expect(app.requests.at(-1)).toEqual({
+    kind: 'stage-files',
+    repositoryId: 'root',
+    paths: ['src/nested/a.ts'],
+  });
+  await user.click(
+    within(stagedRow).getByRole('button', { name: 'Unstage Changes' }),
+  );
+  expect(app.requests.at(-1)).toEqual({
+    kind: 'unstage-files',
+    repositoryId: 'root',
+    paths: ['src/nested/a.ts'],
+  });
+  expect(app.state().repositories[0]!.checked).toEqual(['src/b.ts']);
+  expect(
+    JSON.parse(workingRow.getAttribute('data-vscode-context')!),
+  ).toMatchObject({
+    changeCanStage: true,
+    changeCanUnstage: false,
+  });
+  expect(
+    JSON.parse(stagedRow.getAttribute('data-vscode-context')!),
+  ).toMatchObject({
+    changeCanStage: false,
+    changeCanUnstage: true,
+  });
+});
+
 test('commit statistics count checked files once by status and update with folder inclusion and refresh', async () => {
   const user = userEvent.setup();
   const state = initialState();
@@ -180,7 +287,22 @@ test('commit statistics count checked files once by status and update with folde
       within(summary).getByText(text, { exact: true }),
     ).toBeInTheDocument();
   await user.click(
-    within(screen.getByRole('treeitem', { name: 'src' })).getByRole(
+    workingTree().getByRole('checkbox', { name: 'Include src' }),
+  );
+  for (const text of ['A 1', 'R 1', '! 1'])
+    expect(
+      within(summary).getByText(text, { exact: true }),
+    ).toBeInTheDocument();
+  expect(within(summary).queryByText('M 2', { exact: true })).toBeNull();
+  const indexFolder = within(
+    screen.getByRole('tree', { name: 'Staged Changes' }),
+  ).getByRole('checkbox', { name: 'Include src' });
+
+  // A partially included folder first includes its files; the next click clears it.
+  await user.click(indexFolder);
+  await user.click(indexFolder);
+  await user.click(
+    within(screen.getByRole('tree', { name: 'Merge Changes' })).getByRole(
       'checkbox',
       { name: 'Include src' },
     ),
@@ -189,7 +311,7 @@ test('commit statistics count checked files once by status and update with folde
     screen.queryByRole('status', { name: 'Checked files summary' }),
   ).toBeNull();
   await user.click(
-    within(screen.getByRole('treeitem', { name: 'src' })).getByRole(
+    within(workingTree().getByRole('treeitem', { name: 'src' })).getByRole(
       'checkbox',
       { name: 'Include src' },
     ),
@@ -214,16 +336,16 @@ test('commit statistics count checked files once by status and update with folde
 test.each([
   { statuses: ['??', ' M'], kind: 'modified' },
   { statuses: [' M', '??'], kind: 'modified' },
-  { statuses: ['M ', '??'], kind: 'modified' },
-  { statuses: [' M', 'UU'], kind: 'conflict' },
-  { statuses: ['DD', '??'], kind: 'conflict' },
+  { statuses: ['M ', '??'], kind: 'modified', section: 'Staged Changes' },
+  { statuses: [' M', 'UU'], kind: 'conflict', section: 'Merge Changes' },
+  { statuses: ['DD', '??'], kind: 'conflict', section: 'Merge Changes' },
   { statuses: [' D', '??'], kind: 'untracked' },
-  { statuses: ['D ', 'A '], kind: 'added' },
-  { statuses: ['R '], kind: 'renamed' },
+  { statuses: ['D ', 'A '], kind: 'added', section: 'Staged Changes' },
+  { statuses: ['R '], kind: 'renamed', section: 'Staged Changes' },
   { statuses: [' D', 'D '], kind: undefined },
 ])(
-  'folder status reflects descendant changes: $statuses',
-  ({ statuses, kind }) => {
+  'folder status reflects descendants in its section: $statuses',
+  ({ statuses, kind, section = 'Changes' }) => {
     const state = initialState();
 
     state.repositories[0]!.changes = {
@@ -238,7 +360,9 @@ test.each([
       })),
     };
     session(state);
-    const folder = screen.getByRole('treeitem', { name: 'src' });
+    const folder = within(
+      screen.getByRole('tree', { name: section }),
+    ).getByRole('treeitem', { name: 'src' });
     const dot = folder.querySelector('[data-folder-status]');
 
     if (kind) {
@@ -255,7 +379,7 @@ test.each([
 test('Discard targets one working file without opening it or changing checked files', async () => {
   const user = userEvent.setup();
   const app = session();
-  const row = screen.getByRole('treeitem', { name: 'src/nested/a.ts' });
+  const row = workingTree().getByRole('treeitem', { name: 'src/nested/a.ts' });
 
   await user.click(
     within(row).getByRole('button', { name: 'Discard Changes' }),
@@ -301,7 +425,7 @@ test('conflicted files have no Discard action', () => {
   ).toBeNull();
 });
 
-test('the Changes root toggles all files and the toolbar expands, collapses and groups the tree', async () => {
+test('the Changes root toggles its files and the toolbar expands, collapses and groups the tree', async () => {
   const user = userEvent.setup();
   const app = session();
   const root = screen.getByRole('treeitem', { name: 'Changes' });
@@ -312,22 +436,24 @@ test('the Changes root toggles all files and the toolbar expands, collapses and 
   expect(app.requests.at(-1)).toEqual({
     kind: 'check',
     repositoryId: 'root',
-    paths: repository.changes.items.map((file) => file.path),
+    paths: repository.changes.items
+      .filter((file) => file.working)
+      .map((file) => file.path),
     checked: true,
   });
   await user.click(screen.getByRole('button', { name: 'Collapse All' }));
   expect(screen.queryByRole('treeitem', { name: 'src/b.ts' })).toBeNull();
   await user.click(screen.getByRole('button', { name: 'Expand All' }));
   expect(
-    screen.getByRole('treeitem', { name: 'src/nested/a.ts' }),
+    workingTree().getByRole('treeitem', { name: 'src/nested/a.ts' }),
   ).toBeVisible();
   await user.click(screen.getByRole('button', { name: 'View Options' }));
   await user.click(
     screen.getByRole('checkbox', { name: 'Group by Directory' }),
   );
-  expect(screen.queryByRole('treeitem', { name: 'src' })).toBeNull();
+  expect(workingTree().queryByRole('treeitem', { name: 'src' })).toBeNull();
   expect(
-    screen.getByRole('treeitem', { name: 'src/nested/a.ts' }),
+    workingTree().getByRole('treeitem', { name: 'src/nested/a.ts' }),
   ).toHaveAttribute('aria-level', '2');
   expect(app.saved()).toMatchObject({ groupByDirectory: false });
 });
@@ -450,7 +576,7 @@ test('a saved flat list can enable directory grouping without changing checked f
   const app = session(initialState(), { groupByDirectory: false });
 
   expect(
-    screen.getByRole('treeitem', { name: 'src/nested/a.ts' }),
+    workingTree().getByRole('treeitem', { name: 'src/nested/a.ts' }),
   ).toHaveAttribute('aria-level', '2');
   await user.click(screen.getByRole('button', { name: 'View Options' }));
   const grouping = screen.getByRole('checkbox', { name: 'Group by Directory' });
@@ -460,7 +586,7 @@ test('a saved flat list can enable directory grouping without changing checked f
   await user.click(grouping);
   expect(grouping).toBeChecked();
   expect(
-    screen.getByRole('treeitem', { name: 'src/nested/a.ts' }),
+    workingTree().getByRole('treeitem', { name: 'src/nested/a.ts' }),
   ).toHaveAttribute('aria-level', '4');
   expect(app.saved()).toMatchObject({ groupByDirectory: true });
   expect(app.state().repositories[0]?.checked).toEqual(['src/b.ts']);
@@ -490,7 +616,7 @@ test('select opened file expands and focuses its row without changing checked fi
     ...app.state(),
     reveal: { repositoryId: 'root', path: 'src/nested/a.ts', sequence: 1 },
   });
-  const file = screen.getByRole('treeitem', { name: 'src/nested/a.ts' });
+  const file = workingTree().getByRole('treeitem', { name: 'src/nested/a.ts' });
 
   expect(file).toHaveFocus();
   expect(file).toHaveAttribute('aria-selected', 'true');
@@ -502,16 +628,48 @@ test('select opened file expands and focuses its row without changing checked fi
     reveal: { repositoryId: 'root', path: 'src/nested/a.ts', sequence: 1 },
   });
   expect(
-    screen.queryByRole('treeitem', { name: 'src/nested/a.ts' }),
+    workingTree().queryByRole('treeitem', { name: 'src/nested/a.ts' }),
   ).toBeNull();
   app.emit({
     ...app.state(),
     reveal: { repositoryId: 'root', path: 'src/nested/a.ts', sequence: 2 },
   });
   expect(
-    screen.getByRole('treeitem', { name: 'src/nested/a.ts' }),
+    workingTree().getByRole('treeitem', { name: 'src/nested/a.ts' }),
   ).toHaveFocus();
 });
+
+test.each([
+  { section: 'index', label: 'Staged Changes', status: 'M ', working: false },
+  { section: 'merge', label: 'Merge Changes', status: 'UU', working: true },
+])(
+  'reveal expands a collapsed $label without changing inclusion',
+  ({ section, label, status, working }) => {
+    const file = { ...repository.changes.items[0]!, status, working };
+    const app = session(
+      {
+        ...initialState(),
+        repositories: [
+          { ...repository, changes: { kind: 'ready', items: [file] } },
+        ],
+      },
+      {
+        collapsed: ['', 'src', 'src/nested'].map((path) =>
+          JSON.stringify(['root', section, path]),
+        ),
+      },
+    );
+    const tree = within(screen.getByRole('tree', { name: label }));
+
+    expect(tree.queryByRole('treeitem', { name: file.path })).toBeNull();
+    app.emit({
+      ...app.state(),
+      reveal: { repositoryId: 'root', path: file.path, sequence: 1 },
+    });
+    expect(tree.getByRole('treeitem', { name: file.path })).toHaveFocus();
+    expect(app.state().repositories[0]!.checked).toEqual(['src/b.ts']);
+  },
+);
 
 test('Stash Silently uses checked files without requiring a commit message', async () => {
   const user = userEvent.setup();
@@ -556,15 +714,17 @@ test('expanded folders check descendants independently of Git staging and file r
     within(tree).getByRole('treeitem', { name: 'src/nested' }),
   ).toHaveAttribute('aria-expanded', 'true');
   expect(
-    screen.getByRole('checkbox', { name: 'Include src/nested/a.ts' }),
+    workingTree().getByRole('checkbox', { name: 'Include src/nested/a.ts' }),
   ).not.toBeChecked();
   expect(
-    screen.getByRole('checkbox', { name: 'Include src/b.ts' }),
+    workingTree().getByRole('checkbox', { name: 'Include src/b.ts' }),
   ).toBeChecked();
   expect(
-    screen.getByRole('checkbox', { name: 'Include src' }),
+    workingTree().getByRole('checkbox', { name: 'Include src' }),
   ).toBePartiallyChecked();
-  await user.click(screen.getByRole('checkbox', { name: 'Include src' }));
+  await user.click(
+    workingTree().getByRole('checkbox', { name: 'Include src' }),
+  );
   expect(app.requests.at(-1)).toEqual({
     kind: 'check',
     repositoryId: 'root',
@@ -588,7 +748,12 @@ test('expanded folders check descendants independently of Git staging and file r
     path: 'src/nested/a.ts',
     index: false,
   });
-  await user.click(within(tree).getByRole('treeitem', { name: 'staged.txt' }));
+  await user.click(
+    within(screen.getByRole('tree', { name: 'Staged Changes' })).getByRole(
+      'treeitem',
+      { name: 'staged.txt' },
+    ),
+  );
   expect(app.requests.at(-1)).toEqual({
     kind: 'open-working',
     repositoryId: 'root',
@@ -601,7 +766,8 @@ test('expanded folders check descendants independently of Git staging and file r
     webviewSection: 'working-change',
     repositoryId: 'root',
     path: 'src/nested/a.ts',
-    staged: true,
+    staged: false,
+    changeCanStage: true,
   });
 });
 
@@ -935,7 +1101,7 @@ test('Stash toolbar expands all stashes, groups directories and keeps restoratio
 test('keyboard folder and file selection persist collapse while tab arrows select the next view', async () => {
   const user = userEvent.setup();
   const app = session();
-  const source = screen.getByRole('treeitem', { name: 'src' });
+  const source = workingTree().getByRole('treeitem', { name: 'src' });
 
   source.focus();
   await user.keyboard(' ');
@@ -946,12 +1112,14 @@ test('keyboard folder and file selection persist collapse while tab arrows selec
     checked: true,
   });
   await user.keyboard('{ArrowRight}');
-  expect(screen.getByRole('treeitem', { name: 'src/nested' })).toHaveFocus();
+  expect(
+    workingTree().getByRole('treeitem', { name: 'src/nested' }),
+  ).toHaveFocus();
   source.focus();
   await user.keyboard('{ArrowLeft}');
   expect(source).toHaveAttribute('aria-expanded', 'false');
   expect(
-    screen.queryByRole('treeitem', { name: 'src/nested/a.ts' }),
+    workingTree().queryByRole('treeitem', { name: 'src/nested/a.ts' }),
   ).toBeNull();
   expect(app.saved()).toMatchObject({ collapsed: [expect.any(String)] });
   app.emit({ ...app.state(), hoverDelay: 600 });
@@ -1037,7 +1205,7 @@ test('file badges and hover use the current working state after a staged rename'
     ],
   });
   const untracked = screen.getByRole('treeitem', { name: 'new.ts' });
-  const renamed = screen.getByRole('treeitem', { name: 'renamed.ts' });
+  const renamed = workingTree().getByRole('treeitem', { name: 'renamed.ts' });
 
   expect(untracked).toHaveTextContent('U');
   expect(untracked).not.toHaveTextContent('??');
@@ -1060,7 +1228,11 @@ test.each([
   async (path, label, description) => {
     const user = userEvent.setup();
     const app = session();
-    const file = screen.getByRole('treeitem', { name: path });
+    const file = within(
+      screen.getByRole('tree', {
+        name: path === 'staged.txt' ? 'Staged Changes' : 'Changes',
+      }),
+    ).getByRole('treeitem', { name: path });
     const count = app.requests.length;
 
     await user.hover(within(file).getByText(label, { exact: true }));
@@ -1224,7 +1396,9 @@ test('clicking a completely unchecked folder includes every descendant', async (
     repositories: [{ ...repository, checked: [] }],
   });
 
-  await user.click(screen.getByRole('checkbox', { name: 'Include src' }));
+  await user.click(
+    workingTree().getByRole('checkbox', { name: 'Include src' }),
+  );
   expect(app.requests.at(-1)).toEqual({
     kind: 'check',
     repositoryId: 'root',
@@ -1232,12 +1406,12 @@ test('clicking a completely unchecked folder includes every descendant', async (
     checked: true,
   });
   expect(
-    screen.getByRole('checkbox', {
+    workingTree().getByRole('checkbox', {
       name: 'Include src/nested/a.ts',
     }),
   ).toBeChecked();
   expect(
-    screen.getByRole('checkbox', { name: 'Include src/b.ts' }),
+    workingTree().getByRole('checkbox', { name: 'Include src/b.ts' }),
   ).toBeChecked();
 });
 
@@ -1249,7 +1423,9 @@ test('unchecked folder clicks request inclusion before a delayed host reply', as
     false,
   );
 
-  await user.click(screen.getByRole('checkbox', { name: 'Include src' }));
+  await user.click(
+    workingTree().getByRole('checkbox', { name: 'Include src' }),
+  );
   expect(app.requests.at(-1)).toEqual({
     kind: 'check',
     repositoryId: 'root',
@@ -1261,12 +1437,12 @@ test('unchecked folder clicks request inclusion before a delayed host reply', as
     repositories: [{ ...repository, checked: ['src/nested/a.ts', 'src/b.ts'] }],
   });
   expect(
-    screen.getByRole('checkbox', {
+    workingTree().getByRole('checkbox', {
       name: 'Include src/nested/a.ts',
     }),
   ).toBeChecked();
   expect(
-    screen.getByRole('checkbox', { name: 'Include src/b.ts' }),
+    workingTree().getByRole('checkbox', { name: 'Include src/b.ts' }),
   ).toBeChecked();
 });
 
@@ -1363,4 +1539,116 @@ test('a busy host retries its dropped pending edit before enabling actions', asy
   await user.click(commit);
   expect(app.state().repositories[0]?.draft).toBe('Latest draft');
   expect(app.requests.at(-1)).toEqual({ kind: 'commit', repositoryId: 'root' });
+});
+
+test('a recreated staged deletion is shown on both sides but counted once for Commit', async () => {
+  const user = userEvent.setup();
+  const app = session({
+    ...initialState(),
+    repositories: [
+      {
+        ...repository,
+        checked: [],
+        changes: {
+          kind: 'ready',
+          items: [
+            {
+              path: 'recreated.txt',
+              originalPath: 'recreated.txt',
+              status: 'D ',
+              staged: true,
+              working: false,
+              untracked: false,
+            },
+            {
+              path: 'recreated.txt',
+              originalPath: 'recreated.txt',
+              status: '??',
+              staged: false,
+              working: true,
+              untracked: true,
+            },
+          ],
+        },
+      },
+    ],
+  });
+
+  await user.click(
+    workingTree().getByRole('checkbox', { name: 'Include recreated.txt' }),
+  );
+  const summary = screen.getByRole('status', { name: 'Checked files summary' });
+
+  expect(within(summary).getByText('U 1', { exact: true })).toBeVisible();
+  expect(within(summary).queryByText('D 1', { exact: true })).toBeNull();
+  expect(
+    within(screen.getByRole('tree', { name: 'Staged Changes' })).getByRole(
+      'checkbox',
+      { name: 'Include recreated.txt' },
+    ),
+  ).toBeChecked();
+  expect(app.state().repositories[0]!.checked).toEqual(['recreated.txt']);
+});
+
+test('selected revert recovery names its Abort action and explains its file scope', async () => {
+  const active = {
+    ...repository,
+    changes: {
+      ...repository.changes,
+      items: repository.changes.items.map((file) =>
+        file.path === 'src/b.ts'
+          ? { ...file, status: 'UU', staged: true }
+          : file,
+      ),
+    },
+    operation: {
+      kind: 'ready' as const,
+      items: [
+        {
+          kind: 'revert-files' as const,
+          token: 'a'.repeat(64),
+          paths: ['src/b.ts'],
+        },
+      ],
+    },
+  };
+  const s = session({ ...initialState(), repositories: [active] });
+  const button = within(
+    screen.getByRole('toolbar', { name: 'Changes actions' }),
+  ).queryByRole('button', {
+    name: 'Abort Selected Revert',
+  });
+
+  expect(button).not.toBeNull();
+  expect(button).toHaveTextContent('');
+  expect(button).toHaveAttribute(
+    'aria-description',
+    expect.stringContaining('unrelated'),
+  );
+  if (button) fireEvent.click(button);
+  expect(s.requests).toContainEqual({
+    kind: 'abort-operation',
+    repositoryId: 'root',
+    token: 'a'.repeat(64),
+  });
+  s.emit({ ...initialState(), repositories: [active], busy: true });
+  expect(
+    screen.getByRole('button', { name: 'Abort Selected Revert' }),
+  ).toBeDisabled();
+  s.emit({
+    ...initialState(),
+    repositories: [{ ...active, changes: repository.changes }],
+  });
+  expect(
+    screen.queryByRole('button', { name: /Abort/ }),
+  ).not.toBeInTheDocument();
+});
+
+test('Abort is hidden when there are no conflicts', () => {
+  session();
+  const button = within(
+    screen.getByRole('toolbar', { name: 'Changes actions' }),
+  ).queryByRole('button', { name: 'Abort' });
+
+  expect(button).not.toBeInTheDocument();
 });

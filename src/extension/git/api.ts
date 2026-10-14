@@ -58,6 +58,8 @@ export interface GitRepository {
   };
   status(): Promise<void>;
   clean(paths: string[]): Promise<void>;
+  add(paths: string[]): Promise<void>;
+  revert(paths: string[]): Promise<void>;
   apply(
     patchPath: string,
     options?: { threeWay?: boolean; reverse?: boolean },
@@ -71,6 +73,7 @@ export interface GitRepository {
   show(ref: string, path: string): Promise<string>;
   checkout(treeish: string): Promise<void>;
   merge(ref: string): Promise<void>;
+  mergeAbort(): Promise<void>;
   rebase(branch: string): Promise<void>;
   createWorktree(options?: {
     path?: string;

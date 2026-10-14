@@ -27,6 +27,7 @@ const state: SourceControlState = {
       checked: [],
       draft: '',
       draftEditId: null,
+      operation: { kind: 'ready', items: [] },
       commitMode: { kind: 'new' },
       changes: { kind: 'ready', items: [] },
       stashes: {

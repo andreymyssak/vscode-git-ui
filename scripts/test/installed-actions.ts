@@ -78,12 +78,18 @@ export async function runInstalledActions({
         const rollbacks = await require(${JSON.stringify(resolve('dist/test/vscode/acceptance/rollback.scenario.cjs'))}).run();
         fs.writeFileSync(${JSON.stringify(progressPath)}, 'selected-file discard scenarios');
         const discards = await require(${JSON.stringify(resolve('dist/test/vscode/acceptance/discard-changes.scenario.cjs'))}).run();
+        fs.writeFileSync(${JSON.stringify(progressPath)}, 'selected-file delete scenarios');
+        const deletions = await require(${JSON.stringify(resolve('dist/test/vscode/acceptance/delete-files.scenario.cjs'))}).run();
+        fs.writeFileSync(${JSON.stringify(progressPath)}, 'operation abort scenarios');
+        const aborts = await require(${JSON.stringify(resolve('dist/test/vscode/acceptance/abort-operation.scenario.cjs'))}).run();
         fs.writeFileSync(${JSON.stringify(progressPath)}, 'branch update scenarios');
         const updates = await require(${JSON.stringify(resolve('dist/test/vscode/acceptance/branch-update.scenario.cjs'))}).run();
         fs.writeFileSync(${JSON.stringify(progressPath)}, 'branch integration and worktree scenarios');
         const passed = [
           ...rollbacks,
           ...discards,
+          ...deletions,
+          ...aborts,
           ...updates,
           ...await require(${JSON.stringify(resolve('dist/test/vscode/acceptance/branch-actions.scenario.cjs'))}).run(),
         ];
@@ -138,9 +144,9 @@ export async function runInstalledActions({
       if (result) {
         if (result.kind === 'failed') throw new Error(result.message);
         for (const name of result.passed) console.log(`Passed: ${name}`);
-        if (result.passed.length !== 19)
-          throw new Error('Expected all nineteen installed action cases.');
-        console.log('19 installed action cases passed.');
+        if (result.passed.length !== 27)
+          throw new Error('Expected all twenty-seven installed action cases.');
+        console.log('27 installed action cases passed.');
 
         return;
       }

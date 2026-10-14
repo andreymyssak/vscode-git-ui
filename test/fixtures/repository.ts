@@ -24,8 +24,11 @@ export interface Fixture {
 }
 export async function createFixture(options: {
   prefix: string;
+  directory?: string;
 }): Promise<Fixture> {
-  const directory = await mkdtemp(join(tmpdir(), options.prefix));
+  const directory = await mkdtemp(
+    join(options.directory ?? tmpdir(), options.prefix),
+  );
 
   try {
     const root = await realpath(directory);

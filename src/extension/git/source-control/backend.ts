@@ -1,3 +1,5 @@
+import * as vscode from 'vscode';
+
 import type {
   CommitMode,
   Stash,
@@ -5,9 +7,20 @@ import type {
   WorkingFile,
 } from '../../../shared/source-control';
 import { getGitApi } from '../api';
+import { updateCheckout } from '../branch-update-target';
+import {
+  clearSelectedChangeRecovery,
+  readSelectedChangeRecovery,
+} from '../selected-change-recovery';
 import { stashChangeUris, workingChangeUris } from './comparisons';
+import { readSourceControlOperation } from './operation-state';
+import { prepareSourceControlAbort } from './prepared-abort';
 import { prepareChanges } from './prepared-changes';
 import { prepareDiscard } from './prepared-discard';
+import {
+  type FileWriteAction,
+  prepareFileAction,
+} from './prepared-file-action';
 import { prepareRollback } from './prepared-rollback';
 import { prepareStash } from './prepared-stash';
 import { createRepositoryAccess } from './repository';
@@ -32,6 +45,60 @@ export async function createSourceControlBackend(signal?: AbortSignal) {
       repositories.lease(id).current().getCommit('HEAD'),
     workingChanges: (id: string) =>
       readWorkingChanges(repositories.lease(id).cli, id),
+    operation(id: string) {
+      const lease = repositories.lease(id);
+
+      // Reconcile only under the shared writer queue, after an in-flight patch settles.
+      return lease.write(
+        () => {},
+        async (cli) => {
+          const record = await readSelectedChangeRecovery(
+            cli,
+            id,
+            lease.root.fsPath,
+          );
+
+          if (record) {
+            const checkout = await updateCheckout(cli, id);
+
+            if (
+              checkout.sha !== record.head ||
+              checkout.ref !== record.branch ||
+              !(
+                await cli.run(id, [
+                  'status',
+                  '--porcelain=v1',
+                  '-z',
+                  '--untracked-files=all',
+                  '--ignored=matching',
+                  '--',
+                  ...record.paths.map((path) => `:(literal)${path}`),
+                ])
+              ).length
+            )
+              await clearSelectedChangeRecovery(cli, id, record);
+          }
+
+          return readSourceControlOperation(cli, id, lease.root.fsPath);
+        },
+      );
+    },
+    prepareAbort(id: string, token: string) {
+      const lease = repositories.lease(id);
+
+      return prepareSourceControlAbort(lease, { id, token }, async (kind) => {
+        if (kind === 'merge') await lease.current().mergeAbort();
+        // The built-in rebase command misses linked worktrees and pauses before REBASE_HEAD.
+        // Choose the narrow Git API gap before writing; never retry a failed native action.
+        else if (kind === 'revert' || kind === 'rebase')
+          await lease.cli.run(id, [kind, '--abort']);
+        else
+          await vscode.commands.executeCommand(
+            'git.cherryPickAbort',
+            lease.root,
+          );
+      });
+    },
     stashes: (id: string) => readStashes(repositories.lease(id).cli, id),
     stashFiles: (id: string, stash: Stash) =>
       readStashFiles(repositories.lease(id).cli, id, stash),
@@ -44,6 +111,20 @@ export async function createSourceControlBackend(signal?: AbortSignal) {
       prepareStash(repositories.lease(options.id), options),
     prepareRollback: (options: { id: string; files: readonly WorkingFile[] }) =>
       prepareRollback(repositories.lease(options.id), options),
+    prepareFileAction: (options: {
+      id: string;
+      files: readonly WorkingFile[];
+      kind: FileWriteAction;
+    }) =>
+      prepareFileAction(repositories.lease(options.id), {
+        ...options,
+        protectionPaths: () =>
+          vscode.workspace.textDocuments
+            .filter(
+              (document) => document.isDirty && document.uri.scheme === 'file',
+            )
+            .map((document) => document.uri.fsPath),
+      }),
     prepareDiscard: (options: { id: string; path: string }) =>
       prepareDiscard(repositories.lease(options.id), options),
     async messagePatch(

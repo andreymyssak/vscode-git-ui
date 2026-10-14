@@ -6,6 +6,7 @@ import type {
   SourceControlTab,
 } from '@contracts/source-control';
 
+import { revealSection } from '../model/change-groups';
 import { folderKey, messageHeightLimits, readView } from '../model/view-state';
 import { CommitPane } from './CommitPane';
 import styles from './SourceControlPage.module.css';
@@ -34,15 +35,23 @@ export function SourceControlPage({ bridge }: { bridge: SourceControlBridge }) {
         let collapsed = previous.collapsed;
 
         if (shouldReveal) {
+          const files = response.state.repositories.find(
+            (repo) => repo.info.id === reveal.repositoryId,
+          )?.changes;
+          const section =
+            revealSection(
+              files?.kind === 'ready' ? files.items : [],
+              reveal.path,
+            ) ?? 'working';
           const parts = reveal.path.split('/');
           const keys = new Set([
-            folderKey(reveal.repositoryId, 'working', ''),
+            folderKey(reveal.repositoryId, section, ''),
             ...parts
               .slice(0, -1)
               .map((_, index) =>
                 folderKey(
                   reveal.repositoryId,
-                  'working',
+                  section,
                   parts.slice(0, index + 1).join('/'),
                 ),
               ),
@@ -94,7 +103,11 @@ export function SourceControlPage({ bridge }: { bridge: SourceControlBridge }) {
       ...previous,
       groupByDirectory,
       collapsed: previous.collapsed.filter(
-        (key) => key !== folderKey(repository?.info.id ?? '', 'working', ''),
+        (key) =>
+          !['merge', 'index', 'working'].some(
+            (section) =>
+              key === folderKey(repository?.info.id ?? '', section, ''),
+          ),
       ),
     }));
   };

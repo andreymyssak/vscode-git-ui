@@ -1,27 +1,25 @@
-import {
-  lstat,
-  mkdtemp,
-  opendir,
-  readlink,
-  realpath,
-  rm,
-  stat,
-} from 'node:fs/promises';
+import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join, normalize, resolve } from 'node:path';
+import { join } from 'node:path';
 
 import type { FileChange, GitAction } from '../../shared/model';
-import { hasErrorCode } from '../../shared/validation';
 import type { GitApiAccess } from './api';
 import { updateCheckout } from './branch-update-target';
 import { rootChanges } from './changes';
 import type { GitCli } from './cli';
 import { readObjectParents } from './parents';
+import { containsRoot } from './paths';
 import { readWithCancellation } from './read-cancellation';
+import {
+  clearSelectedChangeRecovery,
+  readSelectedChangeRecovery,
+  startSelectedChangeRecovery,
+} from './selected-change-recovery';
 import {
   GitRequiresSourceControl,
   requireNoGitOperation,
 } from './working-tree-state';
+import { createWorktreeIdentityResolver } from './worktree-identity';
 
 type SelectedChanges = Extract<
   GitAction,
@@ -32,67 +30,6 @@ const identity = (file: FileChange) =>
   JSON.stringify([file.status, file.oldPath, file.newPath]);
 const pathsOf = (file: FileChange) =>
   [file.oldPath, file.newPath].filter((path): path is string => path !== null);
-
-const filenameIdentity = (path: string) => {
-  const normalized = normalize(path);
-
-  // macOS APFS/HFS+ names can be canonically equivalent without matching bytes.
-  return process.platform === 'darwin'
-    ? normalized.normalize('NFD')
-    : normalized;
-};
-
-const varyCase = (name: string) =>
-  name.replace(/[a-z]/i, (letter) =>
-    letter === letter.toLowerCase()
-      ? letter.toUpperCase()
-      : letter.toLowerCase(),
-  );
-
-/** Infer case handling from existing entries without creating files or trusting Git config. */
-async function directoryIgnoresCase(directory: string): Promise<boolean> {
-  const current = await lstat(directory);
-  const parent = dirname(directory);
-  const parentInfo = await lstat(parent);
-  const sameEntry = async (path: string) => {
-    const original = await lstat(path);
-    const alternate = join(dirname(path), varyCase(basename(path)));
-
-    try {
-      const candidate = await lstat(alternate);
-
-      return (
-        !candidate.isSymbolicLink() &&
-        candidate.dev === original.dev &&
-        candidate.ino === original.ino
-      );
-    } catch (error) {
-      if (!hasErrorCode(error, 'ENOENT')) throw error;
-
-      return false;
-    }
-  };
-
-  if (
-    parent !== directory &&
-    parentInfo.dev === current.dev &&
-    varyCase(basename(directory)) !== basename(directory)
-  )
-    return sameEntry(directory);
-  for await (const entry of await opendir(directory)) {
-    if (entry.isSymbolicLink() || varyCase(entry.name) === entry.name) continue;
-    const path = join(directory, entry.name);
-    const info = await lstat(path);
-
-    if (info.dev !== current.dev || (info.isFile() && info.nlink > 1)) continue;
-
-    return sameEntry(path);
-  }
-
-  if (parent !== directory && parentInfo.dev === current.dev)
-    return directoryIgnoresCase(parent);
-  throw new Error('Cannot verify unsaved file names on this filesystem.');
-}
 
 /** Apply or reverse only the captured comparison's files through the native Git patch API. */
 export async function applySelectedCommitChanges(
@@ -184,65 +121,7 @@ export async function applySelectedCommitChanges(
         'Selected paths overlap other changes in this commit. Select those related changes together.',
       );
     const pathspecs = paths.map((path) => `:(literal)${path}`);
-    const caseRules = new Map<string, Promise<boolean>>();
-    const canonical = async (path: string) => {
-      let ancestor = normalize(path);
-      const missing: string[] = [];
-      let links = 0;
-      let resolved: string;
-      let existing: string;
-
-      for (;;) {
-        try {
-          existing = await realpath(ancestor);
-          resolved = join(existing, ...missing);
-          break;
-        } catch (error) {
-          if (!hasErrorCode(error, 'ENOENT')) throw error;
-          let link: string | null;
-
-          try {
-            link = await readlink(ancestor);
-          } catch (linkError) {
-            if (
-              !hasErrorCode(linkError, 'ENOENT') &&
-              !hasErrorCode(linkError, 'EINVAL')
-            )
-              throw linkError;
-            link = null;
-          }
-
-          if (link !== null) {
-            if (++links > 40)
-              throw new Error(
-                'Too many folder aliases to verify unsaved edits.',
-                { cause: error },
-              );
-            ancestor = resolve(await realpath(dirname(ancestor)), link);
-            continue;
-          }
-
-          const parent = dirname(ancestor);
-
-          if (parent === ancestor) throw error;
-          missing.unshift(basename(ancestor));
-          ancestor = parent;
-        }
-      }
-
-      if (missing.length) {
-        let ignoresCase = caseRules.get(existing);
-
-        if (!ignoresCase) {
-          ignoresCase = directoryIgnoresCase(existing);
-          caseRules.set(existing, ignoresCase);
-        }
-
-        if (await ignoresCase) return filenameIdentity(resolved.toLowerCase());
-      }
-
-      return filenameIdentity(resolved);
-    };
+    const canonical = createWorktreeIdentityResolver();
 
     const validate = async () => {
       signal?.throwIfAborted();
@@ -261,6 +140,31 @@ export async function applySelectedCommitChanges(
           'The checked-out branch or HEAD changed. Select the files again.',
         );
       await requireNoGitOperation(reads, id, 'applying selected changes');
+      const pending = await readSelectedChangeRecovery(reads, id, root.fsPath);
+
+      if (pending) {
+        if (pending.head !== checkout.sha || pending.branch !== checkout.ref)
+          await clearSelectedChangeRecovery(reads, id, pending);
+        else if (
+          !(
+            await reads.run(id, [
+              'status',
+              '--porcelain=v1',
+              '-z',
+              '--untracked-files=all',
+              '--ignored=matching',
+              '--',
+              ...pending.paths.map((path) => `:(literal)${path}`),
+            ])
+          ).length
+        )
+          await clearSelectedChangeRecovery(reads, id, pending);
+        else
+          throw new GitRequiresSourceControl(
+            'Finish or abort the previous selected-change attempt in Git UI Changes before applying another patch.',
+          );
+      }
+
       if ((await reads.run(id, ['ls-files', '--unmerged', '-z'])).length)
         throw new GitRequiresSourceControl(
           'Resolve existing conflicts in Source Control before applying selected changes.',
@@ -270,14 +174,23 @@ export async function applySelectedCommitChanges(
           (access.worktreeProtectionPaths?.() ?? []).map(canonical),
         ),
       );
+      const selectedPaths = await Promise.all(
+        paths.map((path) => canonical(join(root.fsPath, path))),
+      );
 
       if (
-        (
-          await Promise.all(
-            paths.map((path) => canonical(join(root.fsPath, path))),
-          )
-        ).some((path) => protectedPaths.has(path))
+        selectedPaths.some((path, index) =>
+          selectedPaths.some(
+            (other, otherIndex) =>
+              index !== otherIndex && containsRoot(path, other),
+          ),
+        )
       )
+        throw new Error(
+          'Selected changes with overlapping file or folder paths cannot be safely cancelled. Apply the whole commit using Cherry-Pick or Revert.',
+        );
+
+      if (selectedPaths.some((path) => protectedPaths.has(path)))
         throw new GitRequiresSourceControl(
           'Save unsaved edits in the selected files before applying changes.',
         );
@@ -336,17 +249,42 @@ export async function applySelectedCommitChanges(
     signal?.throwIfAborted();
     if (closed)
       throw new Error('The repository closed. Select the files again.');
+    const recovery = await startSelectedChangeRecovery(reads, id, {
+      root: root.fsPath,
+      kind: action.kind,
+      paths,
+      head: action.expectedHeadSha,
+      branch: `refs/heads/${action.expectedBranch}`,
+    });
+
     try {
       await access.repository(id).apply(patch, {
         threeWay: true,
         reverse: action.kind === 'revert-files',
       });
     } catch (error) {
+      if (
+        !(
+          await cli.run(id, [
+            'status',
+            '--porcelain=v1',
+            '-z',
+            '--untracked-files=all',
+            '--ignored=matching',
+            '--',
+            ...pathspecs,
+          ])
+        ).length
+      )
+        await recovery.clear();
       throw new GitRequiresSourceControl(
         `${action.kind === 'revert-files' ? 'Reverting' : 'Applying'} selected changes stopped. Review Source Control before retrying; any applied changes remain uncommitted. ${error instanceof Error ? error.message : String(error)}`,
         { cause: error },
       );
     }
+
+    // Native apply cannot be cancelled mid-write. Settle success despite Log navigation.
+    await recovery.clear();
   } finally {
     subscription.dispose();
     if (directory) await rm(directory, { recursive: true, force: true });

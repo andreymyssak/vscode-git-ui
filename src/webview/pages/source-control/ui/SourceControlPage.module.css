@@ -177,6 +177,14 @@
   height: 25px;
   padding: 3px;
 }
+.abortAction {
+  display: inline-flex;
+  margin-inline-start: auto;
+  flex-shrink: 0;
+}
+.abortButton {
+  color: var(--vscode-errorForeground, #f14c4c);
+}
 .fileArea,
 .stashes {
   flex: 1;

@@ -149,6 +149,7 @@ if (prepared.kind === 'restricted') {
 } else {
   mkdirSync('.artifacts', { recursive: true });
   const profile = mkdtempSync(join(tmpdir(), 'gnu-installed-'));
+  const workspace = mkdtempSync(resolve('.artifacts/installed-workspace-'));
 
   mkdirSync(join(profile, 'User'));
   writeFileSync(
@@ -206,6 +207,7 @@ if (prepared.kind === 'restricted') {
       extensions,
       '--user-data-dir',
       profile,
+      workspace,
     ],
     env,
     // Bound the complete suite, including startup, within the 20-minute CI job.

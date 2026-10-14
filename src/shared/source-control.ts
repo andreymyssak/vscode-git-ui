@@ -39,11 +39,25 @@ export interface StashEntry extends Stash {
   files: Loaded<StashFile> | null;
 }
 
+export interface SourceControlOperation {
+  kind:
+    | 'merge'
+    | 'rebase'
+    | 'cherry-pick'
+    | 'revert'
+    | 'cherry-pick-files'
+    | 'revert-files'
+    | 'conflicts';
+  token: string;
+  paths: string[];
+}
+
 export interface SourceControlRepository {
   info: RepositoryInfo;
   pathLabel: { root: string; separator: '/' | '\\' };
   changes: Loaded<WorkingFile>;
   stashes: Loaded<StashEntry>;
+  operation: Loaded<SourceControlOperation>;
   checked: string[];
   draft: string;
   draftEditId: string | null;
@@ -65,7 +79,20 @@ export interface StashFileKey {
   snapshot: StashFile['snapshot'];
 }
 
+type SelectedFileAction =
+  | 'commit-selected'
+  | 'stash-selected'
+  | 'copy-paths'
+  | 'rollback'
+  | 'resolve-conflicts'
+  | 'accept-current'
+  | 'accept-incoming'
+  | 'stage-files'
+  | 'unstage-files'
+  | 'delete-files';
+
 export type SourceControlRequest =
+  | { kind: 'abort-operation'; repositoryId: string; token: string }
   | { kind: 'ready'; repositoryId: string | null; tab: SourceControlTab }
   | { kind: 'refresh' }
   | { kind: 'tab'; tab: SourceControlTab }
@@ -80,20 +107,17 @@ export type SourceControlRequest =
     }
   | { kind: 'cancel-generation' }
   | {
-      kind:
-        | 'commit-selected'
-        | 'stash-selected'
-        | 'open-files'
-        | 'copy-paths'
-        | 'rollback';
-      repositoryId: string;
-      paths: string[];
-    }
+      [Kind in SelectedFileAction]: {
+        kind: Kind;
+        repositoryId: string;
+        paths: string[];
+      };
+    }[SelectedFileAction]
   | {
-      kind: 'open-working-files';
+      kind: 'reveal-in-os' | 'reveal-in-explorer';
       repositoryId: string;
+      path: string;
       paths: string[];
-      index: boolean;
     }
   | {
       kind: 'open-stash-files';
@@ -103,7 +127,7 @@ export type SourceControlRequest =
     }
   | { kind: 'open-working'; repositoryId: string; path: string; index: boolean }
   | {
-      kind: 'discard-working' | 'open-file';
+      kind: 'discard-working';
       repositoryId: string;
       path: string;
     }

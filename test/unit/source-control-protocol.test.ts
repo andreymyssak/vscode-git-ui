@@ -37,23 +37,31 @@ describe('source-control boundary', () => {
     { kind: 'cancel-generation' },
     { kind: 'commit-selected', repositoryId: 'repo', paths: ['a.ts', 'b.ts'] },
     { kind: 'stash-selected', repositoryId: 'repo', paths: ['a.ts'] },
-    { kind: 'open-files', repositoryId: 'repo', paths: ['a.ts'] },
     { kind: 'copy-paths', repositoryId: 'repo', paths: ['src'] },
     { kind: 'rollback', repositoryId: 'repo', paths: ['a.ts'] },
+    ...(
+      [
+        'delete-files',
+        'resolve-conflicts',
+        'accept-current',
+        'accept-incoming',
+        'stage-files',
+        'unstage-files',
+      ] as const
+    ).map((kind) => ({ kind, repositoryId: 'repo', paths: ['a.ts'] })),
+    ...(['reveal-in-os', 'reveal-in-explorer'] as const).map((kind) => ({
+      kind,
+      repositoryId: 'repo',
+      path: 'src',
+      paths: ['src/a.ts'],
+    })),
     {
       kind: 'open-stash-files',
       repositoryId: 'repo',
       sha,
       files: [{ path: 'a.ts', snapshot: 'index' }],
     },
-    {
-      kind: 'open-working-files',
-      repositoryId: 'repo',
-      paths: ['a.ts'],
-      index: true,
-    },
     { kind: 'discard-working', repositoryId: 'file:///repo', path: 'a.ts' },
-    { kind: 'open-file', repositoryId: 'file:///repo', path: 'a.ts' },
     {
       kind: 'open-working',
       repositoryId: 'file:///repo',
@@ -91,7 +99,7 @@ describe('source-control boundary', () => {
   it.each(['../private', '/private', '.git/config', 'a/../b', 'a\0b', 'a/./b'])(
     'rejects unsafe file targets %s',
     (path) => {
-      for (const kind of ['discard-working', 'open-file'])
+      for (const kind of ['discard-working'])
         expect(
           parseSourceControlRequest({ kind, repositoryId: 'repo', path }),
         ).toBeNull();
@@ -115,6 +123,20 @@ describe('source-control boundary', () => {
   );
 
   it.each([
+    { kind: 'delete-files', repositoryId: 'repo', paths: [] },
+    { kind: 'accept-current', repositoryId: 'repo', paths: ['../other'] },
+    {
+      kind: 'reveal-in-os',
+      repositoryId: 'repo',
+      path: '../other',
+      paths: ['a.ts'],
+    },
+    {
+      kind: 'reveal-in-explorer',
+      repositoryId: 'repo',
+      path: 'a.ts',
+      paths: [],
+    },
     { kind: 'commit' },
     { kind: 'amend', repositoryId: 'repo' },
     { kind: 'amend', repositoryId: 'repo', enabled: 'yes' },
@@ -122,9 +144,7 @@ describe('source-control boundary', () => {
     { kind: 'rollback', repositoryId: 'repo', paths: ['../other'] },
     { kind: 'commit-selected', repositoryId: 'repo', paths: [] },
     { kind: 'stash-selected', repositoryId: 'repo', paths: ['../other'] },
-    { kind: 'open-files', repositoryId: 'repo', paths: ['.git/config'] },
     { kind: 'copy-paths', repositoryId: 'repo', paths: ['/outside'] },
-    { kind: 'open-working-files', repositoryId: 'repo', paths: ['a.ts'] },
     { kind: 'tab', tab: 'log' },
     { kind: 'delete-stash', repositoryId: 'repo', sha: 'stash@{0}' },
     { kind: 'check', repositoryId: 'repo', paths: ['a'], checked: 1 },
@@ -188,6 +208,7 @@ describe('source-control boundary', () => {
               },
               draft: '',
               draftEditId: null,
+              operation: { kind: 'ready', items: [] },
               commitMode: { kind: 'new' },
               checked: [path],
               changes: {

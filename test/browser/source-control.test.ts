@@ -273,7 +273,7 @@ test('tree hovers match Source Control paths, status and configured delay', asyn
   await expect(tooltip).toContainText('stash@{0}');
 });
 
-test('only Discard Changes appears on file hover and its click does not open or check the file', async ({
+test('Stage and Discard actions appear on hover and keyboard actions do not open or check the file', async ({
   page,
 }) => {
   await page.goto('/source-control.html');
@@ -309,6 +309,30 @@ test('only Discard Changes appears on file hover and its click does not open or 
   );
   await file.focus();
   await expect(discard).toBeVisible();
+  await page.keyboard.press('Tab');
+  const stage = file.getByRole('button', {
+    name: 'Stage Changes',
+    exact: true,
+  });
+
+  await expect(stage).toBeFocused();
+  await page.keyboard.press('Enter');
+  expect(
+    await page.evaluate(() => Reflect.get(window, 'sourceControlRequests')),
+  ).toEqual(
+    expect.arrayContaining([
+      {
+        kind: 'stage-files',
+        repositoryId: 'repo',
+        paths: ['src/nested/example.ts'],
+      },
+    ]),
+  );
+  await expect(file.getByRole('checkbox')).not.toBeChecked();
+  // Completed row actions return focus to the row before its buttons enter the tab order.
+  await expect(file).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(stage).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(discard).toBeFocused();
   await page.keyboard.press('Enter');
@@ -548,7 +572,7 @@ test('file open and selected restore requests identify the saved snapshot', asyn
     .getByRole('button', { name: /Example stash/ })
     .click();
   const file = root.locator(
-    '[data-path="src/nested/example.ts"][data-snapshot="working"]',
+    '[data-stash] [data-path="src/nested/example.ts"][data-snapshot="working"]',
   );
 
   await expect(file).toBeVisible();
@@ -638,4 +662,14 @@ test('Stash toolbar groups and expands saved files and restores only an explicit
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(320);
   await page.screenshot({ path: '.artifacts/stash-toolbar-dark.png' });
+});
+
+test('the Abort icon is hidden when there are no conflicts', async ({
+  page,
+}) => {
+  await page.goto('/source-control.html');
+  const toolbar = page.getByRole('toolbar', { name: 'Changes actions' });
+  const abort = toolbar.getByRole('button', { name: 'Abort', exact: true });
+
+  await expect(abort).toHaveCount(0);
 });

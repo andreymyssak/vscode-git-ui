@@ -51,10 +51,12 @@ async function discardStagedWorkingCopy() {
 
     context = await open(fixture);
     const { frame, page } = context;
-    const row = frame.getByRole('treeitem', {
-      name: 'sample.txt',
-      exact: true,
-    });
+    const row = frame
+      .getByRole('tree', { name: 'Changes', exact: true })
+      .getByRole('treeitem', {
+        name: 'sample.txt',
+        exact: true,
+      });
     const discard = row.getByRole('button', {
       name: 'Discard Changes',
       exact: true,
@@ -88,20 +90,27 @@ async function discardStagedWorkingCopy() {
       await readFile(join(fixture.root, 'other.txt'), 'utf8'),
       'keep\n',
     );
-    await expect(row.getByRole('checkbox')).not.toBeChecked();
-    const encoded = await row.getAttribute('data-vscode-context');
+    await expect(row).toHaveCount(0);
+    const staged = frame
+      .getByRole('tree', { name: 'Staged Changes', exact: true })
+      .getByRole('treeitem', { name: 'sample.txt', exact: true });
 
-    assert.ok(encoded);
-    await vscode.commands.executeCommand(
-      sourceControlCommandId('open-working-file'),
-      JSON.parse(encoded),
-    );
+    await expect(staged.getByRole('checkbox')).not.toBeChecked();
+    await staged.click();
+    await expect
+      .poll(() => {
+        const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+
+        return input instanceof vscode.TabInputTextDiff
+          ? input.modified.fsPath
+          : null;
+      })
+      .toBe(vscode.Uri.file(path).fsPath);
+    const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+
+    assert.ok(input instanceof vscode.TabInputTextDiff);
     assert.equal(
-      vscode.window.activeTextEditor?.document.uri.fsPath,
-      vscode.Uri.file(path).fsPath,
-    );
-    assert.equal(
-      vscode.window.activeTextEditor?.document.getText(),
+      (await vscode.workspace.openTextDocument(input.modified)).getText(),
       'staged\n',
     );
   } catch (error) {

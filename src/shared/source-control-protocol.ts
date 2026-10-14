@@ -1,6 +1,7 @@
 import type { RepositoryInfo } from './model';
 import type {
   Loaded,
+  SourceControlOperation,
   SourceControlRepository,
   SourceControlRequest,
   SourceControlResponse,
@@ -78,21 +79,31 @@ export function parseSourceControlRequest(
   const repositoryId = value.repositoryId;
 
   switch (value.kind) {
+    case 'abort-operation':
+      return text(value.token) && /^[a-f\d]{64}$/i.test(value.token)
+        ? { kind: value.kind, repositoryId, token: value.token }
+        : null;
     case 'commit-selected':
     case 'stash-selected':
-    case 'open-files':
     case 'copy-paths':
+    case 'resolve-conflicts':
+    case 'accept-current':
+    case 'accept-incoming':
+    case 'stage-files':
+    case 'unstage-files':
+    case 'delete-files':
     case 'rollback':
       return paths(value.paths)
         ? { kind: value.kind, repositoryId, paths: value.paths }
         : null;
-    case 'open-working-files':
-      return paths(value.paths) && typeof value.index === 'boolean'
+    case 'reveal-in-os':
+    case 'reveal-in-explorer':
+      return paths(value.paths) && path(value.path)
         ? {
             kind: value.kind,
             repositoryId,
             paths: value.paths,
-            index: value.index,
+            path: value.path,
           }
         : null;
     case 'repository':
@@ -130,7 +141,6 @@ export function parseSourceControlRequest(
           }
         : null;
     case 'discard-working':
-    case 'open-file':
       return path(value.path)
         ? { kind: value.kind, repositoryId, path: value.path }
         : null;
@@ -240,6 +250,7 @@ function repository(value: unknown): value is SourceControlRepository {
     (value.pathLabel.separator === '/' || value.pathLabel.separator === '\\') &&
     loaded(value.changes, workingFile) &&
     loaded(value.stashes, stash) &&
+    loaded(value.operation, operation) &&
     Array.isArray(value.checked) &&
     value.checked.every(path) &&
     text(value.draft) &&
@@ -247,6 +258,26 @@ function repository(value: unknown): value is SourceControlRepository {
     isRecord(value.commitMode) &&
     (value.commitMode.kind === 'new' ||
       (value.commitMode.kind === 'amend' && sha(value.commitMode.headSha)))
+  );
+}
+
+function operation(value: unknown): value is SourceControlOperation {
+  return (
+    isRecord(value) &&
+    [
+      'merge',
+      'rebase',
+      'cherry-pick',
+      'revert',
+      'cherry-pick-files',
+      'revert-files',
+      'conflicts',
+    ].includes(typeof value.kind === 'string' ? value.kind : '') &&
+    text(value.token) &&
+    /^[a-f\d]{64}$/i.test(value.token) &&
+    Array.isArray(value.paths) &&
+    value.paths.length <= 10_000 &&
+    value.paths.every(path)
   );
 }
 

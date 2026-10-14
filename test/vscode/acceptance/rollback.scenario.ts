@@ -36,7 +36,9 @@ export async function run(): Promise<string[]> {
     );
     const frame = await sourceControlFrame();
     const page = frame.page();
-    const folder = frame.getByRole('treeitem', { name: 'src', exact: true });
+    const folder = frame
+      .getByRole('tree', { name: 'Changes', exact: true })
+      .getByRole('treeitem', { name: 'src', exact: true });
     const encoded = await folder.getAttribute('data-vscode-context');
 
     assert.ok(encoded);
@@ -70,6 +72,24 @@ export async function run(): Promise<string[]> {
       await readFile(join(fixture.root, 'src/new.txt'), 'utf8'),
       'keep new file\n',
     );
+    // The working folder excludes a staged-only addition. Roll it back explicitly from its own section.
+    assert.equal(
+      await fixture.runGit(['show', ':src/new.txt']),
+      'keep new file\n',
+    );
+    const stagedNew = frame
+      .getByRole('tree', { name: 'Staged Changes', exact: true })
+      .getByRole('treeitem', { name: 'src/new.txt', exact: true });
+    const stagedContext = await stagedNew.getAttribute('data-vscode-context');
+
+    assert.ok(stagedContext);
+    const unstageNew = vscode.commands.executeCommand(
+      sourceControlCommandId('rollback-selected'),
+      JSON.parse(stagedContext),
+    );
+
+    await page.getByRole('button', { name: 'Rollback', exact: true }).click();
+    await unstageNew;
     assert.equal(await fixture.runGit(['ls-files', '--', 'src/new.txt']), '');
     const added = frame.getByRole('treeitem', {
       name: 'src/new.txt',
