@@ -9,7 +9,6 @@ import { getGitApi } from '../../src/extension/git/api';
 import { createSourceControlBackend } from '../../src/extension/git/source-control/index';
 import { sourceControlCommandId } from '../../src/shared/extension-identity';
 import { captureNativeActionFailure } from '../fixtures/native-action-diagnostic';
-import { activateNativeMenu } from '../fixtures/native-menu';
 import { closeFixtureEditors } from '../fixtures/owned-editors';
 import { createFixture, type Fixture } from '../fixtures/repository';
 import { sourceControlFrame } from '../fixtures/source-control-view';
@@ -79,16 +78,29 @@ async function dispose(fixture: Fixture) {
 
 async function activateFileAction(frame: Frame, action: string) {
   const row = frame.getByRole('treeitem', { name: 'src/a.txt', exact: true });
+  const page = frame.page();
+  const item = page.getByRole('menuitem', { name: action, exact: true });
 
-  await row.focus();
-  await expect(row).toBeFocused();
-  await expect.poll(() => frame.evaluate(() => document.hasFocus())).toBe(true);
-  await row.press('Shift+F10');
-  const item = frame
-    .page()
-    .getByRole('menuitem', { name: action, exact: true });
-
-  await activateNativeMenu(item);
+  // Workbench focus can settle after opening the popup and close it again.
+  // Reopen only the menu; activate the mutation once after focus is ready.
+  await expect(async () => {
+    await page.keyboard.press('Escape');
+    await row.focus();
+    await expect(row).toBeFocused();
+    await expect
+      .poll(() => frame.evaluate(() => document.hasFocus()))
+      .toBe(true);
+    await row.press('Shift+F10');
+    await expect(item).toBeVisible({ timeout: 500 });
+    await expect(item).toBeEnabled({ timeout: 500 });
+    await item.hover({ timeout: 500 });
+    await item.focus({ timeout: 500 });
+    await expect(item).toBeFocused({ timeout: 500 });
+    await expect
+      .poll(() => page.evaluate(() => document.hasFocus()), { timeout: 500 })
+      .toBe(true);
+  }).toPass({ timeout: 10000 });
+  await item.press('Enter');
 }
 
 describe('Native Changes conflict actions', () => {

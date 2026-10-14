@@ -19,7 +19,7 @@ export async function disposeFixtureDirectory(root: string): Promise<void> {
 
 export interface Fixture {
   root: string;
-  runGit(args: string[]): Promise<string>;
+  runGit(args: string[], options?: { committerDate: string }): Promise<string>;
   dispose(): Promise<void>;
 }
 export async function createFixture(options: {
@@ -44,11 +44,13 @@ export async function createFixture(options: {
       GIT_COMMITTER_NAME: 'Fixture',
       GIT_COMMITTER_EMAIL: 'fixture@example.test',
     });
-    const runGit = async (args: string[]) =>
+    const runGit: Fixture['runGit'] = async (args, options) =>
       (
         await execute('git', args, {
           cwd: root,
-          env,
+          env: options
+            ? { ...env, GIT_COMMITTER_DATE: options.committerDate }
+            : env,
           maxBuffer: 32 * 1024 * 1024,
         })
       ).stdout;

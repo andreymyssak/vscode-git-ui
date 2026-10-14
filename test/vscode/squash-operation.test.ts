@@ -286,6 +286,20 @@ describe('queued squash through the installed Git API and bundled runtime', () =
       else {
         const continueRebase = () =>
           fixture.runGit(['-c', 'core.editor=true', 'rebase', '--continue']);
+        let manualCommit = 0;
+        const commitManually = async (args: string[]) => {
+          const before = await fixture.runGit(['rev-parse', 'HEAD']);
+
+          // Git detects manual recovery by a changed HEAD. Same-second amends
+          // can otherwise recreate the same commit and repeat its signing step.
+          await fixture.runGit(['commit', '--no-gpg-sign', ...args], {
+            committerDate: new Date(
+              Date.UTC(2000, 0, 1) + ++manualCommit * 1000,
+            ).toISOString(),
+          });
+          assert.notEqual(await fixture.runGit(['rev-parse', 'HEAD']), before);
+        };
+
         const todo = join(rebase, 'git-rebase-todo');
         const markApplied = async (
           command: 'pick' | 'fixup' | 'fixup -C',
@@ -340,7 +354,7 @@ describe('queued squash through the installed Git API and bundled runtime', () =
         await stat(input);
         // These are explicit manual fixture recovery actions. The extension
         // preserves signing; Git retained -S despite a config=false override.
-        await fixture.runGit(['commit', '--no-gpg-sign', '-C', oldest]);
+        await commitManually(['-C', oldest]);
         await markApplied('pick', oldest);
         await assert.rejects(continueRebase, /Fixture signing rejection/);
         await stat(input);
@@ -350,34 +364,16 @@ describe('queued squash through the installed Git API and bundled runtime', () =
             await fixture.runGit(['rev-parse', `${target.shas[1]!}^{tree}`])
           ).trim(),
         );
-        await fixture.runGit([
-          'commit',
-          '--amend',
-          '--no-gpg-sign',
-          '-m',
-          'Approved',
-        ]);
+        await commitManually(['--amend', '-m', 'Approved']);
         await markApplied('fixup', target.shas[1]!);
         await assert.rejects(continueRebase, /Fixture signing rejection/);
         await stat(input);
         assert.match(await readFile(todo, 'utf8'), /^fixup /);
         assert.equal((await fixture.runGit(['write-tree'])).trim(), tree);
-        await fixture.runGit([
-          'commit',
-          '--amend',
-          '--no-gpg-sign',
-          '-m',
-          'Approved',
-        ]);
+        await commitManually(['--amend', '-m', 'Approved']);
         await markApplied('fixup', target.shas[0]!);
         await assert.rejects(continueRebase, /Fixture signing rejection/);
-        await fixture.runGit([
-          'commit',
-          '--amend',
-          '--no-gpg-sign',
-          '-m',
-          'Approved',
-        ]);
+        await commitManually(['--amend', '-m', 'Approved']);
         await markApplied('fixup -C', manifest.messageCommitSha);
         await continueRebase();
       }

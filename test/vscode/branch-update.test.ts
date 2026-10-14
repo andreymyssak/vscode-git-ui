@@ -10,6 +10,8 @@ import { getGitApi } from '../../src/extension/git/api';
 import { createFixture } from '../fixtures/repository';
 
 describe('tracked branch Update', () => {
+  // This covers multiple real fetch/update operations and their safety checks.
+  // Allow Windows Git process startup without extending individual UI waits.
   it('reads every local upstream count and fast-forwards without pushing, creating a merge commit or stashing', async () => {
     const fixture = await createFixture({ prefix: 'git-ui-native-update-' });
     let adapter: GitAdapter | undefined;
@@ -259,5 +261,5 @@ describe('tracked branch Update', () => {
       await fixture.dispose();
       await rm(remote, { recursive: true, force: true });
     }
-  });
+  }).timeout(90000);
 });
