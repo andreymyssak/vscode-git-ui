@@ -22,11 +22,17 @@ import { showOperationError } from '../native/operation-feedback';
 import { formatPathLabel } from '../native/path-label';
 import { openSourceControlDiff } from '../native/source-control-diffs';
 import { abortOperation } from './abort';
+import { publishSourceControlContexts } from './context';
 import { discardWorking } from './discard';
 import { inspectWorkingFiles, writeWorkingFiles } from './file-actions';
 import { toggleAmend } from './message-tools';
 import { SourceControlModel } from './model';
 import { SourceControlNotifications } from './notifications';
+import {
+  isRepositoryAction,
+  repositoryActionTitles,
+  runRepositoryAction,
+} from './repository-action';
 import { rollbackChanges } from './rollback';
 import { savedWriteDescription, writeSaved } from './saved-writes';
 import { requireLiveRepository, writeChanges } from './writes';
@@ -42,6 +48,8 @@ async function loaded<T>(work: Promise<T[]>): Promise<Loaded<T>> {
     return { kind: 'error', message: errorMessage(error) };
   }
 }
+
+const defaultHoverDelay = process.platform === 'darwin' ? 1500 : 500;
 
 /** This service outlives hidden or recreated webviews; requests never own Git refs. */
 export class SourceControlService implements vscode.Disposable {
@@ -60,6 +68,7 @@ export class SourceControlService implements vscode.Disposable {
   private preferredRepositoryId: string | null = null;
   private hasSessionPreference = false;
   private disposed = false;
+  private publication = 0;
   private refreshGeneration = 0;
   private amendGeneration = 0;
   private refreshTimer: ReturnType<typeof setTimeout> | undefined;
@@ -112,7 +121,7 @@ export class SourceControlService implements vscode.Disposable {
     this.initialization.abort();
     this.refreshGeneration++;
     this.cancelGeneration();
-    // Pending dialogs and queued writes must lose their live target on disposal.
+    // Git UI-owned dialogs and queued writes lose their live target on disposal.
     this.model.updateRepositories([]);
     this.notifications.reset();
     if (this.refreshTimer) clearTimeout(this.refreshTimer);
@@ -123,42 +132,26 @@ export class SourceControlService implements vscode.Disposable {
 
   publish(): void {
     if (this.disposed) return;
-    const checked = this.model.repositoryId
-      ? (this.model.repositories
-          .get(this.model.repositoryId)
-          ?.checked.selected().length ?? 0)
-      : 0;
-
-    void Promise.resolve(
-      vscode.commands.executeCommand(
-        'setContext',
-        'gitUI.changesHasChecked',
-        checked > 0,
-      ),
-    ).catch(() => undefined);
-    void Promise.resolve(
-      vscode.commands.executeCommand(
-        'setContext',
-        'gitUI.sourceControlBusy',
-        this.model.busy,
-      ),
-    ).catch(() => undefined);
+    const publication = ++this.publication;
     const state = this.model.state();
 
-    this.onState({
-      ...state,
-      hoverDelay: vscode.workspace
-        .getConfiguration('workbench')
-        .get<number>('hover.delay', process.platform === 'darwin' ? 1500 : 500),
-      repositories: state.repositories.map((repository) => ({
-        ...repository,
-        pathLabel: {
-          root: formatPathLabel({
-            path: vscode.Uri.parse(repository.info.rootUri).fsPath,
-          }),
-          separator: process.platform === 'win32' ? '\\' : '/',
-        },
-      })),
+    void publishSourceControlContexts(this.model).then(() => {
+      if (this.disposed || publication !== this.publication) return;
+      this.onState({
+        ...state,
+        hoverDelay: vscode.workspace
+          .getConfiguration('workbench')
+          .get<number>('hover.delay', defaultHoverDelay),
+        repositories: state.repositories.map((repository) => ({
+          ...repository,
+          pathLabel: {
+            root: formatPathLabel({
+              path: vscode.Uri.parse(repository.info.rootUri).fsPath,
+            }),
+            separator: process.platform === 'win32' ? '\\' : '/',
+          },
+        })),
+      });
     });
   }
 
@@ -174,6 +167,17 @@ export class SourceControlService implements vscode.Disposable {
     }
 
     try {
+      if (isRepositoryAction(request)) {
+        await this.write(
+          request.repositoryId,
+          repositoryActionTitles[request.kind],
+          (runtime) =>
+            runRepositoryAction({ runtime, model: this.model, request }),
+        );
+
+        return;
+      }
+
       switch (request.kind) {
         case 'abort-operation':
           await this.write(

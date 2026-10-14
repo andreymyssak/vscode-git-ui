@@ -29,6 +29,7 @@ export function activate(context: vscode.ExtensionContext): void {
     'create-worktree',
     'checkout',
     'create-branch',
+    'create-branch-checkout',
     'rename-branch',
     'delete-branch',
     'delete-branches',

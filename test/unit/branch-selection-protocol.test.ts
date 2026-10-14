@@ -5,6 +5,41 @@ import {
   parseRequest,
 } from '../../src/extension/panel/protocol';
 
+test('create-and-checkout accepts one selected branch without trusting supplied write targets', () => {
+  const context = {
+    repositoryId: 'one',
+    generation: 1,
+    refId: 'refs/heads/topic',
+    refSelectionCount: 1,
+  };
+  const request = branchMenuRequest('create-branch-checkout', context);
+
+  expect(request?.body).toEqual({
+    kind: 'action',
+    action: { kind: 'create-branch-checkout', refId: 'refs/heads/topic' },
+  });
+  expect(
+    branchMenuRequest('create-branch-checkout', {
+      ...context,
+      refSelectionCount: 2,
+    }),
+  ).toBeNull();
+  expect(
+    parseRequest({
+      ...request,
+      body: {
+        kind: 'action',
+        action: {
+          kind: 'create-branch-checkout',
+          refId: context.refId,
+          name: 'forged',
+          expectedSha: 'a'.repeat(40),
+        },
+      },
+    }),
+  ).toBeNull();
+});
+
 test('batch deletion accepts distinct branch IDs and rejects supplied write targets or invalid ranges', () => {
   const action = {
     kind: 'delete-branches',

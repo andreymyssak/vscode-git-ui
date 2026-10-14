@@ -102,7 +102,12 @@ export type GitAction =
       name: string;
     }
   | { kind: 'checkout'; refId: string; expectedSha: string }
-  | { kind: 'create-branch'; refId: string; expectedSha: string; name: string }
+  | {
+      kind: 'create-branch' | 'create-branch-checkout';
+      refId: string;
+      expectedSha: string;
+      name: string;
+    }
   | { kind: 'rename-branch'; refId: string; expectedSha: string; name: string }
   | { kind: 'delete-branch'; refId: string; expectedSha: string }
   | { kind: 'delete-branches'; branches: readonly BranchDeletionTarget[] }

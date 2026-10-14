@@ -3,6 +3,7 @@ import type {
   CommitActionKind,
   WorktreeActionKind,
 } from './messages';
+import type { SourceControlRepositoryAction } from './source-control';
 
 /** The build injects only identity metadata from package.json. */
 declare const __EXTENSION_IDENTITY__: {
@@ -24,6 +25,7 @@ export const SQUASH_HELPER_ID = `${SQUASH_RECOVERY_OWNER}-helper`;
 export const RENDER_MEASUREMENT = `${extensionIdentity.name}.render`;
 
 export type SourceControlActionKind =
+  | SourceControlRepositoryAction
   | 'refresh-changes'
   | 'check-all'
   | 'uncheck-all'

@@ -25,7 +25,7 @@ export interface ActionPrompts extends WorktreeCreationPrompts {
     current: string,
     selected: string,
   ) => Promise<boolean>;
-  askBranchName?: () => Promise<string | null>;
+  askBranchName?: (checkout?: boolean) => Promise<string | null>;
   askTagName?: () => Promise<string | null>;
   confirmDrop?: (branch: string, count: number) => Promise<boolean>;
   askRenameBranch?: (name: string) => Promise<string | null>;
@@ -515,10 +515,16 @@ export class PanelActions {
         );
     }
 
-    if (action.kind === 'create-branch' || action.kind === 'rename-branch') {
+    if (
+      action.kind === 'create-branch' ||
+      action.kind === 'create-branch-checkout' ||
+      action.kind === 'rename-branch'
+    ) {
       const name =
-        action.kind === 'create-branch'
-          ? await this.prompts.askBranchName?.()
+        action.kind !== 'rename-branch'
+          ? await this.prompts.askBranchName?.(
+              action.kind === 'create-branch-checkout',
+            )
           : await this.prompts.askRenameBranch?.(ref.name);
 
       if (name === null || name === undefined) return null;

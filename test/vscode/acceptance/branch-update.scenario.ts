@@ -383,7 +383,7 @@ export async function run() {
           workbench.getByText(
             current
               ? `Updated "main" with ${choice}: 1 incoming commit.`
-              : 'Checked out "topic". Choose Update Branch to update it.',
+              : 'Checked out "topic". Choose Update to bring it up to date.',
             { exact: true },
           ),
         ).toBeVisible();

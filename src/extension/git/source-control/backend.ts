@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 
 import type {
   CommitMode,
+  SourceControlRepositoryAction,
   Stash,
   StashFile,
   WorkingFile,
@@ -15,6 +16,7 @@ import {
 import { stashChangeUris, workingChangeUris } from './comparisons';
 import { readSourceControlOperation } from './operation-state';
 import { prepareSourceControlAbort } from './prepared-abort';
+import { prepareBranchCreation } from './prepared-branch';
 import { prepareChanges } from './prepared-changes';
 import { prepareDiscard } from './prepared-discard';
 import {
@@ -41,6 +43,44 @@ export async function createSourceControlBackend(signal?: AbortSignal) {
     dispose: repositories.dispose,
     root: (id: string) => repositories.lease(id).root,
     status: (id: string) => repositories.lease(id).current().status(),
+    prepareBranchCreation: (id: string) =>
+      prepareBranchCreation(repositories.lease(id), id),
+    repositoryAction(options: {
+      id: string;
+      kind: Exclude<SourceControlRepositoryAction, 'new-branch'>;
+      beforeWrite: () => void;
+    }) {
+      const lease = repositories.lease(options.id);
+      const commands = {
+        pull: 'git.pull',
+        push: 'git.push',
+        fetch: 'git.fetch',
+        'checkout-branch': 'git.checkout',
+        'new-branch-checkout': 'git.branch',
+        'new-branch-from': 'git.branchFrom',
+        'merge-current': 'git.merge',
+        'rebase-current': 'git.rebase',
+        'rename-current-branch': 'git.renameBranch',
+        'delete-local-branch': 'git.deleteBranch',
+        'delete-remote-branch': 'git.deleteRemoteBranch',
+        'publish-branch': 'git.publish',
+        'create-tag': 'git.createTag',
+        'delete-tag': 'git.deleteTag',
+        'delete-remote-tag': 'git.deleteRemoteTag',
+        'push-tags': 'git.pushTags',
+      } satisfies Record<
+        Exclude<SourceControlRepositoryAction, 'new-branch'>,
+        string
+      >;
+
+      return lease.write(options.beforeWrite, async () => {
+        // The native Git command owns its picker, confirmations and completion.
+        await vscode.commands.executeCommand(
+          commands[options.kind],
+          lease.root,
+        );
+      });
+    },
     headCommit: (id: string) =>
       repositories.lease(id).current().getCommit('HEAD'),
     workingChanges: (id: string) =>

@@ -102,6 +102,7 @@ function isUserAction(value: unknown): value is UserAction {
     case 'rebase-branch':
     case 'checkout':
     case 'create-branch':
+    case 'create-branch-checkout':
     case 'copy-branch':
     case 'rename-branch':
     case 'delete-branch':

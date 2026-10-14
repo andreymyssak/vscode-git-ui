@@ -11,6 +11,10 @@ import type {
   SourceControlRequest,
   SourceControlState,
 } from '../../shared/source-control';
+import {
+  isSourceControlRepositoryAction,
+  sourceControlRepositoryActions,
+} from '../../shared/source-control';
 import { parseSourceControlRequest } from '../../shared/source-control-protocol';
 import { isRecord } from '../../shared/validation';
 import { attachFileIcons } from '../panel/file-icon-host';
@@ -18,6 +22,7 @@ import { SourceControlService } from '../source-control/service';
 import { showOperationError } from './operation-feedback';
 
 const actions = [
+  ...sourceControlRepositoryActions,
   'refresh-changes',
   'check-all',
   'uncheck-all',
@@ -182,6 +187,8 @@ export class SourceControlViews
 
     if (!repositoryId)
       throw new Error('Choose a repository in Git UI before continuing.');
+    if (isSourceControlRepositoryAction(kind))
+      return parseSourceControlRequest({ kind, repositoryId });
     switch (kind) {
       case 'check-all':
       case 'uncheck-all': {

@@ -1,7 +1,53 @@
-import { assert, expect, test } from 'vitest';
+import { assert, expect, onTestFinished, test } from 'vitest';
 
 import type { RequestBody } from '../../src/shared/messages';
 import { a, b, fixture, page } from '../fixtures/controller';
+
+test.each(['create-branch', 'create-branch-checkout'] as const)(
+  '%s captures the selected reference before asking for its name',
+  async (kind) => {
+    const promptModes: boolean[] = [];
+    const f = fixture(true, true, {
+      askBranchName: async (checkout = false) => {
+        promptModes.push(checkout);
+
+        return 'topic';
+      },
+    });
+
+    onTestFinished(() => f.controller.dispose());
+    await f.controller.selectRepository('one');
+    await f.controller.handle(
+      f.request({ kind: 'action', action: { kind, refId: 'refs/heads/main' } }),
+    );
+    expect(promptModes).toEqual([kind === 'create-branch-checkout']);
+    expect(f.writes).toStrictEqual([
+      {
+        id: 'one',
+        action: {
+          kind,
+          refId: 'refs/heads/main',
+          expectedSha: a,
+          name: 'topic',
+        },
+      },
+    ]);
+  },
+);
+
+test.each(['create-branch', 'create-branch-checkout'] as const)(
+  'cancelling the %s name prompt performs no write',
+  async (kind) => {
+    const f = fixture(true, true, { askBranchName: async () => null });
+
+    onTestFinished(() => f.controller.dispose());
+    await f.controller.selectRepository('one');
+    await f.controller.handle(
+      f.request({ kind: 'action', action: { kind, refId: 'refs/heads/main' } }),
+    );
+    expect(f.writes).toStrictEqual([]);
+  },
+);
 
 test('editing captures the displayed latest commit before the message editor opens', async (t) => {
   const f = fixture(true, true, {

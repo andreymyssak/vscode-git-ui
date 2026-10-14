@@ -23,6 +23,10 @@ The Git adapter uses the installed Git extension where possible and explicit Git
 
 Repository consumers share one observation per repository. It coalesces metadata reads, checks again when events arrive during a read, and releases its native listener when the last consumer unsubscribes. History loads and completed writes wait for pending observations before using cached history.
 
+The branch menu and Changes title menu offer New Branch and New Branch and Checkout. Branch-menu creation starts at the selected reference; Changes-menu creation starts at HEAD. New Branch captures that checkout before its native input dialog, then revalidates it and the repository before creating through the public Git API without switching. New Branch and Checkout follows the native Git command, which uses HEAD when its write runs.
+
+The Changes title menu offers Pull, Push, Checkout and Fetch for its selected repository, followed by native Branch and Tags submenus. Branch includes creation, checkout after creation, creation from another reference, merge, rebase, rename, deletion and publishing. Tags includes creation, local and remote deletion, and pushing. Except for create-only New Branch, these actions delegate to native Git commands. Git UI validates the repository at dispatch and holds its shared write queue until completion. VS Code then owns the pickers, authentication, confirmations and conflict handling against that original target. Repository closure invalidates queued Git UI writes; already-dispatched native commands follow VS Code's own lifecycle.
+
 Merge Changes, Staged Changes and Changes reflect the real index and working tree. Checkboxes select whole files for Git UI Commit; partially staged files share inclusion across sections. Stage and Unstage are explicit operations and do not change inclusion. Terminal commits still use only the real index.
 
 The Source Control view works independently of the Log webview and uses ordinary Git stashes. Selected commits and stash creation use a temporary index to exclude unchecked staged changes. Writes share the repository operation queue and a lock across linked worktrees.

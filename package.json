@@ -193,22 +193,22 @@
     "commands": [
       {
         "command": "gitUI.merge-branch",
-        "title": "Merge Selected Branch into Current Branch",
+        "title": "Merge",
         "enablement": "refCanIntegrate"
       },
       {
         "command": "gitUI.rebase-branch",
-        "title": "Rebase Current Branch on Selected Branch",
+        "title": "Rebase",
         "enablement": "refCanIntegrate"
       },
       {
         "command": "gitUI.create-worktree",
-        "title": "New Worktree from Selected Branch\u2026",
+        "title": "New Worktree",
         "enablement": "refKind != tag"
       },
       {
         "command": "gitUI.update-branch",
-        "title": "Update Branch",
+        "title": "Update",
         "enablement": "refCanUpdate"
       },
       {
@@ -218,11 +218,15 @@
       },
       {
         "command": "gitUI.create-branch",
-        "title": "New Branch from Here\u2026"
+        "title": "New Branch"
+      },
+      {
+        "command": "gitUI.create-branch-checkout",
+        "title": "New Branch and Checkout"
       },
       {
         "command": "gitUI.rename-branch",
-        "title": "Rename\u2026",
+        "title": "Rename",
         "enablement": "refKind == local"
       },
       {
@@ -232,7 +236,7 @@
       },
       {
         "command": "gitUI.delete-branches",
-        "title": "Delete Selected Branches",
+        "title": "Delete",
         "enablement": "refsCanDelete && refSelectionCount > 1"
       },
       {
@@ -270,7 +274,7 @@
       },
       {
         "command": "gitUI.branch-from-commit",
-        "title": "New Branch\u2026"
+        "title": "New Branch"
       },
       {
         "command": "gitUI.tag-from-commit",
@@ -481,6 +485,108 @@
         "title": "Open Containing Folder",
         "category": "Git UI",
         "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy"
+      },
+      {
+        "command": "gitUI.pull",
+        "title": "Pull",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasRepository"
+      },
+      {
+        "command": "gitUI.push",
+        "title": "Push",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasRepository"
+      },
+      {
+        "command": "gitUI.checkout-branch",
+        "title": "Checkout",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasRepository"
+      },
+      {
+        "command": "gitUI.new-branch",
+        "title": "New Branch",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasRepository"
+      },
+      {
+        "command": "gitUI.new-branch-checkout",
+        "title": "New Branch and Checkout",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasRepository"
+      },
+      {
+        "command": "gitUI.fetch",
+        "title": "Fetch",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasRepository"
+      },
+      {
+        "command": "gitUI.merge-current",
+        "title": "Merge",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasRepository"
+      },
+      {
+        "command": "gitUI.rebase-current",
+        "title": "Rebase",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasRepository"
+      },
+      {
+        "command": "gitUI.new-branch-from",
+        "title": "New Branch and Checkout From",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasRepository"
+      },
+      {
+        "command": "gitUI.rename-current-branch",
+        "title": "Rename",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasRepository"
+      },
+      {
+        "command": "gitUI.delete-local-branch",
+        "title": "Delete Branch",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasRepository"
+      },
+      {
+        "command": "gitUI.delete-remote-branch",
+        "title": "Delete Remote Branch",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasRepository"
+      },
+      {
+        "command": "gitUI.publish-branch",
+        "title": "Publish Branch",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasRepository"
+      },
+      {
+        "command": "gitUI.create-tag",
+        "title": "Create Tag",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasRepository"
+      },
+      {
+        "command": "gitUI.delete-tag",
+        "title": "Delete Tag",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasRepository"
+      },
+      {
+        "command": "gitUI.delete-remote-tag",
+        "title": "Delete Remote Tag",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasRepository"
+      },
+      {
+        "command": "gitUI.push-tags",
+        "title": "Push Tags",
+        "category": "Git UI",
+        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasRepository"
       }
     ],
     "menus": {
@@ -521,9 +627,14 @@
           "group": "1_branch@2"
         },
         {
-          "command": "gitUI.update-branch",
+          "command": "gitUI.create-branch-checkout",
           "when": "webviewId == gitUI.log && webviewSection == branch && refSelectionCount == 1",
           "group": "1_branch@3"
+        },
+        {
+          "command": "gitUI.update-branch",
+          "when": "webviewId == gitUI.log && webviewSection == branch && refSelectionCount == 1",
+          "group": "1_branch@4"
         },
         {
           "command": "gitUI.rename-branch",
@@ -884,6 +995,78 @@
         {
           "command": "gitUI.unstage-files",
           "when": "false"
+        },
+        {
+          "command": "gitUI.create-branch-checkout",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.pull",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.push",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.checkout-branch",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.new-branch",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.new-branch-checkout",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.fetch",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.merge-current",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.rebase-current",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.new-branch-from",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.rename-current-branch",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.delete-local-branch",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.delete-remote-branch",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.publish-branch",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.create-tag",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.delete-tag",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.delete-remote-tag",
+          "when": "false"
+        },
+        {
+          "command": "gitUI.push-tags",
+          "when": "false"
         }
       ],
       "scm/resourceState/context": [
@@ -926,8 +1109,106 @@
           "when": "isWorkspaceTrusted && config.git.enabled && gitOpenRepositoryCount > 0 && (resourceScheme == file || resourceScheme == git) && gitUI.blame-enabled",
           "group": "gitUI_blame@2"
         }
+      ],
+      "view/title": [
+        {
+          "command": "gitUI.pull",
+          "when": "view == gitUI.changes",
+          "group": "1_repository@1"
+        },
+        {
+          "command": "gitUI.push",
+          "when": "view == gitUI.changes",
+          "group": "1_repository@2"
+        },
+        {
+          "command": "gitUI.checkout-branch",
+          "when": "view == gitUI.changes",
+          "group": "1_repository@3"
+        },
+        {
+          "command": "gitUI.fetch",
+          "when": "view == gitUI.changes",
+          "group": "1_repository@4"
+        },
+        {
+          "submenu": "gitUI.changes.branchActions",
+          "when": "view == gitUI.changes",
+          "group": "2_repository@1"
+        },
+        {
+          "submenu": "gitUI.changes.tagActions",
+          "when": "view == gitUI.changes",
+          "group": "2_repository@2"
+        }
+      ],
+      "gitUI.changes.branchActions": [
+        {
+          "command": "gitUI.merge-current",
+          "group": "1_integrate@1"
+        },
+        {
+          "command": "gitUI.rebase-current",
+          "group": "1_integrate@2"
+        },
+        {
+          "command": "gitUI.new-branch",
+          "group": "2_create@1"
+        },
+        {
+          "command": "gitUI.new-branch-checkout",
+          "group": "2_create@2"
+        },
+        {
+          "command": "gitUI.new-branch-from",
+          "group": "2_create@3"
+        },
+        {
+          "command": "gitUI.rename-current-branch",
+          "group": "3_manage@1"
+        },
+        {
+          "command": "gitUI.delete-local-branch",
+          "group": "3_manage@2"
+        },
+        {
+          "command": "gitUI.delete-remote-branch",
+          "group": "3_manage@3"
+        },
+        {
+          "command": "gitUI.publish-branch",
+          "group": "4_publish@1"
+        }
+      ],
+      "gitUI.changes.tagActions": [
+        {
+          "command": "gitUI.create-tag",
+          "group": "1_tags@1"
+        },
+        {
+          "command": "gitUI.delete-tag",
+          "group": "1_tags@2"
+        },
+        {
+          "command": "gitUI.delete-remote-tag",
+          "group": "1_tags@3"
+        },
+        {
+          "command": "gitUI.push-tags",
+          "group": "2_push@1"
+        }
       ]
-    }
+    },
+    "submenus": [
+      {
+        "id": "gitUI.changes.branchActions",
+        "label": "Branch"
+      },
+      {
+        "id": "gitUI.changes.tagActions",
+        "label": "Tags"
+      }
+    ]
   },
   "overrides": {
     "release-it": {

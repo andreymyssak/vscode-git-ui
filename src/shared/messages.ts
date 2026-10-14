@@ -34,6 +34,7 @@ export type BranchActionKind =
   | 'create-worktree'
   | 'checkout'
   | 'create-branch'
+  | 'create-branch-checkout'
   | 'copy-branch'
   | 'rename-branch'
   | 'delete-branch'

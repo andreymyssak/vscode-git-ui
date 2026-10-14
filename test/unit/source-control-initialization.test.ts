@@ -1,7 +1,7 @@
 import { setTimeout as delay } from 'node:timers/promises';
 
 import { afterEach, expect, test, vi } from 'vitest';
-import type * as vscode from 'vscode';
+import * as vscode from 'vscode';
 
 import type { GitApiInitialization } from '../../src/extension/git/api-initialization';
 import { SourceControlService } from '../../src/extension/source-control/service';
@@ -134,6 +134,46 @@ function fixture(holdActivation = false) {
 
 afterEach(() => {
   host.initialize();
+});
+
+test('publishes only the latest live state after native command contexts settle', async (t) => {
+  const f = fixture();
+
+  t.onTestFinished(() => f.service.dispose());
+  host.initialize();
+  await f.service.refresh();
+  await vi.waitFor(() => expect(f.published.length).toBeGreaterThan(0));
+  const before = f.published.length;
+  let release = () => {};
+
+  const pending = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const context = vi
+    .spyOn(vscode.commands, 'executeCommand')
+    .mockImplementation(async () => {
+      await pending;
+
+      return undefined;
+    });
+
+  t.onTestFinished(() => {
+    release();
+    context.mockRestore();
+  });
+  f.service.model.tab = 'commit';
+  f.service.publish();
+  f.service.model.tab = 'stash';
+  f.service.publish();
+  expect(f.published).toHaveLength(before);
+  release();
+  await vi.waitFor(() => expect(f.published.at(-1)?.tab).toBe('stash'));
+  expect(f.published).toHaveLength(before + 1);
+
+  f.service.publish();
+  f.service.dispose();
+  await delay(0);
+  expect(f.published).toHaveLength(before + 1);
 });
 
 test('disposing Source Control during discovery removes its listener and settles the refresh', async (t) => {

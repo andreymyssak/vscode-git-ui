@@ -70,7 +70,7 @@ describe('native branch multiselection', () => {
       await vscode.commands.executeCommand('notifications.clearAll');
       await gamma.click({ button: 'right' });
       const deletion = workbench.getByRole('menuitem', {
-        name: 'Delete Selected Branches',
+        name: 'Delete',
         exact: true,
       });
 

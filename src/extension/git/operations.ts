@@ -267,11 +267,16 @@ export function createOperations(
             case 'fetch-all':
               await repo.fetch({ all: true });
               break;
-            case 'create-branch': {
+            case 'create-branch':
+            case 'create-branch-checkout': {
               await branchName(action.name);
               await reference(action.refId, action.expectedSha);
               repo = access.repository(id);
-              await repo.createBranch(action.name, false, action.expectedSha);
+              await repo.createBranch(
+                action.name,
+                action.kind === 'create-branch-checkout',
+                action.expectedSha,
+              );
               break;
             }
 

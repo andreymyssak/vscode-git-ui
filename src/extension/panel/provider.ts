@@ -193,7 +193,11 @@ export class GitViewProvider implements vscode.WebviewViewProvider {
       const result = new PanelController({
         adapter,
         trusted: () => vscode.workspace.isTrusted,
-        askBranchName,
+        askBranchName: (checkout = false) =>
+          askBranchName(
+            '',
+            checkout ? 'Create a branch and switch to it' : undefined,
+          ),
         askTagName,
         confirmDrop,
         askRenameBranch,

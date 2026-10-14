@@ -11,6 +11,7 @@ import type {
   StashFileKey,
   WorkingFile,
 } from './source-control';
+import { isSourceControlRepositoryAction } from './source-control';
 import { isRecord } from './validation';
 
 const text = (value: unknown): value is string => typeof value === 'string';
@@ -77,6 +78,9 @@ export function parseSourceControlRequest(
 
   if (!identity(value.repositoryId)) return null;
   const repositoryId = value.repositoryId;
+
+  if (isSourceControlRepositoryAction(value.kind))
+    return { kind: value.kind, repositoryId };
 
   switch (value.kind) {
     case 'abort-operation':

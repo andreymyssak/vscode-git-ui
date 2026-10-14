@@ -91,7 +91,42 @@ type SelectedFileAction =
   | 'unstage-files'
   | 'delete-files';
 
+export const sourceControlRepositoryActions = [
+  'pull',
+  'push',
+  'fetch',
+  'checkout-branch',
+  'new-branch',
+  'new-branch-checkout',
+  'new-branch-from',
+  'merge-current',
+  'rebase-current',
+  'rename-current-branch',
+  'delete-local-branch',
+  'delete-remote-branch',
+  'publish-branch',
+  'create-tag',
+  'delete-tag',
+  'delete-remote-tag',
+  'push-tags',
+] as const;
+
+export type SourceControlRepositoryAction =
+  (typeof sourceControlRepositoryActions)[number];
+
+export function isSourceControlRepositoryAction(
+  value: unknown,
+): value is SourceControlRepositoryAction {
+  return sourceControlRepositoryActions.some((kind) => kind === value);
+}
+
 export type SourceControlRequest =
+  | {
+      [Kind in SourceControlRepositoryAction]: {
+        kind: Kind;
+        repositoryId: string;
+      };
+    }[SourceControlRepositoryAction]
   | { kind: 'abort-operation'; repositoryId: string; token: string }
   | { kind: 'ready'; repositoryId: string | null; tab: SourceControlTab }
   | { kind: 'refresh' }
