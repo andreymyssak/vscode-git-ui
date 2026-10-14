@@ -17,6 +17,47 @@ export interface UpdateCheckout {
 
 type Cli = Pick<GitCli, 'run'>;
 
+async function worktreeOperationOwner({
+  cli,
+  id,
+  path,
+  state,
+  signal,
+}: {
+  cli: Cli;
+  id: string;
+  path: string;
+  state: string;
+  signal: AbortSignal | undefined;
+}): Promise<string | null> {
+  try {
+    const headName = (
+      await cli.run(id, [
+        '-C',
+        path,
+        'rev-parse',
+        '--path-format=absolute',
+        '--git-path',
+        state,
+      ])
+    ).replace(/\r?\n$/, '');
+
+    try {
+      return (await readFile(headName, 'utf8')).trim();
+    } catch (error) {
+      // Only an absent operation-state file means there is no operation.
+      if (hasErrorCode(error, 'ENOENT')) return null;
+      throw error;
+    }
+  } catch (error) {
+    signal?.throwIfAborted();
+    throw new Error(
+      `Cannot check worktree "${path}". Its Git metadata may be missing, invalid, or inaccessible. Update stopped because the selected branch could be in use there. Check or repair this worktree in Git, then refresh and try again.`,
+      { cause: error },
+    );
+  }
+}
+
 export async function updateCheckout(
   cli: Cli,
   id: string,
@@ -124,35 +165,26 @@ export async function validateUpdateTarget(
       'rebase-apply/head-name',
       'BISECT_START',
     ]) {
-      const headName = (
-        await cli.run(id, [
-          '-C',
-          path,
-          'rev-parse',
-          '--path-format=absolute',
-          '--git-path',
-          state,
-        ])
-      ).replace(/\r?\n$/, '');
+      const owner = await worktreeOperationOwner({
+        cli,
+        id,
+        path,
+        state,
+        signal,
+      });
 
-      try {
-        const owner = (await readFile(headName, 'utf8')).trim();
-
-        if (
-          state === 'BISECT_START' &&
-          (owner === action.refId ||
-            owner === action.refId.slice('refs/heads/'.length))
-        )
-          throw new Error(
-            'The selected branch is being bisected in another worktree. Finish that operation first.',
-          );
-        if (owner === action.refId)
-          throw new Error(
-            'The selected branch is being rebased in another worktree. Finish that operation first.',
-          );
-      } catch (error) {
-        if (!hasErrorCode(error, 'ENOENT')) throw error;
-      }
+      if (
+        state === 'BISECT_START' &&
+        (owner === action.refId ||
+          owner === action.refId.slice('refs/heads/'.length))
+      )
+        throw new Error(
+          'The selected branch is being bisected in another worktree. Finish that operation first.',
+        );
+      if (owner === action.refId)
+        throw new Error(
+          'The selected branch is being rebased in another worktree. Finish that operation first.',
+        );
     }
   }
 

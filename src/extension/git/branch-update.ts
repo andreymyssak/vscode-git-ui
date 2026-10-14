@@ -161,7 +161,7 @@ export async function updateBranch(
 
     return {
       backend: branch.startsWith('-') ? 'cli' : 'api',
-      message: `Checked out "${branch}". Choose Update Branch to update it.`,
+      message: `Checked out "${branch}". Choose Update to bring it up to date.`,
     };
   }
 

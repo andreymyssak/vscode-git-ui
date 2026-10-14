@@ -303,7 +303,8 @@ for (const choice of ['checkout', null] as const) {
       choice
         ? {
             backend: 'api',
-            message: 'Checked out "topic". Choose Update Branch to update it.',
+            message:
+              'Checked out "topic". Choose Update to bring it up to date.',
           }
         : null,
     );
@@ -472,6 +473,87 @@ test('Update refuses a branch owned by a detached bisect in another worktree', a
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+for (const code of [128, 'ENOENT'] as const) {
+  test(`Update explains an uncheckable worktree after a Git probe fails (${code})`, async () => {
+    const f = updateFixture();
+    const run = f.cli.run;
+    const failure = Object.assign(
+      new Error('Command failed: git rev-parse --git-path'),
+      { code },
+    );
+
+    f.state.detachedWorktree = true;
+    f.cli.run = async (id, args, ...rest) => {
+      if (args[0] === '-C') throw failure;
+
+      return run(id, args, ...rest);
+    };
+
+    const result = updateBranch(f.repo, f.cli, 'one', f.action, {
+      updateDiverged: async () =>
+        assert.fail('An unchecked worktree blocks Update'),
+    });
+
+    await expect(result).rejects.toMatchObject({ cause: failure });
+    await expect(result).rejects.toThrow(
+      `Cannot check worktree "${join(root, 'other')}"`,
+    );
+    await expect(result).rejects.toThrow(
+      /Git metadata.*Update stopped.*repair/i,
+    );
+    expect(f.state.fetches).toBe(0);
+    expect(f.state.writes).toStrictEqual([]);
+  });
+}
+
+test('Update explains unreadable worktree operation state instead of treating it as absent', async () => {
+  const f = updateFixture();
+  const run = f.cli.run;
+
+  f.state.detachedWorktree = true;
+  f.cli.run = async (id, args, ...rest) =>
+    args[0] === '-C' ? root : run(id, args, ...rest);
+  await expect(
+    updateBranch(f.repo, f.cli, 'one', f.action, {
+      updateDiverged: async () => assert.fail('Unreadable state blocks Update'),
+    }),
+  ).rejects.toThrow(`Cannot check worktree "${join(root, 'other')}"`);
+  expect(f.state.fetches).toBe(0);
+  expect(f.state.writes).toStrictEqual([]);
+});
+
+test('Update preserves cancellation during a failed worktree probe', async () => {
+  const f = updateFixture();
+  const run = f.cli.run;
+  const controller = new AbortController();
+  const cancellation = new Error('Cancelled by user');
+
+  f.state.detachedWorktree = true;
+  f.cli.run = async (id, args, ...rest) => {
+    if (args[0] === '-C') {
+      controller.abort(cancellation);
+      throw new Error('Probe stopped');
+    }
+
+    return run(id, args, ...rest);
+  };
+
+  await expect(
+    updateBranch(
+      f.repo,
+      f.cli,
+      'one',
+      f.action,
+      {
+        updateDiverged: async () => assert.fail('Cancelled Update must stop'),
+      },
+      controller.signal,
+    ),
+  ).rejects.toBe(cancellation);
+  expect(f.state.fetches).toBe(0);
+  expect(f.state.writes).toStrictEqual([]);
 });
 
 test('Update rejects a changed upstream before fetching or writing', async () => {
