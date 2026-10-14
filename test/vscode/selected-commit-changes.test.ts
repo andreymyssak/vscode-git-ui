@@ -30,6 +30,31 @@ describe('native selected commit changes', () => {
   let head: string;
   let previousMenu: string | undefined;
 
+  async function waitForPreview(path: string) {
+    const access = await getGitApi();
+    const sha = (await fixture.runGit(['rev-parse', 'source'])).trim();
+    const modified = access.api.toGitUri(
+      vscode.Uri.joinPath(access.repository(id).rootUri, path),
+      sha,
+    );
+
+    // The first selection starts an asynchronous native diff preview. Opening
+    // the context menu before that editor takes focus lets it dismiss the menu.
+    await mutation
+      .poll(() => {
+        const editor = vscode.window.activeTextEditor;
+
+        return (
+          editor?.document.uri.toString() === modified.toString() &&
+          editor.document.getText() === `source ${path}\n`
+        );
+      })
+      .toBe(true);
+    await expect(
+      workbench.locator('.monaco-diff-editor .monaco-editor.focused'),
+    ).toBeVisible();
+  }
+
   beforeEach(async () => {
     fixture = await createFixture({ prefix: 'git-ui selected commit files ' });
     for (const name of ['a.txt', 'b.txt', 'c.txt'])
@@ -103,6 +128,7 @@ describe('native selected commit changes', () => {
       frame.getByRole('treeitem', { name: `Modified · ${name}`, exact: true });
 
     await row('a.txt').click();
+    await waitForPreview('a.txt');
     await row('c.txt').click({ modifiers: ['Shift'] });
     await row('b.txt').click({
       modifiers: [process.platform === 'darwin' ? 'Meta' : 'Control'],
@@ -177,6 +203,7 @@ describe('native selected commit changes', () => {
       frame.getByRole('treeitem', { name: `Modified · ${name}`, exact: true });
 
     await row('a.txt').click();
+    await waitForPreview('a.txt');
     await row('c.txt').click({ modifiers: ['Shift'] });
     await row('b.txt').click({
       modifiers: [process.platform === 'darwin' ? 'Meta' : 'Control'],

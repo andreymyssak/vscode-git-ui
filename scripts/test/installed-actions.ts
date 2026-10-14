@@ -123,7 +123,7 @@ export async function runInstalledActions({
     startupError = error;
   });
   // Allow startup and slower runners without extending individual UI assertions.
-  const deadline = Date.now() + 300000;
+  const deadline = Date.now() + 600000;
 
   try {
     while (Date.now() < deadline) {
