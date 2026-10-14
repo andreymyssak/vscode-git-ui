@@ -2,6 +2,16 @@ import * as vscode from 'vscode';
 
 import type { SourceControlModel } from './model';
 
+export async function clearSourceControlBusy(): Promise<void> {
+  await Promise.resolve(
+    vscode.commands.executeCommand(
+      'setContext',
+      'gitUI.sourceControlBusy',
+      false,
+    ),
+  ).catch(() => undefined);
+}
+
 export async function publishSourceControlContexts(
   model: SourceControlModel,
 ): Promise<void> {

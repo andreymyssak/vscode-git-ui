@@ -22,12 +22,16 @@ import { showOperationError } from '../native/operation-feedback';
 import { formatPathLabel } from '../native/path-label';
 import { openSourceControlDiff } from '../native/source-control-diffs';
 import { abortOperation } from './abort';
-import { publishSourceControlContexts } from './context';
+import {
+  clearSourceControlBusy,
+  publishSourceControlContexts,
+} from './context';
 import { discardWorking } from './discard';
 import { inspectWorkingFiles, writeWorkingFiles } from './file-actions';
 import { toggleAmend } from './message-tools';
 import { SourceControlModel } from './model';
 import { SourceControlNotifications } from './notifications';
+import { RefreshCompletion } from './refresh-completion';
 import {
   isRepositoryAction,
   repositoryActionTitles,
@@ -69,6 +73,7 @@ export class SourceControlService implements vscode.Disposable {
   private hasSessionPreference = false;
   private disposed = false;
   private publication = 0;
+  private readonly refreshCompletion = new RefreshCompletion();
   private refreshGeneration = 0;
   private amendGeneration = 0;
   private refreshTimer: ReturnType<typeof setTimeout> | undefined;
@@ -443,7 +448,11 @@ export class SourceControlService implements vscode.Disposable {
     }
   }
 
-  async refresh(): Promise<void> {
+  refresh(): Promise<void> {
+    return this.refreshCompletion.run(() => this.refreshChanges());
+  }
+
+  private async refreshChanges(): Promise<void> {
     const epoch = ++this.refreshGeneration;
     const generatingId = this.generationRepositoryId;
     const identity = generatingId
@@ -619,13 +628,7 @@ export class SourceControlService implements vscode.Disposable {
       }
 
       // Native menus must be enabled before the webview exposes editable rows.
-      await Promise.resolve(
-        vscode.commands.executeCommand(
-          'setContext',
-          'gitUI.sourceControlBusy',
-          false,
-        ),
-      ).catch(() => undefined);
+      await clearSourceControlBusy();
       this.model.busy = false;
       this.publish();
     }
