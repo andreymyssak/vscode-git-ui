@@ -12,6 +12,9 @@ export async function activateNativeMenu(item: Locator) {
     .poll(() => item.page().evaluate(() => document.hasFocus()))
     .toBe(true);
   await item.press('Enter');
+  // The menu restores focus while closing. Let it finish before interacting
+  // with a picker opened by the action, so it cannot steal picker focus.
+  await expect(item).toBeHidden();
 }
 
 export async function acceptNativeQuickPick({

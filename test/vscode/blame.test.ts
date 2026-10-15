@@ -245,9 +245,18 @@ describe('native Git UI blame', () => {
       );
       await vscode.commands.executeCommand('workbench.action.closeSidebar');
 
-      await frame
-        .locator('#details[aria-busy="false"] [data-path="sample.txt"]')
-        .dblclick();
+      const file = frame.locator(
+        '#details[aria-busy="false"] [data-path="sample.txt"]',
+      );
+
+      // Closing side bars resizes the webview. Keyboard activation keeps this
+      // history trace independent of pointer coordinates during that layout.
+      await file.focus();
+      await expect(file).toBeFocused();
+      await expect
+        .poll(() => frame.evaluate(() => document.hasFocus()))
+        .toBe(true);
+      await file.press('Enter');
       const originalUri = access.api.toGitUri(vscode.Uri.file(path), previous);
       const modifiedUri = access.api.toGitUri(vscode.Uri.file(path), head);
 

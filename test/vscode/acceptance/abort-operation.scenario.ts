@@ -158,7 +158,7 @@ export async function run(): Promise<string[]> {
           'edited during confirmation\n',
         );
         await activateNativeButton(confirm);
-        await expect(page.locator('.notifications-toasts')).toContainText(
+        await completion(page.locator('.notifications-toasts')).toContainText(
           'changed while confirming',
         );
         await expect(

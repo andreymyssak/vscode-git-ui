@@ -285,8 +285,12 @@ describe('Source Control repository actions', () => {
             ).toBeVisible();
           }
 
-          await input.fill('cancelled-topic');
+          await input.focus();
           await expect(input).toBeFocused();
+          await expect
+            .poll(() => page.evaluate(() => document.hasFocus()))
+            .toBe(true);
+          await input.fill('cancelled-topic');
           await input.press('Escape');
           await expect(widget).toBeHidden();
           await expect(
