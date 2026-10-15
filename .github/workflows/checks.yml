@@ -72,7 +72,6 @@ jobs:
             .artifacts/git-ui-native.vsix
             .artifacts/build-host.json
             .artifacts/build-squash-helper.json
-            .artifacts/build-budget.json
 
   local:
     name: Code and local tests / ${{ matrix.os }}

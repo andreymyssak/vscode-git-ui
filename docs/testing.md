@@ -26,21 +26,6 @@ The full extension workflow runs for pull requests, pushes to `main`, and manual
 
 CI runs code/local tests, browser tests, native VS Code tests, and installed-package tests in parallel groups on Linux, macOS and Windows. A shared build prepares the VSIX and compiled tests once. VS Code jobs use Stable. Linux browser jobs install Chromium's system dependencies; native, Restricted Mode and installed-package tests run under Xvfb with a 1920×1080 virtual display. The Linux test launchers use Microsoft's `test-electron` sandbox flags for downloaded editors; these flags apply only to test windows. Each job reports its checks and saves results; the overall summary includes every platform and group and fails if a required check fails or does not run.
 
-## Production bundle budget
-
-`npm run build` checks the raw bytes of the four production bundles immediately after the existing esbuild and Vite steps. The check reads those emitted files from `dist/`; it does not compile again. Missing, empty or oversized bundles fail the build and therefore the package and shared CI build.
-
-| Output              | Baseline bytes, 2026-10-15 | Limit bytes | Headroom |
-| ------------------- | -------------------------- | ----------- | -------- |
-| `extension.cjs`     | 712,448                    | 819,200     | 15.0%    |
-| `webview.js`        | 509,874                    | 589,824     | 15.7%    |
-| `webview.css`       | 62,045                     | 73,728      | 18.8%    |
-| `squash-helper.cjs` | 8,182                      | 10,240      | 25.2%    |
-
-The small helper has about 2 KiB of growth room; the other limits allow ordinary changes while catching dependency or asset growth. `scripts/build/budget.ts` owns the limits. Review the measured change and its reason before increasing one. The allowlist excludes source maps, licenses, fonts and compiled tests. Package content verification checks those assets separately.
-
-Successful builds print each measurement and write `.artifacts/build-budget.json`, which CI saves with the shared build. Run `npm run test:unit -- build-budget` for disposable-file fixtures that exercise the real budget function at each limit, one byte over it, and with missing or empty outputs.
-
 ## VS Code compatibility
 
 Git UI supports VS Code `^1.111.0`, which allows 1.111.0 and later compatible 1.x releases. The required public Git Rebase API is absent in 1.110 and present in 1.111. We keep this minimum until a feature needs a newer API; a new VS Code release alone does not raise it.
