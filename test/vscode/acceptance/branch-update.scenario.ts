@@ -390,15 +390,21 @@ export async function run() {
           })
           .evaluate((node) => (node as HTMLElement).click());
       await operation;
-      if (!cancelled)
+      if (!cancelled) {
+        await vscode.commands.executeCommand('notifications.showList');
         await expect(
-          workbench.getByText(
-            current
-              ? `Updated "main" with ${choice}: 1 incoming commit.`
-              : 'Checked out "topic". Choose Update to bring it up to date.',
-            { exact: true },
-          ),
+          workbench
+            .locator('.notifications-center')
+            .getByText(
+              current
+                ? `Updated "main" with ${choice}: 1 incoming commit.`
+                : 'Checked out "topic". Choose Update to bring it up to date.',
+              { exact: true },
+            ),
         ).toBeVisible({ timeout: 30000 });
+        await vscode.commands.executeCommand('notifications.hideList');
+      }
+
       assert.equal(
         (await f.runGit(['symbolic-ref', '--short', 'HEAD'])).trim(),
         choice === 'Checkout' ? 'topic' : 'main',
