@@ -14,6 +14,7 @@ test.each(['--show-toplevel', 'rebase-merge', 'rebase-apply'])(
     const fixture = await createSquashFixture();
     const held = deferred<string>();
     const entered = deferred<void>();
+    const nativeReads: Promise<string>[] = [];
     let scan: Promise<void> | undefined;
     let heldOutput = '';
 
@@ -51,15 +52,20 @@ test.each(['--show-toplevel', 'rebase-merge', 'rebase-apply'])(
       let finished = false;
       const reopened = new SquashRecovery(storage, {
         run: async (id, args, signal) => {
+          const nativeRead = fixture.cli.run(id, args, signal);
+
+          nativeReads.push(nativeRead);
+          const output = await nativeRead;
+
           if (args.includes(heldArgument)) {
-            heldOutput = await fixture.cli.run(id, args, signal);
+            heldOutput = output;
             owner = signal;
             entered.resolve();
 
             return held.promise;
           }
 
-          return fixture.cli.run(id, args, signal);
+          return output;
         },
       });
 
@@ -68,6 +74,9 @@ test.each(['--show-toplevel', 'rebase-merge', 'rebase-apply'])(
         finished = true;
       });
       await entered.promise;
+      // Finish sibling probes before aborting the held read. An aborted child
+      // may settle its CLI promise before releasing its Windows working directory.
+      await Promise.all(nativeReads);
       await vi.advanceTimersByTimeAsync(119_999);
       expect(finished).toBe(false);
       await vi.advanceTimersByTimeAsync(1);
@@ -86,6 +95,7 @@ test.each(['--show-toplevel', 'rebase-merge', 'rebase-apply'])(
       held.resolve(heldOutput);
       vi.useRealTimers();
       await scan;
+      await Promise.allSettled(nativeReads);
       await fixture.dispose();
     }
   },

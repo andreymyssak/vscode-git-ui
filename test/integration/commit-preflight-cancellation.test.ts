@@ -23,11 +23,19 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-async function outcome(operation: Promise<OperationResult>) {
-  return Promise.race([
-    operation,
-    delay(500).then(() => ({ kind: 'timeout' })),
-  ]);
+async function outcome(operation: Promise<OperationResult>, timeoutMs = 500) {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<{ kind: 'timeout' }>((resolve) => {
+        timer = setTimeout(() => resolve({ kind: 'timeout' }), timeoutMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function fixture(kind: Kind) {
@@ -178,7 +186,8 @@ test.each([
       context.abort('The selection changed.');
       second = run('fixture', next);
       expect((await outcome(first)).kind).toBe('cancelled');
-      expect((await outcome(second)).kind).toBe('success');
+      // Real Git must finish while the cancelled preflight is still held.
+      expect((await outcome(second, 5000)).kind).toBe('success');
       if (kind !== 'cherry-pick') expect(readSignal).toBe(context.signal);
       heldCommit.resolve(readCommit);
       heldPath.resolve(join(f.root, '.git', 'MERGE_HEAD'));
