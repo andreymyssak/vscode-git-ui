@@ -4,12 +4,13 @@ import { useEffect, useRef, useState } from 'react';
 import { fileCountLabel, Icon, navigateFileTree } from '@webview/shared/ui';
 import treeStyles from '@webview/shared/ui/file-tree/FileTree.module.css';
 
-import type { LogData, LogIntent } from '../../model/view';
+import type { DetailsData } from '../../model/selectors';
+import type { LogIntent } from '../../model/view';
 import styles from './ChangedFiles.module.css';
 import { FileTree } from './FileTree';
 
 type Props = {
-  data: LogData;
+  data: DetailsData;
   inactive?: boolean;
   onIntent(this: void, intent: LogIntent): void;
 };

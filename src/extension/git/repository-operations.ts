@@ -1,8 +1,8 @@
 import { realpath } from 'node:fs/promises';
 
+import { readWithCancellation } from '../read-cancellation';
 import type { GitCli } from './cli';
 import { repositoryOperations } from './operation-queue';
-import { readWithCancellation } from './read-cancellation';
 
 export async function withRepositoryOperation<T>(
   cli: Pick<GitCli, 'run'>,

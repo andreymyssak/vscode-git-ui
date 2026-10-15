@@ -14,10 +14,11 @@ import { createBrowserBridge } from '../../src/webview/shared/api';
 function scrollController() {
   const target = new EventTarget();
   const requests: Request<RequestBody>[] = [];
+  const setState = vi.fn();
   const bridge = createBrowserBridge(
     {
       getState: () => null,
-      setState: () => {},
+      setState,
       postMessage: (request) => {
         requests.push(request);
       },
@@ -65,8 +66,36 @@ function scrollController() {
     }),
   );
 
-  return { ...controller, requests, repository, deliver, bridge };
+  return { ...controller, requests, repository, deliver, bridge, setState };
 }
+
+test('progress and transient read activity do not rewrite durable view state', () => {
+  const f = scrollController();
+
+  f.setState.mockClear();
+  act(() => {
+    f.deliver({
+      kind: 'operation-progress',
+      operation: {
+        phase: 'running',
+        label: 'Fetching remotes',
+        section: 'branches',
+        refIds: [],
+      },
+    });
+  });
+  expect(f.result.current.state.operation?.label).toBe('Fetching remotes');
+  expect(f.setState).not.toHaveBeenCalled();
+  act(() => f.deliver({ kind: 'worktrees-loading', loading: true }));
+  expect(f.result.current.state.worktreesLoading).toBe(true);
+  expect(f.setState).not.toHaveBeenCalled();
+  act(() => f.result.current.onLogIntent({ kind: 'show-hash', show: true }));
+  expect(f.setState).toHaveBeenCalledTimes(1);
+  expect(f.setState).toHaveBeenLastCalledWith(
+    expect.objectContaining({ repositoryId: 'one', showHash: true }),
+  );
+  f.unmount();
+});
 
 test('hiding branches persists layout without querying or losing preferred widths', () => {
   let saved: unknown;

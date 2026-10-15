@@ -51,14 +51,18 @@ export class PanelNavigator {
     const current = () => this.session.current(id, generation) && isLatest();
 
     try {
-      let target = await this.adapter.resolve(id, input);
+      let target = await this.adapter.resolve(
+        id,
+        input,
+        this.session.abort.signal,
+      );
 
       if (!current()) return;
       if (target.kind === 'choices') {
         const ref = await this.prompts.pickReference?.(target.references);
 
         if (!ref || !current()) return;
-        target = await this.adapter.resolve(id, ref);
+        target = await this.adapter.resolve(id, ref, this.session.abort.signal);
       }
 
       if (!current()) return;

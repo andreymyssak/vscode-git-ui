@@ -1,4 +1,5 @@
 import type { ActiveLogOperation, PanelBody } from '../../shared/messages';
+import { diagnostics } from '../diagnostics';
 
 type Progress = Omit<ActiveLogOperation, 'requestId'>;
 
@@ -76,7 +77,19 @@ export class PanelOperations {
     const pending =
       this.pending.get(repositoryId) ?? new Map<string, PendingOperation>();
 
-    if (pending.has(key)) return;
+    if (pending.has(key)) {
+      diagnostics.record('operation.duplicate', {
+        repositoryId,
+        requestId: operation.requestId,
+      });
+
+      return;
+    }
+
+    diagnostics.record('operation.accepted', {
+      repositoryId,
+      requestId: operation.requestId,
+    });
     pending.set(key, { operation, phase: 'queued' });
     this.pending.set(repositoryId, pending);
     const previous = this.completion.get(repositoryId);
@@ -124,6 +137,9 @@ export class PanelOperations {
     release: () => void,
   ): Promise<void> {
     if (!description) return;
+    const started = performance.now();
+
+    diagnostics.record('operation.started', { repositoryId, requestId });
     const pending = this.pending.get(repositoryId);
     const entry = pending?.get(key);
 
@@ -146,6 +162,11 @@ export class PanelOperations {
         },
       });
     } finally {
+      diagnostics.record('operation.finished', {
+        repositoryId,
+        requestId,
+        elapsedMs: performance.now() - started,
+      });
       pending?.delete(key);
       try {
         if (this.active.get(repositoryId)?.key === key) {
@@ -181,6 +202,10 @@ export class PanelOperations {
     try {
       await this.publish(repositoryId);
     } finally {
+      diagnostics.record('operation.write-finished', {
+        repositoryId,
+        requestId: this.active.get(repositoryId)?.progress.requestId,
+      });
       release();
     }
   }

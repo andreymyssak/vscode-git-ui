@@ -3,6 +3,7 @@ import { relative, sep } from 'node:path';
 
 import type { FileChange } from '../../shared/model';
 import type { GitApiAccess, GitChange } from './api';
+import { backgroundRead } from './background-read';
 import type { GitCli } from './cli';
 import { readObjectParents } from './parents';
 
@@ -27,6 +28,11 @@ export class ComparisonCache<T> {
 
       if (oldest !== undefined) this.values.delete(oldest);
     }
+  }
+
+  deleteMatching(prefix: string): void {
+    for (const key of this.values.keys())
+      if (key.startsWith(prefix)) this.values.delete(key);
   }
 
   get size(): number {
@@ -110,16 +116,36 @@ export function rootChanges(output: string): FileChange[] {
   return changes;
 }
 
+export interface ChangeQueries {
+  (id: string, sha: string, parent: string | null): Promise<FileChange[]>;
+  invalidate(this: void, id: string): void;
+}
+
 export function createChangeQueries(
   access: GitApiAccess,
   cli: GitCli,
-): (id: string, sha: string, parent: string | null) => Promise<FileChange[]> {
+): ChangeQueries {
   const cache = new ComparisonCache<FileChange[]>();
   const pending = new Map<string, Promise<FileChange[]>>();
+  const revisions = new Map<string, symbol>();
+  const keyFor = (id: string, sha: string, parent: string | null) =>
+    `${JSON.stringify(id)}\0${sha}\0${parent ?? ''}`;
+  const revision = (id: string) => {
+    const current = revisions.get(id) ?? Symbol();
 
-  const load = async (id: string, sha: string, parent: string | null) => {
+    revisions.set(id, current);
+
+    return current;
+  };
+
+  const load = async (
+    id: string,
+    sha: string,
+    parent: string | null,
+    owner: symbol,
+  ) => {
     const repo = access.repository(id);
-    const key = JSON.stringify([id, sha, parent]);
+    const key = keyFor(id, sha, parent);
     const cached = cache.get(key);
 
     if (cached) return structuredClone(cached);
@@ -165,25 +191,41 @@ export function createChangeQueries(
       );
     }
 
-    cache.set(key, structuredClone(files));
+    if (revision(id) === owner) cache.set(key, structuredClone(files));
 
     return files;
   };
 
-  return async (id, sha, parent) => {
-    access.repository(id);
-    const key = JSON.stringify([id, sha, parent]);
-    let work = pending.get(key);
+  const query: ChangeQueries = Object.assign(
+    async (id: string, sha: string, parent: string | null) => {
+      access.repository(id);
+      const key = keyFor(id, sha, parent);
+      let work = pending.get(key);
 
-    if (!work) {
-      work = load(id, sha, parent);
-      pending.set(key, work);
-    }
+      if (!work) {
+        const owner = revision(id);
 
-    try {
-      return structuredClone(await work);
-    } finally {
-      if (pending.get(key) === work) pending.delete(key);
-    }
-  };
+        work = backgroundRead(() => load(id, sha, parent, owner));
+        pending.set(key, work);
+      }
+
+      try {
+        return structuredClone(await work);
+      } finally {
+        if (pending.get(key) === work) pending.delete(key);
+      }
+    },
+    {
+      invalidate(id: string) {
+        revisions.set(id, Symbol());
+        const prefix = `${JSON.stringify(id)}\0`;
+
+        cache.deleteMatching(prefix);
+        for (const key of pending.keys())
+          if (key.startsWith(prefix)) pending.delete(key);
+      },
+    },
+  );
+
+  return query;
 }

@@ -27,6 +27,9 @@ import { createHistoryQueries } from './history';
 import { validateMessageEdit } from './message-edit';
 import type { OperationDialogs } from './operations';
 import { createOperations } from './operations';
+import { queryRead } from './query-read';
+import { createRecoveryScheduler } from './recovery-scheduler';
+import type { RepositoryEvent } from './repository-event';
 import { createRepositoryObservations } from './repository-observations';
 import { readReferences, resolveCommit } from './resolve';
 import type { SquashSnapshot } from './squash';
@@ -44,20 +47,28 @@ export interface GitAdapter {
     signal?: AbortSignal,
   ): Promise<AuthorIdentity[]>;
   repositories(): RepositoryInfo[];
-  references(repositoryId: string): Promise<Reference[]>;
+  references(repositoryId: string, signal?: AbortSignal): Promise<Reference[]>;
   history(
     repositoryId: string,
     input: HistoryInput,
     signal?: AbortSignal,
     onReferences?: (references: Reference[]) => Promise<void>,
   ): Promise<HistoryPage>;
-  resolve(repositoryId: string, input: string): Promise<ResolveResult>;
+  resolve(
+    repositoryId: string,
+    input: string,
+    signal?: AbortSignal,
+  ): Promise<ResolveResult>;
   changes(
     repositoryId: string,
     sha: string,
     parentSha: string | null,
+    signal?: AbortSignal,
   ): Promise<FileChange[]>;
-  worktrees(repositoryId: string): Promise<WorktreeInfo[]>;
+  worktrees(
+    repositoryId: string,
+    signal?: AbortSignal,
+  ): Promise<WorktreeInfo[]>;
   prepareMessageEdit(
     repositoryId: string,
     sha: string,
@@ -79,7 +90,7 @@ export interface GitAdapter {
     progress?: (phase: 'waiting' | 'running') => Promise<void>,
   ): Promise<OperationResult>;
   subscribe(repositoryId: string, changed: () => void): Disposable;
-  subscribeRepositories(changed: () => void): Disposable;
+  subscribeRepositories(changed: (event?: RepositoryEvent) => void): Disposable;
   dispose(): void;
 }
 export async function createGitAdapter(
@@ -89,7 +100,8 @@ export async function createGitAdapter(
 ): Promise<GitAdapter> {
   const access = await getGitApi(signal);
   const cli = new GitCli(access);
-  const history = createHistoryQueries(access, cli);
+  const history = createHistoryQueries(access, cli.readOnly());
+  const changes = createChangeQueries(access, cli.readOnly());
   const services = squash
     ? {
         runtime: { ...squash.runtime },
@@ -97,44 +109,78 @@ export async function createGitAdapter(
       }
     : undefined;
   let recoveryFailure: string | null = null;
-  const reconcileRecovery = async () => {
-    try {
-      await services?.recovery.reconcile();
-      recoveryFailure = null;
-    } catch (error) {
+  let disposed = false;
+  const recovery = createRecoveryScheduler({
+    reconcile: async () => services?.recovery.reconcile(),
+    publish(result) {
+      if (result.kind === 'success') {
+        recoveryFailure = null;
+
+        return;
+      }
+
+      const { error } = result;
       const message = `Squash recovery storage could not be checked: ${error instanceof Error ? error.message : String(error)} Squashing remains unavailable; repository browsing is still available.`;
 
       if (message !== recoveryFailure)
         void window.showErrorMessage(message, 'Dismiss');
       recoveryFailure = message;
-    }
+    },
+  });
+  const reconcileRecovery = async () => {
+    if (disposed) throw new Error('Git adapter is disposed.');
+    await recovery.reconcile();
+    if (disposed) throw new Error('Git adapter is disposed.');
   };
 
   await reconcileRecovery();
   signal?.throwIfAborted();
   const observations = createRepositoryObservations({
     access,
-    invalidate: (id) => history.invalidate(id),
+    invalidate: (id) => {
+      history.invalidate(id);
+      changes.invalidate(id);
+    },
     onEvent: () => {
-      void reconcileRecovery();
+      void recovery.reconcile();
     },
   });
   const operate = createOperations(access, cli, dialogs, services);
 
   return {
-    blame: createBlameQueries(access, cli, nativeBlameCodec),
+    blame: (query, signal) =>
+      queryRead('blame', query.repositoryId, signal, (owner) =>
+        createBlameQueries(
+          access,
+          cli.readOnly(owner),
+          nativeBlameCodec,
+        )(query, owner),
+      ),
     invalidateHistory: (id) => history.invalidate(id),
-    authors: (id, signal) => history.authors(id, signal),
+    authors: (id, signal) =>
+      queryRead('authors', id, signal, (owner) => history.authors(id, owner)),
     repositories: () => access.repositories(),
-    references: (id) => readReferences(access, id, cli),
-    history: async (id, input, signal, onReferences) => {
-      await observations.settled(id);
+    references: (id, signal) =>
+      queryRead('references', id, signal, (owner) =>
+        readReferences(access, id, cli.readOnly(owner)),
+      ),
+    history: (id, input, signal, onReferences) =>
+      queryRead('history', id, signal, async (owner) => {
+        await observations.settled(id);
+        owner.throwIfAborted();
 
-      return history.page(id, input, signal, onReferences);
-    },
-    resolve: (id, input) => resolveCommit(access, cli, id, input),
-    changes: createChangeQueries(access, cli),
-    worktrees: (id) => readWorktrees(access, cli, id),
+        return history.page(id, input, owner, onReferences);
+      }),
+    resolve: (id, input, signal) =>
+      queryRead('resolve', id, signal, (owner) =>
+        resolveCommit(access, cli.readOnly(owner), id, input),
+      ),
+    changes: (id, sha, parent, signal) =>
+      queryRead('changes', id, signal, () => changes(id, sha, parent)),
+    worktrees: (id, signal) =>
+      queryRead('worktrees', id, signal, (owner) =>
+        readWorktrees(access, cli.readOnly(owner), id),
+      ),
     operate: async (id, action, context, progress) => {
       if (
         action.kind === 'squash-commits' ||
@@ -174,6 +220,11 @@ export async function createGitAdapter(
     },
     subscribe: observations.subscribe,
     subscribeRepositories: observations.subscribeRepositories,
-    dispose: observations.dispose,
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      recovery.dispose();
+      observations.dispose();
+    },
   };
 }

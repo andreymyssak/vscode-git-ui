@@ -1,6 +1,7 @@
 import { ActionButton } from '@webview/shared/ui';
 
-import type { LogData, LogIntent } from '../../model/view';
+import type { ToolbarData } from '../../model/selectors';
+import type { LogIntent } from '../../model/view';
 import { DateFilter } from './DateFilter';
 import styles from './HistoryToolbar.module.css';
 import { SearchControls } from './SearchControls';
@@ -11,7 +12,7 @@ export function HistoryToolbar({
   data,
   onIntent,
 }: {
-  data: LogData;
+  data: ToolbarData;
   onIntent(this: void, intent: LogIntent): void;
 }) {
   const { filters } = data;

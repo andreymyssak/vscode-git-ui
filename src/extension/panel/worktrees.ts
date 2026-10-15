@@ -52,7 +52,10 @@ export class PanelWorktrees {
         requestId,
       );
       if (!current()) return;
-      worktrees = await adapter.worktrees(id);
+      worktrees = await adapter.worktrees(
+        id,
+        AbortSignal.any([this.read.signal, session.abort.signal]),
+      );
       if (!current()) return;
       session.worktrees.clear();
       for (const worktree of worktrees)

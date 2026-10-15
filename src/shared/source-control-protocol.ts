@@ -315,9 +315,23 @@ function state(value: unknown): value is SourceControlState {
 export function parseSourceControlResponse(
   value: unknown,
 ): SourceControlResponse | null {
-  return isRecord(value) &&
-    value.kind === 'source-control-state' &&
-    state(value.state)
+  if (!isRecord(value)) return null;
+  if (value.kind === 'source-control-draft')
+    return identity(value.repositoryId) &&
+      text(value.message) &&
+      value.message.length <= 65536 &&
+      identity(value.editId) &&
+      typeof value.generating === 'boolean'
+      ? {
+          kind: value.kind,
+          repositoryId: value.repositoryId,
+          message: value.message,
+          editId: value.editId,
+          generating: value.generating,
+        }
+      : null;
+
+  return value.kind === 'source-control-state' && state(value.state)
     ? { kind: value.kind, state: value.state }
     : null;
 }

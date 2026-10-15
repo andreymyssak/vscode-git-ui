@@ -1,21 +1,25 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import type * as vscode from 'vscode';
 
+import type { RepositoryEvent } from '../../src/extension/git/repository-event';
 import { SourceControlService } from '../../src/extension/source-control/service';
 import type { RepositoryInfo } from '../../src/shared/model';
 import type {
   SourceControlOperation,
   SourceControlState,
   Stash,
+  StashFile,
   WorkingFile,
 } from '../../src/shared/source-control';
 
 const host = vi.hoisted(() => {
   const event = () => ({ dispose() {} });
-  const statusListeners = new Set<() => void>();
+  const statusListeners = new Map<() => void, string>();
   const workingChanges = vi.fn<(id: string) => Promise<WorkingFile[]>>(
     async () => [],
   );
+  const repositoryListeners = new Set<(event?: RepositoryEvent) => void>();
+  const stashFiles = vi.fn<() => Promise<StashFile[]>>(async () => []);
   const stashes = vi.fn<() => Promise<Stash[]>>(async () => []);
   const operation = vi.fn<() => Promise<SourceControlOperation[]>>(
     async () => [],
@@ -27,8 +31,13 @@ const host = vi.hoisted(() => {
     workingChanges,
     stashes,
     operation,
-    fireStatus() {
-      for (const listener of statusListeners) listener();
+    stashFiles,
+    fireRepository(event: RepositoryEvent) {
+      for (const listener of repositoryListeners) listener(event);
+    },
+    fireStatus(id = 'repo') {
+      for (const [listener, repositoryId] of statusListeners)
+        if (repositoryId === id) listener();
     },
     backend: {
       dispose() {},
@@ -42,9 +51,17 @@ const host = vi.hoisted(() => {
         },
       ]),
       root: () => ({ fsPath: '/repo' }),
-      subscribeRepositories: event,
+      subscribeRepositories(changed: (event?: RepositoryEvent) => void) {
+        repositoryListeners.add(changed);
+
+        return {
+          dispose() {
+            repositoryListeners.delete(changed);
+          },
+        };
+      },
       subscribe(_id: string, changed: () => void) {
-        statusListeners.add(changed);
+        statusListeners.set(changed, _id);
 
         return {
           dispose() {
@@ -53,6 +70,7 @@ const host = vi.hoisted(() => {
         };
       },
       workingChanges,
+      stashFiles,
       stashes,
       operation,
     },
@@ -102,6 +120,7 @@ async function fixture() {
   ]);
   host.workingChanges.mockReset().mockResolvedValue([]);
   host.stashes.mockReset().mockResolvedValue([]);
+  host.stashFiles.mockReset().mockResolvedValue([]);
   host.operation.mockReset().mockResolvedValue([]);
   function get<T>(key: string): T | undefined;
   function get<T>(key: string, fallback: T): T;
@@ -308,4 +327,147 @@ test('disposal settles a refresh waiting for a queued native event and removes t
   expect(completed).toBe(true);
   expect(host.statusListeners.size).toBe(0);
   await pending;
+});
+
+test('a repository status event refreshes only that repository, while manual refresh covers both', async (t) => {
+  const { service } = await fixture();
+
+  t.onTestFinished(() => service.dispose());
+  const first = host.backend.repositories()[0];
+
+  expect(first).toBeDefined();
+  host.backend.repositories.mockReturnValue([
+    {
+      id: 'repo',
+      rootUri: 'file:///repo',
+      label: 'repo',
+      branch: 'main',
+      headSha: 'a'.repeat(40),
+    },
+    {
+      id: 'other',
+      rootUri: 'file:///other',
+      label: 'other',
+      branch: 'main',
+      headSha: 'b'.repeat(40),
+    },
+  ]);
+  await service.refresh();
+  host.workingChanges.mockClear();
+  host.stashes.mockClear();
+  host.operation.mockClear();
+  host.fireStatus('repo');
+  await vi.advanceTimersByTimeAsync(100);
+  expect(host.workingChanges.mock.calls.map(([id]) => id)).toEqual(['repo']);
+  expect(host.stashes).toHaveBeenCalledTimes(1);
+  expect(host.operation).toHaveBeenCalledTimes(1);
+  host.workingChanges.mockClear();
+  await service.refresh();
+  expect(host.workingChanges.mock.calls.map(([id]) => id).sort()).toEqual([
+    'other',
+    'repo',
+  ]);
+});
+
+test('targeted file refresh skips stash reads and does not revoke a different repository read', async (t) => {
+  const { service } = await fixture();
+
+  t.onTestFinished(() => service.dispose());
+  host.stashes.mockClear();
+  host.operation.mockClear();
+  host.workingChanges.mockClear();
+  await service.refresh('repo', ['changes', 'operation']);
+  expect(host.workingChanges).toHaveBeenCalledTimes(1);
+  expect(host.operation).toHaveBeenCalledTimes(1);
+  expect(host.stashes).not.toHaveBeenCalled();
+});
+
+test('status in repository B cannot discard repository A in-flight result', async (t) => {
+  const { service, states } = await fixture();
+  const held = deferred<WorkingFile[]>();
+
+  t.onTestFinished(() => {
+    held.resolve([]);
+    service.dispose();
+  });
+  host.backend.repositories.mockReturnValue([
+    {
+      id: 'repo',
+      rootUri: 'file:///repo',
+      label: 'repo',
+      branch: 'main',
+      headSha: 'a'.repeat(40),
+    },
+    {
+      id: 'other',
+      rootUri: 'file:///other',
+      label: 'other',
+      branch: 'main',
+      headSha: 'b'.repeat(40),
+    },
+  ]);
+  await service.refresh();
+  host.workingChanges.mockImplementation((id) =>
+    id === 'repo' ? held.promise : Promise.resolve([]),
+  );
+  host.fireStatus('repo');
+  await vi.advanceTimersByTimeAsync(100);
+  host.fireStatus('other');
+  await vi.advanceTimersByTimeAsync(100);
+  held.resolve([editedFile]);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(
+    states.at(-1)?.repositories.find((repo) => repo.info.id === 'repo')
+      ?.changes,
+  ).toEqual({ kind: 'ready', items: [editedFile] });
+});
+
+test('a stash file read from a closed lifetime cannot overwrite replacement files', async (t) => {
+  const { service } = await fixture();
+  const held = deferred<StashFile[]>();
+
+  t.onTestFinished(() => {
+    held.resolve([]);
+    service.dispose();
+  });
+  const sha = 'a'.repeat(40);
+
+  host.stashes.mockResolvedValue([
+    {
+      sha,
+      base: 'b'.repeat(40),
+      selector: 'stash@{0}',
+      message: 'Fixture',
+      date: '2026-10-16T00:00:00Z',
+    },
+  ]);
+  await service.refresh();
+  host.stashFiles.mockReturnValueOnce(held.promise).mockResolvedValue([]);
+  const old = service.handle({ kind: 'load-stash', repositoryId: 'repo', sha });
+
+  await vi.advanceTimersByTimeAsync(0);
+  host.fireRepository({ kind: 'closed', repositoryId: 'repo' });
+  host.fireRepository({ kind: 'opened', repositoryId: 'repo' });
+  await service.refresh();
+  await service.handle({ kind: 'load-stash', repositoryId: 'repo', sha });
+  expect(service.model.requireStash('repo', sha).files).toEqual({
+    kind: 'ready',
+    items: [],
+  });
+  held.resolve([
+    {
+      path: 'old.txt',
+      originalPath: 'old.txt',
+      status: 'M',
+      snapshot: 'working',
+      oldRef: sha,
+      newRef: sha,
+      deleted: false,
+    },
+  ]);
+  await old;
+  expect(service.model.requireStash('repo', sha).files).toEqual({
+    kind: 'ready',
+    items: [],
+  });
 });

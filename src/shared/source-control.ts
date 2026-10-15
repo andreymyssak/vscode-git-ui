@@ -186,10 +186,20 @@ export type SourceControlRequest =
       files: StashFileKey[];
     };
 
-export type SourceControlResponse = {
-  kind: 'source-control-state';
-  state: SourceControlState;
-};
+export interface SourceControlDraftAck {
+  kind: 'source-control-draft';
+  repositoryId: string;
+  message: string;
+  editId: string;
+  generating: boolean;
+}
+
+export type SourceControlResponse =
+  | {
+      kind: 'source-control-state';
+      state: SourceControlState;
+    }
+  | SourceControlDraftAck;
 
 export interface SourceControlBridge {
   send(request: SourceControlRequest): void;

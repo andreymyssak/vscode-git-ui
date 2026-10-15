@@ -58,6 +58,9 @@ function fixture(tracking = false) {
   const reader = createHistoryQueries(
     access,
     {
+      readOnly() {
+        return this;
+      },
       run: async (_id: string, args: string[]) =>
         tracking && args[0] === 'for-each-ref'
           ? `refs/heads/main\0${sha(1)}\0refs/remotes/origin/main\0[behind 1]`

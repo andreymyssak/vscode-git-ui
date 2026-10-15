@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { expect, test, vi } from 'vitest';
+import { createStore } from 'zustand/vanilla';
 
 import { PanelHeader } from '../../src/webview/app/layout/PanelHeader';
 import { initialView, reduceView } from '../../src/webview/app/model/state';
@@ -48,9 +49,12 @@ test.each(['log', 'worktrees'] as const)(
   (activeView) => {
     const { container } = render(
       <PanelHeader
-        state={{ ...initialView(), activeView, error: 'Git read failed' }}
+        store={createStore(() => ({
+          ...initialView(),
+          activeView,
+          error: 'Git read failed',
+        }))}
         request={vi.fn()}
-        onLogIntent={vi.fn()}
         setActiveView={vi.fn()}
       />,
     );
@@ -76,27 +80,30 @@ test('operation failures leave no inline notice while setup guidance remains vis
   });
   const props = {
     request: vi.fn(),
-    onLogIntent: vi.fn(),
     setActiveView: vi.fn(),
   };
-  const { rerender } = render(<PanelHeader {...props} state={state} />);
+  const { rerender } = render(
+    <PanelHeader {...props} store={createStore(() => state)} />,
+  );
 
   expect(screen.queryByText('Checkout failed')).toBeNull();
   rerender(
     <PanelHeader
       {...props}
-      state={reduceView(state, {
-        kind: 'host',
-        message: {
-          requestId: 'authors',
-          repositoryId: '',
-          generation: 0,
-          body: {
-            kind: 'notice',
-            message: 'No authors were found in this repository.',
+      store={createStore(() =>
+        reduceView(state, {
+          kind: 'host',
+          message: {
+            requestId: 'authors',
+            repositoryId: '',
+            generation: 0,
+            body: {
+              kind: 'notice',
+              message: 'No authors were found in this repository.',
+            },
           },
-        },
-      })}
+        }),
+      )}
     />,
   );
   expect(
@@ -105,11 +112,11 @@ test('operation failures leave no inline notice while setup guidance remains vis
   rerender(
     <PanelHeader
       {...props}
-      state={{
+      store={createStore(() => ({
         ...initialView(),
         setup: 'untrusted',
         error: 'Invalid request during setup',
-      }}
+      }))}
     />,
   );
   expect(

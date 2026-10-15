@@ -49,6 +49,8 @@ Blame uses native editor decorations, mouse selection events and hover links. Na
 
 Pages own workflow UI and saved view preferences. The extension host owns per-repository Source Control drafts and checked-file state. Shared contracts contain no VS Code, Node or DOM dependencies.
 
+Each Log/Worktrees webview creates its own browser session. The session owns its Zustand store, bridge subscription, restoration ownership and durable view persistence; React mounts and releases the subscription. Compound gestures publish one reduced snapshot before sending requests. Progress and read activity do not rewrite saved preferences. The app injects a read-only store through the Log page's public contract, and the layout, branches, history, toolbar and details select only the fields they use. Pages never import the app controller.
+
 Log, Commit and Stashes share `src/webview/shared/ui/file-tree/` for rendering and navigation. Pages supply their files and actions.
 
 `package.json` owns extension identity. Builds inject its name, publisher, display name and command namespace into `src/shared/extension-identity.ts`, which derives command, URI, helper and recovery identifiers. Menu payloads use domain field names without a branding prefix.
@@ -60,3 +62,7 @@ React handles presentation. TanStack Virtual handles history virtualization, and
 Only `src/webview/pages/log/lib/graph/` imports `src/vendor/vscode-graph/`. That directory is generated from recorded upstream inputs and patches. Follow [VS Code maintenance](upstream.md) when changing it. [The graph ADR](adr/0001-graph-extraction.md) explains the extraction decision.
 
 Build and validation scripts live in `scripts/`; tests live in `test/`. Generated reports and indexes stay in ignored `.artifacts/` and `.codegraph/`. [Development](development.md) covers setup and [testing](testing.md) covers validation.
+
+Repository open/close events define read lifetimes even when a path stays the same. Changes refreshes carry affected repository IDs and sections; ambiguous native status events reload all sections for that repository, and manual refresh reloads every repository. Each section has its own cancellation owner, so another repository's activity cannot discard its result.
+
+Draft typing receives a small acknowledgement with the edit identity. The host retains the canonical draft and sends full snapshots on connection and other state changes. Read-only queries use cancellable two-minute deadlines; Git writes and recovery cleanup remain awaited under their existing ownership. Native `Git UI: Show Output` logs timings and hashed correlation IDs without command arguments, file contents or commit messages.

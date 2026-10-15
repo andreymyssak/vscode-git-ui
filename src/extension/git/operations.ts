@@ -5,6 +5,7 @@ import type {
   OperationResult,
   Reference,
 } from '../../shared/model';
+import { isReadCancellation, readWithCancellation } from '../read-cancellation';
 import type { GitApiAccess } from './api';
 import { deleteBranch, deleteBranches } from './branch-deletion';
 import { integrateBranch } from './branch-integration';
@@ -20,7 +21,6 @@ import type { GitCli } from './cli';
 import { dropCommits } from './drop-commits';
 import { editCommitMessage } from './message-edit';
 import { GitPartialCompletion } from './partial-completion';
-import { isReadCancellation, readWithCancellation } from './read-cancellation';
 import { withRepositoryOperation } from './repository-operations';
 import { readReferences } from './resolve';
 import { applySelectedCommitChanges } from './selected-commit-changes';

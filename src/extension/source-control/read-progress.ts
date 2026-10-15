@@ -1,4 +1,5 @@
 import type { SourceControlModel } from './model';
+import type { RefreshTargets } from './refresh-targets';
 
 /** Only the affected repository's file and conflict reads own Changes activity. */
 export class SourceControlReadProgress {
@@ -25,9 +26,14 @@ export class SourceControlReadProgress {
     this.pending = null;
   }
 
-  begin(): void {
-    if (this.pending)
-      this.pending.remaining = new Set(['changes', 'operation']);
+  begin(targets?: RefreshTargets): void {
+    if (!this.pending) return;
+    const sections = targets?.get(this.pending.activity.repositoryId);
+
+    if (targets && !sections) return;
+    for (const section of sections ?? ['changes', 'operation'])
+      if (section === 'changes' || section === 'operation')
+        this.pending.remaining.add(section);
   }
 
   settled(repositoryId: string, source: string): void {

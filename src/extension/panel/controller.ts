@@ -31,6 +31,7 @@ import {
   waitForQuery,
 } from './queries';
 import { queuedActionCurrent } from './queued-action';
+import { createRepositoryList } from './repository-list';
 import { DeferredRepositoryRefresh } from './repository-refresh';
 import { reconcileSelection } from './selection';
 import {
@@ -162,7 +163,19 @@ export class PanelController {
           })
         : null;
     this.repositorySubscription =
-      options.adapter?.subscribeRepositories(() => {
+      options.adapter?.subscribeRepositories((event) => {
+        if (
+          event?.kind === 'closed' &&
+          event.repositoryId === this.session.repositoryId
+        ) {
+          this.repositoryEpoch++;
+          this.subscription?.dispose();
+          this.subscription = null;
+          this.refreshRestore = null;
+          this.commitNavigation?.cancel();
+          this.session.begin('');
+        }
+
         void this.repositoriesChanged().catch((error) =>
           this.notifications.readFailed(
             'history',
@@ -173,37 +186,19 @@ export class PanelController {
       }) ?? null;
   }
 
-  private async repositoriesChanged(): Promise<void> {
-    if (this.closed || !(await this.setup())) return;
-    const repositories = this.options.adapter?.repositories() ?? [];
-
-    if (!repositories.length) {
+  private readonly repositoriesChanged = createRepositoryList({
+    adapter: () => this.options.adapter,
+    setup: () => this.setup(),
+    current: () => !this.closed,
+    selected: () => this.session.repositoryId,
+    clear: () => {
       this.subscription?.dispose();
       this.refreshRestore = null;
       this.session.begin('');
-      await this.send({
-        kind: 'setup',
-        state: 'no-repository',
-        message: 'Open a folder containing a Git repository.',
-        repositories: [],
-      });
-
-      return;
-    }
-
-    await this.send({
-      kind: 'setup',
-      state: 'ready',
-      message: '',
-      repositories,
-    });
-    // Open/close events change the chooser; selected-repository state has its own subscription.
-    if (!repositories.some((repo) => repo.id === this.session.repositoryId)) {
-      const first = repositories[0];
-
-      if (first) await this.selectRepository(first.id);
-    }
-  }
+    },
+    send: (body) => this.send(body),
+    select: (id) => this.selectRepository(id),
+  });
 
   private async send(
     body: PanelBody,

@@ -3,13 +3,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import type { FileChange, GitAction } from '../../shared/model';
+import { readWithCancellation } from '../read-cancellation';
 import type { GitApiAccess } from './api';
 import { updateCheckout } from './branch-update-target';
 import { rootChanges } from './changes';
 import type { GitCli } from './cli';
 import { readObjectParents } from './parents';
 import { containsRoot } from './paths';
-import { readWithCancellation } from './read-cancellation';
 import {
   clearSelectedChangeRecovery,
   readSelectedChangeRecovery,

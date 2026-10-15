@@ -15,13 +15,14 @@ import {
 import type { CommitGesture } from '../../model/commit-selection';
 import type { Columns } from '../../model/history-columns';
 import { historyDestination } from '../../model/history-navigation';
-import type { LogData, LogIntent } from '../../model/view';
+import type { HistoryData } from '../../model/selectors';
+import type { LogIntent } from '../../model/view';
 import { GraphDrawing } from './GraphDrawing';
 import styles from './HistoryPane.module.css';
 import { ReferenceLabels } from './ReferenceLabels';
 
 interface Props {
-  data: LogData;
+  data: HistoryData;
   commit: CommitRecord;
   graph: GraphRow;
   index: number;

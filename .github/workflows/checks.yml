@@ -1,8 +1,13 @@
 name: Extension checks
 on:
   push:
+    branches: [main]
   pull_request:
   workflow_dispatch:
+concurrency:
+  # PR updates share a group. Each main/manual run gets its own group.
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}-{1}', github.run_id, github.run_attempt) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 permissions:
   contents: read
 defaults:
@@ -67,6 +72,7 @@ jobs:
             .artifacts/git-ui-native.vsix
             .artifacts/build-host.json
             .artifacts/build-squash-helper.json
+            .artifacts/build-budget.json
 
   local:
     name: Code and local tests / ${{ matrix.os }}

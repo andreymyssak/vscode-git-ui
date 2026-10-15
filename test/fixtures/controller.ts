@@ -1,4 +1,5 @@
 import type { GitAdapter } from '../../src/extension/git/adapter';
+import type { RepositoryEvent } from '../../src/extension/git/repository-event';
 import type { ControllerOptions } from '../../src/extension/panel/controller';
 import { PanelController } from '../../src/extension/panel/controller';
 import type { PanelBody, RequestBody, Result } from '../../src/shared/messages';
@@ -38,7 +39,7 @@ export function fixture(
   const sent: Result<PanelBody>[] = [];
   const writes: unknown[] = [];
   const editors: unknown[] = [];
-  let repositoryEvent = () => {};
+  let repositoryEvent: (event?: RepositoryEvent) => void = () => {};
 
   let historyEvent = () => {};
 
@@ -122,7 +123,7 @@ export function fixture(
     writes,
     editors,
     request,
-    fireRepositoryEvent: () => repositoryEvent(),
+    fireRepositoryEvent: (event?: RepositoryEvent) => repositoryEvent(event),
     fireHistoryEvent: () => historyEvent(),
   };
 }

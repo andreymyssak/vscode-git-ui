@@ -2,6 +2,7 @@ import { assert, expect, test, vi } from 'vitest';
 
 import type { FileChange, HistoryPage } from '../../src/shared/model';
 import { a, b, fixture, page } from '../fixtures/controller';
+import { deferred } from '../fixtures/deferred';
 
 for (const [name, body, id] of [
   [
@@ -291,4 +292,31 @@ test('conflict results notify natively with Source Control recovery', async (t) 
     'Resolve through Source Control',
     true,
   );
+});
+
+test('same-path repository replacement invalidates old history and selects the new lifetime', async (t) => {
+  const f = fixture();
+
+  t.onTestFinished(() => f.controller.dispose());
+  await f.controller.selectRepository('one');
+  const old = deferred<HistoryPage>();
+  let reads = 0;
+
+  f.adapter.history = async () => (++reads === 1 ? old.promise : page([b]));
+  const previous = f.controller.refresh();
+
+  await vi.waitFor(() => expect(reads).toBe(1));
+  f.fireRepositoryEvent({ kind: 'closed', repositoryId: 'one' });
+  f.fireRepositoryEvent({ kind: 'opened', repositoryId: 'one' });
+  await vi.waitFor(() => expect(reads).toBe(2));
+  f.sent.length = 0;
+  old.resolve(page([a]));
+  await previous;
+  expect(
+    f.sent.some(
+      ({ body }) =>
+        body.kind === 'history' &&
+        body.page.commits.some((commit) => commit.sha === a),
+    ),
+  ).toBe(false);
 });

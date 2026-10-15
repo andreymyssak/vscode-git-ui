@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import type {
   SourceControlBridge,
@@ -17,6 +17,18 @@ export function SourceControlPage({ bridge }: { bridge: SourceControlBridge }) {
   const [view, setView] = useState(() => readView(bridge.getState()));
   const [state, setState] = useState<SourceControlState | null>(null);
   const handledReveal = useRef(0);
+  const pendingEdits = useRef(new Map<string, string>());
+  const editingBridge = useMemo<SourceControlBridge>(
+    () => ({
+      ...bridge,
+      send(request) {
+        if (request.kind === 'message')
+          pendingEdits.current.set(request.repositoryId, request.editId);
+        bridge.send(request);
+      },
+    }),
+    [bridge],
+  );
   const tab = state?.tab ?? view.tab;
   const repository =
     state?.repositories.find((item) => item.info.id === state.repositoryId) ??
@@ -24,6 +36,31 @@ export function SourceControlPage({ bridge }: { bridge: SourceControlBridge }) {
 
   useEffect(() => {
     const stop = bridge.subscribe((response) => {
+      if (response.kind === 'source-control-draft') {
+        if (pendingEdits.current.get(response.repositoryId) !== response.editId)
+          return;
+        pendingEdits.current.delete(response.repositoryId);
+        setState((previous) =>
+          previous
+            ? {
+                ...previous,
+                generating: response.generating,
+                repositories: previous.repositories.map((repo) =>
+                  repo.info.id === response.repositoryId
+                    ? {
+                        ...repo,
+                        draft: response.message,
+                        draftEditId: response.editId,
+                      }
+                    : repo,
+                ),
+              }
+            : previous,
+        );
+
+        return;
+      }
+
       setState(response.state);
       const reveal = response.state.reveal;
       const shouldReveal =
@@ -238,7 +275,7 @@ export function SourceControlPage({ bridge }: { bridge: SourceControlBridge }) {
               messageHeight: Math.max(messageHeightLimits.min, messageHeight),
             }))
           }
-          bridge={bridge}
+          bridge={editingBridge}
           collapsed={view.collapsed}
           onCollapse={collapse}
           groupByDirectory={view.groupByDirectory}
@@ -268,7 +305,7 @@ export function SourceControlPage({ bridge }: { bridge: SourceControlBridge }) {
             repository={repository}
             active={tab === 'stash'}
             disabled={!state || state.busy || state.generating}
-            bridge={bridge}
+            bridge={editingBridge}
             collapsed={view.collapsed}
             onCollapse={collapse}
             expanded={view.expandedStashes}

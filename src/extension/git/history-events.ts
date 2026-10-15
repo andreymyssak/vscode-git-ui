@@ -1,4 +1,5 @@
 import type { GitRef, GitRepository } from './api';
+import { backgroundRead } from './background-read';
 
 type HistoryRepository = Pick<GitRepository, 'getRefs'> & {
   state: Pick<GitRepository['state'], 'HEAD' | 'worktrees' | 'remotes'>;
@@ -9,6 +10,7 @@ export function historyChangeFilter(
   repository: HistoryRepository,
   changed: () => void,
 ): { check(): Promise<void>; settled(): Promise<void>; dispose(): void } {
+  const owner = new AbortController();
   const ref = (value: GitRef | undefined) =>
     value
       ? [value.type, value.name, value.commit, value.remote, value.upstream]
@@ -25,7 +27,7 @@ export function historyChangeFilter(
     };
 
     // state.refs is deprecated and returns an empty array in the supported VS Code.
-    return repository.getRefs({}).then(
+    return backgroundRead(() => repository.getRefs({}), owner.signal).then(
       (refs) =>
         JSON.stringify({
           ...metadata,
@@ -84,6 +86,7 @@ export function historyChangeFilter(
     },
     dispose() {
       active = false;
+      owner.abort();
       dirty = false;
       previous = undefined;
     },

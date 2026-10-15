@@ -65,7 +65,7 @@
     "typecheck": "tsc -p tsconfig.host.json && tsc -p tsconfig.webview.json && tsc -p tsconfig.test.json && tsc -p tsconfig.vitest.json && tsc -p tsconfig.scripts.json",
     "compatibility:check": "node scripts/test/vscode-compatibility.ts",
     "compatibility:insiders": "node scripts/test/vscode-compatibility.ts --insiders",
-    "build": "node scripts/build/extension.ts && vite build",
+    "build": "node scripts/build/extension.ts && vite build && node scripts/build/budget.ts",
     "build:vscode-tests": "node scripts/test/build-vscode-tests.ts",
     "test:unit": "vitest run --config vitest.config.mts --project unit",
     "test:integration": "vitest run --config vitest.config.mts --project integration",
@@ -191,6 +191,11 @@
       ]
     },
     "commands": [
+      {
+        "command": "gitUI.show-output",
+        "title": "Show Output",
+        "category": "Git UI"
+      },
       {
         "command": "gitUI.merge-branch",
         "title": "Merge",
