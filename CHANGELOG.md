@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.1](https://github.com/andreymyssak/vscode-git-ui/compare/v0.4.0...v0.4.1) (2026-10-15)
+
+### Bug Fixes
+
+- show Git action progress and refresh Log and Changes promptly ([f57ef3b](https://github.com/andreymyssak/vscode-git-ui/commit/f57ef3ba8f07bdd849d767db75c9aa59359ed138))
+- **source-control:** preserve focus in native Git pickers ([7918a71](https://github.com/andreymyssak/vscode-git-ui/commit/7918a71fcb023900cc40bc3e136505ee808abb26))
+
 ## [0.4.0](https://github.com/andreymyssak/vscode-git-ui/compare/v0.3.2...v0.4.0) (2026-10-14)
 
 ### Features
