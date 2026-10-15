@@ -430,9 +430,15 @@ describe('combined Commit and Stash view', () => {
             : '';
         })
         .toBe(vscode.Uri.file(join(fixture.root, 'chosen', 'same.txt')).fsPath);
+      await expect(
+        frame.page().locator('.monaco-diff-editor .monaco-editor.focused'),
+      ).toBeVisible();
       const message = frame.getByRole('textbox', { name: 'Commit message' });
 
       await message.fill('Commit checked folders\n\nKeep unchecked staging.');
+      await expect(message).toHaveValue(
+        'Commit checked folders\n\nKeep unchecked staging.',
+      );
       await frame.getByRole('tab', { name: 'Stashes', exact: true }).click();
       await frame.getByRole('tab', { name: 'Commit', exact: true }).click();
       await expect(message).toHaveValue(

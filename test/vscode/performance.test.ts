@@ -211,27 +211,61 @@ describe('large native history', () => {
         .fill('Large 10');
       filteredStart = performance.now();
       const loading = await frame.evaluate(async () => {
-        const start = performance.now();
         const input = document.getElementById('search') as HTMLInputElement;
-
-        input.dispatchEvent(
-          new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
-        );
 
         return new Promise<{
           elapsed: number;
           text: string | null | undefined;
-        }>((resolve) => {
-          const sample = () => {
-            const elapsed = performance.now() - start;
-            const text = document.getElementById('status')?.textContent;
-
-            if (text?.includes('Loading') || elapsed >= 100)
-              resolve({ elapsed, text });
-            else requestAnimationFrame(sample);
+          startedAt: number;
+          observedAt: number;
+        }>((resolve, reject) => {
+          let start = 0;
+          let deadline = 0;
+          const cleanup = () => {
+            observer.disconnect();
+            window.clearTimeout(deadline);
           };
 
-          requestAnimationFrame(sample);
+          const finish = () => {
+            cleanup();
+            const observedAt = performance.now();
+
+            resolve({
+              elapsed: observedAt - start,
+              text: document.getElementById('status')?.textContent,
+              startedAt: start,
+              observedAt,
+            });
+          };
+
+          const sample = () => {
+            if (
+              document
+                .getElementById('status')
+                ?.textContent?.includes('Loading')
+            )
+              finish();
+          };
+
+          // Measure the loading commit rather than the next frame's scheduling.
+          const observer = new MutationObserver(sample);
+
+          observer.observe(document.body, {
+            childList: true,
+            subtree: true,
+            characterData: true,
+          });
+          start = performance.now();
+          deadline = window.setTimeout(finish, 100);
+          try {
+            input.dispatchEvent(
+              new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
+            );
+            sample();
+          } catch (error) {
+            cleanup();
+            reject(error instanceof Error ? error : new Error(String(error)));
+          }
         });
       });
 
@@ -321,6 +355,8 @@ describe('large native history', () => {
             tenPageMountedRows: rows,
             gitPageMs,
             loadingResponseMs: loading.elapsed,
+            loadingInputStartedAt: loading.startedAt,
+            loadingObservedAt: loading.observedAt,
             filteredHistoryMs,
             maxPostDataRenderMs: maxRenderMs,
             renderSamples: measurements.samples,

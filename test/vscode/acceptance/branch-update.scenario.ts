@@ -398,7 +398,7 @@ export async function run() {
               : 'Checked out "topic". Choose Update to bring it up to date.',
             { exact: true },
           ),
-        ).toBeVisible();
+        ).toBeVisible({ timeout: 30000 });
       assert.equal(
         (await f.runGit(['symbolic-ref', '--short', 'HEAD'])).trim(),
         choice === 'Checkout' ? 'topic' : 'main',

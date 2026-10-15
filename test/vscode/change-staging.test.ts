@@ -211,6 +211,15 @@ describe('Changes staging and whole-file inclusion', () => {
       });
 
       await row.focus({ timeout: 5000 });
+      await expect
+        .poll(() =>
+          row.evaluate(
+            (element) =>
+              element.ownerDocument.hasFocus() &&
+              element.ownerDocument.activeElement === element,
+          ),
+        )
+        .toBe(true);
       await row.press('Shift+F10', { timeout: 5000 });
       await frame
         .page()
@@ -245,6 +254,15 @@ describe('Changes staging and whole-file inclusion', () => {
       edit.insert(document.uri, new vscode.Position(0, 0), 'unsaved\n');
       assert.ok(await vscode.workspace.applyEdit(edit));
       await stagedRow.focus({ timeout: 5000 });
+      await expect
+        .poll(() =>
+          stagedRow.evaluate(
+            (element) =>
+              element.ownerDocument.hasFocus() &&
+              element.ownerDocument.activeElement === element,
+          ),
+        )
+        .toBe(true);
       await stagedRow.press('Shift+F10', { timeout: 5000 });
       await frame
         .page()
