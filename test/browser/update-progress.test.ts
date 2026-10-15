@@ -33,10 +33,13 @@ for (const width of [620, 1280])
     const history = page.locator('#history-pane');
     const rows = page.locator('[data-commit-row]');
     const first = rows.first();
+
+    await expect(current.locator('[data-incoming]')).toHaveText('3');
+    // Wait for the initial ResizeObserver layout before measuring progress.
+    await first.click({ trial: true });
     const before = await first.boundingBox();
     const count = await rows.count();
 
-    await expect(current.locator('[data-incoming]')).toHaveText('3');
     await page.evaluate(() =>
       window.__deliver({
         requestId: 'update-one',
