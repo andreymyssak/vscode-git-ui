@@ -10,7 +10,7 @@ Inspired by the Git tool window in JetBrains' [IntelliJ IDEA Community Edition](
 
 ## Browse history and inspect changes
 
-![Browse commits, inspect a native diff, search history, and view worktrees while Git UI stays below the open editor in Dark Modern](assets/readme/browsing-dark.gif)
+![Browse commits and branches, inspect a native diff, search history, and view worktrees while Git UI stays below the open editor in Dark Modern](assets/readme/browsing-dark.gif)
 
 ## Fits your VS Code theme
 
@@ -26,7 +26,9 @@ Choose **Git UI: Annotate with Git Blame** from the editor's line-number menu to
 
 ## Improved Source Control
 
-![Check two files, inspect their changes, enter a commit message, and commit them while leaving other files unchanged](assets/readme/changes.gif)
+![Review Merge Changes, Staged Changes and Changes, abort a conflicted merge, then commit two checked files while leaving other files unchanged](assets/readme/changes.gif)
+
+See conflicts, staged edits and other changes in separate groups. Check the files you want to commit, and use the native editor to review changes or resolve conflicts.
 
 ### Stashes
 
