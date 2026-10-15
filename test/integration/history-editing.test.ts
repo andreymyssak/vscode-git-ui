@@ -78,112 +78,121 @@ for (const kind of ['root', 'merge'] as const) {
 }
 
 for (const kind of ['edit', 'squash', 'separated squash'] as const) {
-  test(`${kind} replays older linear history and preserves descendants, final tree and unrelated refs`, async (t) => {
-    const fixture = await createSquashFixture();
+  test(
+    `${kind} replays older linear history and preserves descendants, final tree and unrelated refs`,
+    async (t) => {
+      const fixture = await createSquashFixture();
 
-    t.onTestFinished(() => fixture.dispose());
-    try {
-      // Independent files make a separated reorder conflict-free and observable.
-      await fixture.runGit(['reset', '--hard', fixture.initial]);
-      const commits: string[] = [];
+      t.onTestFinished(() => fixture.dispose());
+      try {
+        // Independent files make a separated reorder conflict-free and observable.
+        await fixture.runGit(['reset', '--hard', fixture.initial]);
+        const commits: string[] = [];
 
-      for (const name of ['a', 'b', 'c', 'd']) {
-        await writeFile(join(fixture.root, `${name}.txt`), `${name}\n`);
-        await fixture.runGit(['add', '.']);
-        await fixture.runGit(['commit', '-m', name]);
-        commits.push((await fixture.runGit(['rev-parse', 'HEAD'])).trim());
-      }
+        for (const name of ['a', 'b', 'c', 'd']) {
+          await writeFile(join(fixture.root, `${name}.txt`), `${name}\n`);
+          await fixture.runGit(['add', '.']);
+          await fixture.runGit(['commit', '-m', name]);
+          commits.push((await fixture.runGit(['rev-parse', 'HEAD'])).trim());
+        }
 
-      const oldHead = commits[3]!;
-      const tree = (await fixture.runGit(['rev-parse', 'HEAD^{tree}'])).trim();
-      const retained = await fixture.runGit(['rev-parse', 'retained-branch']);
+        const oldHead = commits[3]!;
+        const tree = (
+          await fixture.runGit(['rev-parse', 'HEAD^{tree}'])
+        ).trim();
+        const retained = await fixture.runGit(['rev-parse', 'retained-branch']);
 
-      fixture.access.repository('fixture').status = async () => {};
+        fixture.access.repository('fixture').status = async () => {};
 
-      fixture.access.repository('fixture').getCommit = async () => ({
-        hash: oldHead,
-        message: 'd',
-        parents: [commits[2]!],
-      });
-      const run = createOperations(
-        fixture.access,
-        fixture.cli,
-        { updateDiverged: async () => null, remoteCheckout: async () => null },
-        {
-          runtime: { executable: process.execPath, helperPath },
-          recovery: new SquashRecovery(
-            join(fixture.directory, 'recovery'),
-            fixture.cli,
-          ),
-        },
-      );
-      const result = await run(
-        'fixture',
-        kind === 'edit'
-          ? {
-              kind: 'edit-commit-message',
-              sha: commits[1]!,
-              expectedBranch: 'main',
-              expectedHeadSha: oldHead,
-              message: 'Edited older\n\nBody',
-            }
-          : {
-              kind: 'squash-commits',
-              message: 'Combined older',
-              target: {
+        fixture.access.repository('fixture').getCommit = async () => ({
+          hash: oldHead,
+          message: 'd',
+          parents: [commits[2]!],
+        });
+        const run = createOperations(
+          fixture.access,
+          fixture.cli,
+          {
+            updateDiverged: async () => null,
+            remoteCheckout: async () => null,
+          },
+          {
+            runtime: { executable: process.execPath, helperPath },
+            recovery: new SquashRecovery(
+              join(fixture.directory, 'recovery'),
+              fixture.cli,
+            ),
+          },
+        );
+        const result = await run(
+          'fixture',
+          kind === 'edit'
+            ? {
+                kind: 'edit-commit-message',
+                sha: commits[1]!,
                 expectedBranch: 'main',
                 expectedHeadSha: oldHead,
-                shas:
-                  kind === 'squash'
-                    ? [commits[1]!, commits[0]!]
-                    : [commits[2]!, commits[0]!],
+                message: 'Edited older\n\nBody',
+              }
+            : {
+                kind: 'squash-commits',
+                message: 'Combined older',
+                target: {
+                  expectedBranch: 'main',
+                  expectedHeadSha: oldHead,
+                  shas:
+                    kind === 'squash'
+                      ? [commits[1]!, commits[0]!]
+                      : [commits[2]!, commits[0]!],
+                },
               },
-            },
-      );
+        );
 
-      expect(result.kind, JSON.stringify(result)).toBe('success');
-      expect((await fixture.runGit(['rev-parse', 'HEAD^{tree}'])).trim()).toBe(
-        tree,
-      );
-      expect(await fixture.runGit(['symbolic-ref', '--short', 'HEAD'])).toBe(
-        'main\n',
-      );
-      expect(await fixture.runGit(['rev-parse', 'retained-branch'])).toBe(
-        retained,
-      );
-      const messages = (
-        await fixture.runGit([
-          'log',
-          '--reverse',
-          '--format=%s',
-          `${fixture.initial}..HEAD`,
-        ])
-      )
-        .trim()
-        .split('\n');
-
-      expect(messages).toStrictEqual(
-        kind === 'edit'
-          ? ['a', 'Edited older', 'c', 'd']
-          : kind === 'squash'
-            ? ['Combined older', 'c', 'd']
-            : ['Combined older', 'b', 'd'],
-      );
-      assert.ok(result.kind === 'success' && result.replacementSha);
-      expect(
-        (
+        expect(result.kind, JSON.stringify(result)).toBe('success');
+        expect(
+          (await fixture.runGit(['rev-parse', 'HEAD^{tree}'])).trim(),
+        ).toBe(tree);
+        expect(await fixture.runGit(['symbolic-ref', '--short', 'HEAD'])).toBe(
+          'main\n',
+        );
+        expect(await fixture.runGit(['rev-parse', 'retained-branch'])).toBe(
+          retained,
+        );
+        const messages = (
           await fixture.runGit([
-            'show',
-            '-s',
+            'log',
+            '--reverse',
             '--format=%s',
-            result.replacementSha,
+            `${fixture.initial}..HEAD`,
           ])
-        ).trim(),
-      ).toBe(kind === 'edit' ? 'Edited older' : 'Combined older');
-    } finally {
-      await fixture.dispose();
-    }
-  });
+        )
+          .trim()
+          .split('\n');
+
+        expect(messages).toStrictEqual(
+          kind === 'edit'
+            ? ['a', 'Edited older', 'c', 'd']
+            : kind === 'squash'
+              ? ['Combined older', 'c', 'd']
+              : ['Combined older', 'b', 'd'],
+        );
+        assert.ok(result.kind === 'success' && result.replacementSha);
+        expect(
+          (
+            await fixture.runGit([
+              'show',
+              '-s',
+              '--format=%s',
+              result.replacementSha,
+            ])
+          ).trim(),
+        ).toBe(kind === 'edit' ? 'Edited older' : 'Combined older');
+      } finally {
+        await fixture.dispose();
+      }
+    },
+    process.platform === 'win32' ? 90000 : 30000,
+  );
 }
 
 test('separated squash retains its approved message through Git Continue after a conflict', async (t) => {

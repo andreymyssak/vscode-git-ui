@@ -221,6 +221,8 @@ export async function refreshNativeHistory(
       return context.repositoryId === repositoryId ? context.generation : 0;
     })
     .toBeGreaterThan(previous.generation);
+  // Delayed fixture notifications can arrive while the refresh is rendering.
+  await vscode.commands.executeCommand('notifications.hideToasts');
 
   return row;
 }

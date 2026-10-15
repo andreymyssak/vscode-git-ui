@@ -15,6 +15,8 @@ import { gitFixtureEnvironment } from '../fixtures/git-environment';
 import { createFixture } from '../fixtures/repository';
 
 const execute = promisify(execFile);
+// Multi-command workflows must outlive each child command's 45-second limit.
+const workflowTimeout = process.platform === 'win32' ? 120000 : 30000;
 
 async function fixture(message = 'feat: add branch filtering') {
   const f = await createFixture({ prefix: 'git-ui-native release ' });
@@ -169,41 +171,51 @@ test('the first release can keep its chosen version while preparing notes', asyn
   expect((await f.runGit(['tag', '--list'])).trim()).toBe('');
 });
 
-test('release tags and pushes the prepared version without running checks', async () => {
-  const f = await fixture();
+test(
+  'release tags and pushes the prepared version without running checks',
+  async () => {
+    const f = await fixture();
 
-  await f.run('release:prepare');
-  await f.commitPrepared();
-  const notes = await f.read('CHANGELOG.md');
-  const manifest = await f.read('package.json');
-  const revision = (await f.runGit(['rev-parse', 'HEAD'])).trim();
+    await f.run('release:prepare');
+    await f.commitPrepared();
+    const notes = await f.read('CHANGELOG.md');
+    const manifest = await f.read('package.json');
+    const revision = (await f.runGit(['rev-parse', 'HEAD'])).trim();
 
-  await f.run('release', ['--no-github'], { RELEASE_FIXTURE_FAIL: '1' });
-  await expect(f.read('.artifacts/checks-ran.txt')).rejects.toMatchObject({
-    code: 'ENOENT',
-  });
-  expect((await f.runGit(['rev-parse', 'v1.1.0^{}'])).trim()).toBe(revision);
-  expect((await f.remoteGit(['rev-parse', 'v1.1.0^{}'])).trim()).toBe(revision);
-  expect(await f.read('CHANGELOG.md')).toBe(notes);
-  expect(await f.read('package.json')).toBe(manifest);
-  expect((await f.runGit(['status', '--porcelain'])).trim()).toBe('');
-});
+    await f.run('release', ['--no-github'], { RELEASE_FIXTURE_FAIL: '1' });
+    await expect(f.read('.artifacts/checks-ran.txt')).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+    expect((await f.runGit(['rev-parse', 'v1.1.0^{}'])).trim()).toBe(revision);
+    expect((await f.remoteGit(['rev-parse', 'v1.1.0^{}'])).trim()).toBe(
+      revision,
+    );
+    expect(await f.read('CHANGELOG.md')).toBe(notes);
+    expect(await f.read('package.json')).toBe(manifest);
+    expect((await f.runGit(['status', '--porcelain'])).trim()).toBe('');
+  },
+  workflowTimeout,
+);
 
-test('checks can run independently without tagging or pushing', async () => {
-  const f = await fixture();
+test(
+  'checks can run independently without tagging or pushing',
+  async () => {
+    const f = await fixture();
 
-  await f.run('release:prepare');
-  await f.commitPrepared();
-  const remoteHead = await f.remoteGit(['rev-parse', 'main']);
+    await f.run('release:prepare');
+    await f.commitPrepared();
+    const remoteHead = await f.remoteGit(['rev-parse', 'main']);
 
-  await expect(
-    f.run('release:validate', [], { RELEASE_FIXTURE_FAIL: '1' }),
-  ).rejects.toMatchObject({ code: 1 });
-  expect(await f.read('.artifacts/checks-ran.txt')).toBe('Checks ran.');
-  expect((await f.runGit(['tag', '--list'])).trim()).toBe('v1.0.0');
-  expect((await f.remoteGit(['tag', '--list'])).trim()).toBe('v1.0.0');
-  expect(await f.remoteGit(['rev-parse', 'main'])).toBe(remoteHead);
-});
+    await expect(
+      f.run('release:validate', [], { RELEASE_FIXTURE_FAIL: '1' }),
+    ).rejects.toMatchObject({ code: 1 });
+    expect(await f.read('.artifacts/checks-ran.txt')).toBe('Checks ran.');
+    expect((await f.runGit(['tag', '--list'])).trim()).toBe('v1.0.0');
+    expect((await f.remoteGit(['tag', '--list'])).trim()).toBe('v1.0.0');
+    expect(await f.remoteGit(['rev-parse', 'main'])).toBe(remoteHead);
+  },
+  workflowTimeout,
+);
 
 test.each(['dirty', 'other branch'])(
   'release rejects a candidate on %s before remote writes',
@@ -223,6 +235,7 @@ test.each(['dirty', 'other branch'])(
     expect((await f.runGit(['tag', '--list'])).trim()).toBe('v1.0.0');
     expect(await f.remoteGit(['rev-parse', 'main'])).toBe(remoteHead);
   },
+  workflowTimeout,
 );
 
 test('GitHub notes copy generated release entries and reject absent versions', async () => {

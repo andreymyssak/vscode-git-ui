@@ -7,7 +7,10 @@ import * as vscode from 'vscode';
 
 import { LOG_VIEW_ID } from '../../../src/shared/extension-identity';
 import { divergentFixture } from '../../fixtures/branch-update';
-import { nativeBrowser } from '../../fixtures/native-panel';
+import {
+  nativeBrowser,
+  refreshNativeHistory,
+} from '../../fixtures/native-panel';
 
 export async function run(): Promise<string[]> {
   const passed: string[] = [];
@@ -63,6 +66,8 @@ export async function run(): Promise<string[]> {
         })
         .toBe(true);
       assert.ok(frame);
+      // Capture the write target after the fixture's ref change has settled.
+      await refreshNativeHistory(frame, f.id);
       const branch = frame.locator(`[data-ref="${refId}"]`);
 
       await expect(frame.locator('#history')).not.toHaveAttribute('inert', '');
