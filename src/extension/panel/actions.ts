@@ -17,6 +17,10 @@ import { reviewSquash } from './squash';
 import { prepareNewWorktree, type WorktreeCreationPrompts } from './worktrees';
 
 export interface ActionPrompts extends WorktreeCreationPrompts {
+  reportUpdateBlocked?: (
+    message: string,
+    choices: readonly { label: string; run(): Promise<void> }[],
+  ) => void;
   confirmWorktreeDeletion?: (
     worktrees: readonly WorktreeInfo[],
   ) => Promise<boolean>;
@@ -61,10 +65,10 @@ export function isHistoryRewrite(action: GitAction | UserAction): boolean {
 /** Report Update outcomes immediately, independently of the panel's refresh. */
 export async function publishOperationResult(
   result: OperationResult,
-  kind: UserAction['kind'],
+  kind: UserAction['kind'] | GitAction['kind'],
   lifecycle: {
     current(): boolean;
-    refresh(): Promise<void>;
+    refresh(this: void): Promise<void>;
     send(result: OperationResult): Promise<void>;
     reportError:
       ((message: string, sourceControl?: boolean) => Promise<void>) | undefined;
@@ -75,6 +79,7 @@ export async function publishOperationResult(
   const nativeResult = [
     'delete-worktrees',
     'update-branch',
+    'continue-update',
     'merge-branch',
     'rebase-branch',
     'create-worktree',
@@ -120,6 +125,22 @@ export class PanelActions {
     private readonly session: QuerySession,
     private readonly prompts: ActionPrompts,
   ) {}
+
+  prepareUpdate(refId: string): Extract<GitAction, { kind: 'update-branch' }> {
+    const ref = this.session.refs.get(refId);
+
+    if (ref?.kind !== 'local' || !ref.tracking || ref.tracking.behind === null)
+      throw new Error(
+        'Select a local branch with an available tracked upstream before updating.',
+      );
+
+    return {
+      kind: 'update-branch',
+      refId: ref.id,
+      expectedSha: ref.sha,
+      expectedUpstream: ref.tracking.upstream,
+    };
+  }
 
   async review(
     action: UserAction,
@@ -484,17 +505,7 @@ export class PanelActions {
     }
 
     if (action.kind === 'update-branch') {
-      if (ref.kind !== 'local' || !ref.tracking || ref.tracking.behind === null)
-        throw new Error(
-          'Select a local branch with an available tracked upstream before updating.',
-        );
-
-      return {
-        kind: 'update-branch',
-        refId: ref.id,
-        expectedSha: ref.sha,
-        expectedUpstream: ref.tracking.upstream,
-      };
+      return this.prepareUpdate(ref.id);
     }
 
     if (action.kind === 'copy-branch') {
@@ -549,7 +560,13 @@ export function offerBranchRestore(
     adapter: GitAdapter;
     trusted(): boolean;
     current(): boolean;
-    refresh(): Promise<void>;
+    refresh(this: void): Promise<void>;
+    runRestore?(
+      work: (
+        refresh?: () => Promise<void>,
+        progress?: (phase: 'waiting' | 'running') => Promise<void>,
+      ) => Promise<void>,
+    ): Promise<void>;
   },
 ): boolean {
   if (
@@ -562,25 +579,37 @@ export function offerBranchRestore(
 
   options.reportBranchDeleted?.(
     name,
-    async () => {
-      if (!options.trusted()) {
-        await options.reportActionError?.(
-          'Trust this workspace before restoring a branch.',
+    () => {
+      const restore = async (
+        refresh = options.refresh,
+        progress?: (phase: 'waiting' | 'running') => Promise<void>,
+      ) => {
+        if (!options.trusted()) {
+          await options.reportActionError?.(
+            'Trust this workspace before restoring a branch.',
+          );
+
+          return;
+        }
+
+        const restored = await options.adapter.operate(
+          repositoryId,
+          {
+            kind: 'restore-branch',
+            token,
+          },
+          undefined,
+          progress,
         );
 
-        return;
-      }
+        if (restored.kind === 'error' || restored.kind === 'conflict')
+          await options.reportActionError?.(restored.message);
+        else if (restored.kind === 'success' && restored.message)
+          await options.reportActionInfo?.(restored.message);
+        if (options.current()) await refresh();
+      };
 
-      const restored = await options.adapter.operate(repositoryId, {
-        kind: 'restore-branch',
-        token,
-      });
-
-      if (restored.kind === 'error' || restored.kind === 'conflict')
-        await options.reportActionError?.(restored.message);
-      else if (restored.kind === 'success' && restored.message)
-        await options.reportActionInfo?.(restored.message);
-      if (options.current()) await options.refresh();
+      return options.runRestore ? options.runRestore(restore) : restore();
     },
     names,
     result.kind === 'error' || result.kind === 'conflict'

@@ -65,6 +65,28 @@ export class PanelHistory {
     );
   }
 
+  async start(
+    query: HistoryInput,
+    requestId: string,
+    preserve: boolean,
+  ): Promise<void> {
+    const id = this.session.repositoryId;
+
+    await this.publication.send(
+      {
+        kind: 'loading',
+        preserve,
+        scope: query.scope,
+        text: query.text,
+        repository: this.publication.repository(id),
+        filters: normalizeHistoryFilters(query.filters),
+      },
+      requestId,
+      id,
+      this.session.generation,
+    );
+  }
+
   async load(
     query: HistoryInput,
     requestId: string,
@@ -85,25 +107,31 @@ export class PanelHistory {
     const current = () =>
       this.session.current(id, generation) && sourceCurrent();
 
-    if (!cursor)
-      await this.publication.send(
-        {
-          kind: 'loading',
-          preserve,
-          scope: input.scope,
-          text: input.text,
-          repository: this.publication.repository(id),
-          filters: input.filters,
-        },
-        requestId,
-        id,
-        generation,
-      );
+    // Restoring callers publish activity before checking their reference.
+    if (!cursor && !preserve) await this.start(input, requestId, false);
     if (!current()) return null;
     let page: HistoryPage;
 
     try {
-      page = await this.adapter.history(id, input, signal);
+      page = await this.adapter.history(
+        id,
+        input,
+        signal,
+        async (references) => {
+          if (!current()) return;
+          const repository = this.publication.repository(id);
+
+          this.session.repositoryInfo = repository;
+          this.session.refs.clear();
+          for (const ref of references) this.session.refs.set(ref.id, ref);
+          await this.publication.send(
+            { kind: 'references', references, repository },
+            requestId,
+            id,
+            generation,
+          );
+        },
+      );
     } catch (error) {
       if (!current()) return null;
       throw error;

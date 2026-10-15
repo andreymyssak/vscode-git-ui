@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 
 import type { PanelBody } from '../../src/shared/messages';
 import type {
+  BranchUpdateContinuation,
   CommitRecord,
   Reference,
   RepositoryInfo,
@@ -115,6 +116,9 @@ const bodies = {
     restoring: true,
   },
   'history-settled': { kind: 'history-settled' },
+  'history-interrupted': { kind: 'history-interrupted' },
+  'worktrees-loading': { kind: 'worktrees-loading', loading: true },
+  'worktrees-error': { kind: 'worktrees-error', message: 'Unavailable' },
   details: { kind: 'details', commit },
   files: {
     kind: 'files',
@@ -156,6 +160,14 @@ const bodies = {
       branchRestore: { name: 'feature', token: 'restore', names: ['feature'] },
     },
   },
+  'operation-progress': {
+    kind: 'operation-progress',
+    operation: {
+      label: 'Updating main…',
+      refIds: ['refs/heads/main'],
+      phase: 'running',
+    },
+  },
   error: { kind: 'error', message: 'Failed' },
   references: { kind: 'references', references: [reference] },
 } satisfies { [Kind in PanelBody['kind']]: Extract<PanelBody, { kind: Kind }> };
@@ -164,7 +176,60 @@ function response(body: unknown) {
   return { requestId: 'read', repositoryId: 'repository', generation: 2, body };
 }
 
+const continuation: BranchUpdateContinuation = {
+  target: {
+    kind: 'update-branch',
+    refId: 'refs/heads/main',
+    expectedSha: sha,
+    expectedUpstream: 'refs/remotes/origin/main',
+  },
+  checkout: { ref: 'refs/heads/main', sha },
+  fetchedSha: sha,
+  incomingCount: 1,
+  remote: 'origin',
+  remoteRef: 'refs/heads/main',
+};
+
 describe('host response parsing', () => {
+  test.each(['checkout', 'integrate'] as const)(
+    'accepts a captured Update %s decision',
+    (kind) => {
+      const message = response({
+        kind: 'operation',
+        result: {
+          kind: 'error',
+          backend: 'cli',
+          message: 'Update stopped',
+          updateDecision: { kind, continuation },
+        },
+      });
+
+      expect(parsePanelResult(message)).toEqual(message);
+    },
+  );
+  test.each([
+    { ...continuation, target: { ...continuation.target, expectedSha: '' } },
+    { ...continuation, checkout: { ref: 'main', sha } },
+    { ...continuation, checkout: { ref: null, sha: '' } },
+    { ...continuation, fetchedSha: '' },
+    { ...continuation, remote: '' },
+    { ...continuation, incomingCount: 0 },
+    { ...continuation, incomingCount: 0.5 },
+  ])('rejects incomplete Update recovery targets: %j', (continuation) => {
+    expect(
+      parsePanelResult(
+        response({
+          kind: 'operation',
+          result: {
+            kind: 'error',
+            backend: 'cli',
+            message: 'Update stopped',
+            updateDecision: { kind: 'checkout', continuation },
+          },
+        }),
+      ),
+    ).toBeNull();
+  });
   test.each(Object.values(bodies))(
     'accepts the complete $kind response',
     (body) => {
@@ -173,6 +238,15 @@ describe('host response parsing', () => {
   );
 
   test.each([
+    {
+      kind: 'operation-progress',
+      operation: {
+        label: 'Updating main…',
+        refIds: ['refs/heads/main'],
+        phase: 'refreshing',
+      },
+    },
+    { kind: 'operation-progress', operation: null },
     { kind: 'operation', result: { kind: 'cancelled', backend: null } },
     {
       kind: 'operation',
@@ -203,6 +277,41 @@ describe('host response parsing', () => {
   );
 
   test.each([
+    {
+      kind: 'operation-progress',
+      operation: {
+        label: 'Updating',
+        refIds: [],
+        phase: 'running',
+        section: 'other',
+      },
+    },
+    {
+      kind: 'operation-progress',
+      operation: {
+        label: 'Updating',
+        refIds: [],
+        phase: 'running',
+        queued: [{ label: 'Waiting', refIds: [], section: {} }],
+      },
+    },
+    {
+      kind: 'operation-progress',
+      operation: { label: '', refIds: [], phase: 'running' },
+    },
+    {
+      kind: 'operation-progress',
+      operation: {
+        label: 'Updating',
+        refIds: ['refs/heads/'],
+        phase: 'running',
+      },
+    },
+    {
+      kind: 'operation-progress',
+      operation: { label: 'Updating', refIds: [], phase: 'unknown' },
+    },
+    { kind: 'operation-progress', operation: undefined },
     { kind: 'notice', message: null },
     { kind: 'reveal', sha: 0 },
     { ...bodies.filters, filters: { ...filters, matchCase: 'yes' } },

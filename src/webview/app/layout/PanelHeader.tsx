@@ -37,16 +37,41 @@ export function PanelHeader({
         (state.repositories.length > 1 ? state.repository.label + ' · ' : '') +
         scope
       : '');
-  const status =
-    state.activeView === 'log' && state.loading
-      ? 'Loading history…'
-      : state.setup !== 'ready'
-        ? setupGuidance[state.setup]
-        : state.activeView === 'log' &&
-            state.commits.length === 0 &&
-            !state.error
-          ? 'No commits in these results.'
-          : '';
+  const historyLoading = state.activeView === 'log' && state.loading;
+  const worktreesLoading =
+    state.activeView === 'worktrees' && state.worktreesLoading;
+  const section = state.activeView === 'worktrees' ? 'worktrees' : 'history';
+  const queuedOperation =
+    state.operation?.phase === 'waiting' && state.operation.section === section
+      ? state.operation
+      : state.operation?.queued?.find(
+          (operation) => operation.section === section,
+        );
+  const activeOperation =
+    state.operation?.phase === 'running' && state.operation.section === section
+      ? state.operation
+      : null;
+  const status = historyLoading
+    ? state.restoring
+      ? 'Refreshing history…'
+      : 'Loading history…'
+    : worktreesLoading
+      ? 'Refreshing worktrees…'
+      : activeOperation
+        ? activeOperation.label +
+          (activeOperation.queued?.length
+            ? ` · ${activeOperation.queued.length} queued`
+            : '')
+        : queuedOperation
+          ? `Queued: ${queuedOperation.label}`
+          : state.setup !== 'ready'
+            ? setupGuidance[state.setup]
+            : state.activeView === 'log' &&
+                state.commits.length === 0 &&
+                !state.retainHistory &&
+                !state.error
+              ? 'No commits in these results.'
+              : '';
 
   return (
     <header className={styles.header}>
@@ -86,7 +111,7 @@ export function PanelHeader({
         <div
           id="status"
           className={
-            state.activeView === 'log' && state.loading
+            historyLoading || worktreesLoading || activeOperation
               ? styles.loading
               : styles.status
           }

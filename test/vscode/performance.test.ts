@@ -217,14 +217,22 @@ describe('large native history', () => {
         input.dispatchEvent(
           new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
         );
-        await new Promise<void>((resolve) =>
-          requestAnimationFrame(() => resolve()),
-        );
 
-        return {
-          elapsed: performance.now() - start,
-          text: document.getElementById('status')?.textContent,
-        };
+        return new Promise<{
+          elapsed: number;
+          text: string | null | undefined;
+        }>((resolve) => {
+          const sample = () => {
+            const elapsed = performance.now() - start;
+            const text = document.getElementById('status')?.textContent;
+
+            if (text?.includes('Loading') || elapsed >= 100)
+              resolve({ elapsed, text });
+            else requestAnimationFrame(sample);
+          };
+
+          requestAnimationFrame(sample);
+        });
       });
 
       // Restoring a deep anchor can read every matching Git page. Its completion

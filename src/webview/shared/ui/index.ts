@@ -17,4 +17,5 @@ export {
 } from './file-tree/model';
 export { PathHint } from './file-tree/PathHint';
 export { Icon } from './icon/Icon';
+export { ProgressBar } from './progress/ProgressBar';
 export { SplitHandle } from './split-handle/SplitHandle';

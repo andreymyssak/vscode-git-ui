@@ -194,50 +194,52 @@
       {
         "command": "gitUI.merge-branch",
         "title": "Merge",
-        "enablement": "refCanIntegrate"
+        "enablement": "!logOperationBusy && refCanIntegrate"
       },
       {
         "command": "gitUI.rebase-branch",
         "title": "Rebase",
-        "enablement": "refCanIntegrate"
+        "enablement": "!logOperationBusy && refCanIntegrate"
       },
       {
         "command": "gitUI.create-worktree",
         "title": "New Worktree",
-        "enablement": "refKind != tag"
+        "enablement": "!logOperationBusy && refKind != tag"
       },
       {
         "command": "gitUI.update-branch",
         "title": "Update",
-        "enablement": "refCanUpdate"
+        "enablement": "!logOperationBusy && refCanUpdate"
       },
       {
         "command": "gitUI.checkout",
         "title": "Checkout",
-        "enablement": "refKind != tag && !refCurrent"
+        "enablement": "!logOperationBusy && refKind != tag && !refCurrent"
       },
       {
         "command": "gitUI.create-branch",
-        "title": "New Branch"
+        "title": "New Branch",
+        "enablement": "!logOperationBusy"
       },
       {
         "command": "gitUI.create-branch-checkout",
-        "title": "New Branch and Checkout"
+        "title": "New Branch and Checkout",
+        "enablement": "!logOperationBusy"
       },
       {
         "command": "gitUI.rename-branch",
         "title": "Rename",
-        "enablement": "refKind == local"
+        "enablement": "!logOperationBusy && refKind == local"
       },
       {
         "command": "gitUI.delete-branch",
         "title": "Delete",
-        "enablement": "refKind == local && !refCurrent"
+        "enablement": "!logOperationBusy && refKind == local && !refCurrent"
       },
       {
         "command": "gitUI.delete-branches",
         "title": "Delete",
-        "enablement": "refsCanDelete && refSelectionCount > 1"
+        "enablement": "!logOperationBusy && refsCanDelete && refSelectionCount > 1"
       },
       {
         "command": "gitUI.copy-branch",
@@ -260,30 +262,32 @@
       {
         "command": "gitUI.cherry-pick",
         "title": "Cherry-Pick",
-        "enablement": "commitCanCherryPick"
+        "enablement": "!logOperationBusy && commitCanCherryPick"
       },
       {
         "command": "gitUI.edit-commit-message",
         "title": "Edit Commit Message…",
-        "enablement": "commitCanEdit"
+        "enablement": "!logOperationBusy && commitCanEdit"
       },
       {
         "command": "gitUI.squash-commits",
         "title": "Squash Commits…",
-        "enablement": "commitCanSquash"
+        "enablement": "!logOperationBusy && commitCanSquash"
       },
       {
         "command": "gitUI.branch-from-commit",
-        "title": "New Branch"
+        "title": "New Branch",
+        "enablement": "!logOperationBusy"
       },
       {
         "command": "gitUI.tag-from-commit",
-        "title": "New Tag…"
+        "title": "New Tag…",
+        "enablement": "!logOperationBusy"
       },
       {
         "command": "gitUI.drop-commits",
         "title": "Drop Commits…",
-        "enablement": "commitCanDrop"
+        "enablement": "!logOperationBusy && commitCanDrop"
       },
       {
         "command": "gitUI.open-worktree-new",
@@ -298,7 +302,7 @@
       {
         "command": "gitUI.delete-worktrees",
         "title": "Delete",
-        "enablement": "worktreeCanDelete"
+        "enablement": "!logOperationBusy && worktreeCanDelete"
       },
       {
         "command": "gitUI.refresh-changes",

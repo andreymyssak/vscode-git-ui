@@ -8,6 +8,7 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 
 import { MAX_BRANCH_SELECTION } from '@contracts/branch-selection';
+import type { ActiveLogOperation } from '@contracts/messages';
 import type { Scope } from '@contracts/model';
 import { isRecord } from '@contracts/validation';
 import {
@@ -33,6 +34,8 @@ interface Props {
   repositoryId: string;
   generation: number;
   currentBranch: string | null;
+  operation: ActiveLogOperation | null;
+  referencesReady?: boolean;
   selectedRefId: string | null;
   selectedRefIds: readonly string[];
   scope: Scope;
@@ -49,6 +52,8 @@ export function BranchTree({
   repositoryId,
   generation,
   currentBranch,
+  operation,
+  referencesReady = true,
   selectedRefId,
   selectedRefIds,
   scope,
@@ -245,9 +250,33 @@ export function BranchTree({
     const selected = ref
       ? selectedRefIds.includes(ref.id)
       : !selectedRefIds.length && node.id === current;
+    const waiting = [
+      ...(operation?.phase === 'waiting' ? [operation] : []),
+      ...(operation?.queued ?? []),
+    ].find(
+      (item) =>
+        ref &&
+        (item.section ?? 'branches') === 'branches' &&
+        item.refIds.includes(ref.id),
+    );
+    const running =
+      ref &&
+      operation?.phase === 'running' &&
+      (operation.section ?? 'branches') === 'branches' &&
+      operation.refIds.includes(ref.id);
+    const progress = running
+      ? operation.label
+      : waiting
+        ? `Queued: ${waiting.label}`
+        : null;
+    const pending = operation ? [operation, ...(operation.queued ?? [])] : [];
+    const targetBusy =
+      !referencesReady ||
+      pending.some((item) => item.refIds.some((id) => contextIds.includes(id)));
     const context = ref
       ? {
           webviewSection: 'branch',
+          logOperationBusy: targetBusy,
           preventDefaultContextMenuItems: true,
           repositoryId: repositoryId,
           generation: generation,
@@ -263,6 +292,7 @@ export function BranchTree({
             ref.kind !== 'tag' &&
             !node.current,
           refCanUpdate:
+            !targetBusy &&
             contextIds.length === 1 &&
             ref.kind === 'local' &&
             !!ref.tracking &&
@@ -349,8 +379,14 @@ export function BranchTree({
         <span data-reference-name="" className={styles.name}>
           {node.name}
         </span>
-        {ref?.tracking && (ref.tracking.behind || ref.tracking.ahead) ? (
-          <BranchTracking tracking={ref.tracking} />
+        {ref &&
+        (progress ||
+          (ref.tracking && (ref.tracking.behind || ref.tracking.ahead))) ? (
+          <BranchTracking
+            tracking={ref.tracking}
+            progress={progress}
+            queued={!!waiting && !running}
+          />
         ) : null}
         {node.children.map(draw)}
       </vscode-tree-item>

@@ -9,6 +9,7 @@ export async function withRepositoryOperation<T>(
   id: string,
   action: () => Promise<T>,
   signal?: AbortSignal,
+  acquired?: () => void | Promise<void>,
 ): Promise<T> {
   return repositoryOperations.run(id, async () => {
     signal?.throwIfAborted();
@@ -30,6 +31,7 @@ export async function withRepositoryOperation<T>(
 
     return repositoryOperations.run(`common:${key}`, async () => {
       signal?.throwIfAborted();
+      await acquired?.();
 
       return action();
     });

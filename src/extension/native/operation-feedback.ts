@@ -1,5 +1,25 @@
 import * as vscode from 'vscode';
 
+export function showUpdateBlocked(
+  message: string,
+  choices: readonly { label: string; run(): Promise<void> }[],
+): void {
+  void vscode.window
+    .showErrorMessage(message, ...choices.map((choice) => choice.label))
+    .then(async (label) => {
+      const choice = choices.find((item) => item.label === label);
+
+      if (!choice) return;
+      try {
+        await choice.run();
+      } catch (error) {
+        await showOperationError(
+          error instanceof Error ? error.message : String(error),
+        );
+      }
+    });
+}
+
 export function showOperationError(
   message: string,
   sourceControl = false,

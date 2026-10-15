@@ -124,3 +124,23 @@ export function getRepository(
 
   return repository;
 }
+
+/** Obsolete UI reads release lifecycle ownership even if the provider cannot cancel. */
+export function waitForQuery(
+  read: Promise<unknown>,
+  signal: AbortSignal,
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const finished = () => {
+      signal.removeEventListener('abort', finished);
+      resolve();
+    };
+
+    signal.addEventListener('abort', finished, { once: true });
+    void read.then(finished, (error: unknown) => {
+      signal.removeEventListener('abort', finished);
+      reject(error instanceof Error ? error : new Error(String(error)));
+    });
+    if (signal.aborted) finished();
+  });
+}

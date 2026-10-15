@@ -1,4 +1,4 @@
-import type { RequestBody } from '@contracts/messages';
+import type { ActiveLogOperation, RequestBody } from '@contracts/messages';
 import type {
   CommitRecord,
   FileChange,
@@ -16,6 +16,7 @@ import type { CommitGesture, CommitRange } from './commit-selection';
 export interface LogData {
   repository: RepositoryInfo | null;
   refs: readonly Reference[];
+  referencesReady?: boolean;
   commits: readonly CommitRecord[];
   scope: Scope;
   selectedRefId: string | null;
@@ -30,6 +31,8 @@ export interface LogData {
   generation: number;
   nextCursor: string | null;
   loading: boolean;
+  retainHistory?: boolean;
+  operation: ActiveLogOperation | null;
   error?: string | null;
   text: string;
   filters: HistoryFilters;

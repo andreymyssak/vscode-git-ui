@@ -25,6 +25,19 @@ export function BranchesPane({
   'use no memo';
   const id = data.repository?.id ?? '';
   const branch = data.repository?.branch ?? null;
+  const fetching =
+    data.operation?.section === 'branches' &&
+    data.operation.phase === 'running' &&
+    data.operation.refIds.length === 0;
+  const fetchQueued =
+    (data.operation?.phase === 'waiting' &&
+      data.operation.section === 'branches' &&
+      data.operation.refIds.length === 0) ||
+    (data.operation?.queued?.some(
+      (operation) =>
+        operation.section === 'branches' && operation.refIds.length === 0,
+    ) ??
+      false);
   const [queries, setQueries] = useState<Record<string, string>>({});
   const [expansions, setExpansions] = useState<
     Map<string, Map<string, boolean>>
@@ -284,10 +297,24 @@ export function BranchesPane({
             }}
           />
           <ActionButton
-            icon="cloud-download"
+            icon={
+              fetching
+                ? 'loading codicon-modifier-spin'
+                : fetchQueued
+                  ? 'clock'
+                  : 'cloud-download'
+            }
             id="fetch"
             className={styles.icon}
             label="Fetch All Remotes"
+            aria-busy={fetching}
+            tooltip={
+              fetching
+                ? 'Fetching remotes…'
+                : fetchQueued
+                  ? 'Fetch is queued'
+                  : 'Download remote commits without changing local branches.'
+            }
             aria-description="Download remote commits without changing local branches."
             disabled={!data.repository || data.loading}
             onClick={() =>
@@ -311,6 +338,8 @@ export function BranchesPane({
           repositoryId={id}
           generation={data.generation}
           currentBranch={branch}
+          operation={data.operation}
+          referencesReady={data.referencesReady ?? true}
           selectedRefId={data.selectedRefId}
           selectedRefIds={selectedRefIds}
           scope={data.scope}

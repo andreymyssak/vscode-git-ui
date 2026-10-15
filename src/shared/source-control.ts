@@ -70,6 +70,7 @@ export interface SourceControlState {
   repositoryId: string | null;
   tab: SourceControlTab;
   busy: boolean;
+  activity?: { repositoryId: string; title: string } | null;
   generating: boolean;
   reveal: { repositoryId: string; path: string; sequence: number } | null;
 }

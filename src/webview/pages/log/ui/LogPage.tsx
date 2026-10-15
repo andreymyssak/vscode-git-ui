@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 
-import { SplitHandle } from '@webview/shared/ui';
+import { ProgressBar, SplitHandle } from '@webview/shared/ui';
 
 import { fitPaneWidths } from '../model/pane-widths';
 import type { LogData, LogIntent } from '../model/view';
@@ -33,6 +33,10 @@ export function LogPage({ data, onIntent }: LogPageProps) {
 
     return () => observer.disconnect();
   }, []);
+  const busy =
+    data.loading ||
+    (data.operation?.section === 'history' &&
+      data.operation.phase === 'running');
   const widths = fitPaneWidths(width, data.paneWidths, data.branchesCollapsed);
   const change = (side: 0 | 1, value: number) => {
     const next: [number, number] = [...widths];
@@ -65,11 +69,8 @@ export function LogPage({ data, onIntent }: LogPageProps) {
           onChange={(value) => change(0, value)}
         />
       )}
-      <section
-        id="history-pane"
-        className={styles.history}
-        aria-busy={data.loading}
-      >
+      <section id="history-pane" className={styles.history} aria-busy={busy}>
+        <ProgressBar active={busy} />
         <HistoryToolbar data={data} onIntent={onIntent} />
         <HistoryPane data={data} onIntent={onIntent} />
       </section>

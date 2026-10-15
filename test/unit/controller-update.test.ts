@@ -145,7 +145,10 @@ for (const kind of ['conflict', 'error'] as const) {
       'Commit or stash local changes before updating.',
     ]);
     expect(reports).toStrictEqual(immediateReports);
-    expect(f.sent.at(-1)?.body).toStrictEqual({
+    expect(
+      f.sent.filter((message) => message.body.kind === 'operation').at(-1)
+        ?.body,
+    ).toStrictEqual({
       kind: 'operation',
       result: {
         kind,

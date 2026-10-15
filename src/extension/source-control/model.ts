@@ -52,6 +52,7 @@ export class SourceControlModel {
   repositoryId: string | null = null;
   tab: SourceControlTab = 'commit';
   busy = false;
+  activity: Exclude<SourceControlState['activity'], undefined> = null;
   generating = false;
   error: string | null = null;
   reveal: SourceControlState['reveal'] = null;
@@ -105,6 +106,7 @@ export class SourceControlModel {
       repositoryId: this.repositoryId,
       tab: this.tab,
       busy: this.busy,
+      activity: this.activity,
       generating: this.generating,
       reveal: this.reveal,
     };

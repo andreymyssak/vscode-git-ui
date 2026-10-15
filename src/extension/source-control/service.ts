@@ -1,12 +1,8 @@
 import * as vscode from 'vscode';
 
 import type {
-  Loaded,
-  SourceControlOperation,
   SourceControlRequest,
   SourceControlState,
-  Stash,
-  WorkingFile,
 } from '../../shared/source-control';
 import {
   dirtySelectedDocuments,
@@ -19,18 +15,16 @@ import {
 import { generateCommitMessage } from '../native/commit-message';
 import { openedChangePath } from '../native/opened-change';
 import { showOperationError } from '../native/operation-feedback';
-import { formatPathLabel } from '../native/path-label';
 import { openSourceControlDiff } from '../native/source-control-diffs';
 import { abortOperation } from './abort';
-import {
-  clearSourceControlBusy,
-  publishSourceControlContexts,
-} from './context';
+import { publishSourceControlContexts } from './context';
 import { discardWorking } from './discard';
 import { inspectWorkingFiles, writeWorkingFiles } from './file-actions';
 import { toggleAmend } from './message-tools';
 import { SourceControlModel } from './model';
 import { SourceControlNotifications } from './notifications';
+import { SourceControlReadProgress } from './read-progress';
+import { refreshRepositories } from './refresh';
 import { RefreshCompletion } from './refresh-completion';
 import {
   isRepositoryAction,
@@ -39,21 +33,9 @@ import {
 } from './repository-action';
 import { rollbackChanges } from './rollback';
 import { savedWriteDescription, writeSaved } from './saved-writes';
+import { errorMessage, loaded, publicationState } from './state';
+import { runSourceControlWrite } from './write-lifecycle';
 import { requireLiveRepository, writeChanges } from './writes';
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-async function loaded<T>(work: Promise<T[]>): Promise<Loaded<T>> {
-  try {
-    return { kind: 'ready', items: await work };
-  } catch (error) {
-    return { kind: 'error', message: errorMessage(error) };
-  }
-}
-
-const defaultHoverDelay = process.platform === 'darwin' ? 1500 : 500;
 
 /** This service outlives hidden or recreated webviews; requests never own Git refs. */
 export class SourceControlService implements vscode.Disposable {
@@ -76,7 +58,7 @@ export class SourceControlService implements vscode.Disposable {
   private readonly refreshCompletion = new RefreshCompletion();
   private refreshGeneration = 0;
   private amendGeneration = 0;
-  private refreshTimer: ReturnType<typeof setTimeout> | undefined;
+  private readonly readProgress: SourceControlReadProgress;
 
   constructor(
     storage: vscode.Memento,
@@ -84,6 +66,9 @@ export class SourceControlService implements vscode.Disposable {
     private readonly generateMessage: typeof generateCommitMessage = generateCommitMessage,
   ) {
     this.model = new SourceControlModel(storage);
+    this.readProgress = new SourceControlReadProgress(this.model, () =>
+      this.publish(),
+    );
     this.subscriptions.push(
       vscode.workspace.onDidGrantWorkspaceTrust(() => this.scheduleRefresh()),
       vscode.workspace.onDidChangeConfiguration((event) => {
@@ -129,7 +114,7 @@ export class SourceControlService implements vscode.Disposable {
     // Git UI-owned dialogs and queued writes lose their live target on disposal.
     this.model.updateRepositories([]);
     this.notifications.reset();
-    if (this.refreshTimer) clearTimeout(this.refreshTimer);
+    this.refreshCompletion.dispose();
     for (const listener of this.repositoryListeners.values())
       listener.dispose();
     for (const subscription of this.subscriptions) subscription.dispose();
@@ -138,26 +123,18 @@ export class SourceControlService implements vscode.Disposable {
   publish(): void {
     if (this.disposed) return;
     const publication = ++this.publication;
-    const state = this.model.state();
+    const state = publicationState(this.model.state());
 
-    void publishSourceControlContexts(this.model).then(() => {
+    const emit = () => {
       if (this.disposed || publication !== this.publication) return;
-      this.onState({
-        ...state,
-        hoverDelay: vscode.workspace
-          .getConfiguration('workbench')
-          .get<number>('hover.delay', defaultHoverDelay),
-        repositories: state.repositories.map((repository) => ({
-          ...repository,
-          pathLabel: {
-            root: formatPathLabel({
-              path: vscode.Uri.parse(repository.info.rootUri).fsPath,
-            }),
-            separator: process.platform === 'win32' ? '\\' : '/',
-          },
-        })),
-      });
-    });
+      this.onState(state);
+    };
+
+    const contexts = publishSourceControlContexts(this.model);
+
+    // Show work immediately; editable completion still waits for native menus.
+    if (state.busy || state.activity) emit();
+    else void contexts.then(emit);
   }
 
   async handle(
@@ -313,7 +290,10 @@ export class SourceControlService implements vscode.Disposable {
           await this.write(
             request.repositoryId,
             kind === 'commit'
-              ? 'Committing checked files…'
+              ? this.model.requireRepository(request.repositoryId).commitMode
+                  .kind === 'amend'
+                ? 'Amending last commit…'
+                : 'Committing checked files…'
               : 'Stashing checked files…',
             (runtime) =>
               writeChanges({
@@ -489,45 +469,32 @@ export class SourceControlService implements vscode.Disposable {
             runtime.subscribe(info.id, () => this.scheduleRefresh()),
           );
       this.model.updateRepositories(infos);
+      this.readProgress.retain(ids);
+      this.readProgress.begin();
       if (this.preferredRepositoryId && ids.has(this.preferredRepositoryId))
         this.model.repositoryId = this.preferredRepositoryId;
       this.publish();
-      const results = await Promise.all(
-        infos.map(async (info) => {
-          const [changes, stashes, operation] = await Promise.all([
-            loaded<WorkingFile>(runtime.workingChanges(info.id)),
-            loaded<Stash>(runtime.stashes(info.id)),
-            loaded<SourceControlOperation>(runtime.operation(info.id)),
-          ]);
-
-          return { id: info.id, changes, stashes, operation };
-        }),
-      );
-
-      if (this.disposed || epoch !== this.refreshGeneration) return;
-      for (const result of results) {
-        this.model.requireRepository(result.id).operation = result.operation;
-        this.model.updateChanges(result.id, result.changes);
-        this.model.updateStashes(result.id, result.stashes);
-        const label = this.model.requireRepository(result.id).info.label;
-
-        this.notifications.load(
-          result.id,
-          'changes',
-          `Changes in ${label}`,
-          result.changes,
-        );
-        this.notifications.load(
-          result.id,
-          'stashes',
-          `Stashes in ${label}`,
-          result.stashes,
-        );
-      }
+      await refreshRepositories({
+        runtime,
+        model: this.model,
+        infos,
+        notifications: this.notifications,
+        isCurrent: () => !this.disposed && epoch === this.refreshGeneration,
+        settled: (id, source) => this.readProgress.settled(id, source),
+        publish: () => {
+          if (
+            generatingId &&
+            identity !== this.model.selectionIdentity(generatingId)
+          )
+            this.cancelGeneration();
+          this.publish();
+        },
+      });
     } catch (error) {
       if (this.disposed || epoch !== this.refreshGeneration) return;
       this.model.error = errorMessage(error);
       this.model.updateRepositories([]);
+      this.readProgress.finish();
       this.notifications.connection(this.model.error);
     }
 
@@ -543,11 +510,9 @@ export class SourceControlService implements vscode.Disposable {
 
   private scheduleRefresh(): void {
     if (this.disposed) return;
-    if (this.refreshTimer) clearTimeout(this.refreshTimer);
-    this.refreshTimer = setTimeout(() => {
-      this.refreshTimer = undefined;
-      void this.refresh();
-    }, 100);
+    this.refreshGeneration++;
+    if (this.model.busy) return;
+    this.refreshCompletion.schedule(() => this.refreshChanges());
   }
 
   private initialize(): Promise<SourceControlBackend> {
@@ -574,8 +539,14 @@ export class SourceControlService implements vscode.Disposable {
 
   private async amend(id: string, enabled: boolean): Promise<void> {
     const generation = ++this.amendGeneration;
+    const activity = {
+      repositoryId: id,
+      title: enabled ? 'Loading last commit…' : 'Restoring commit message…',
+    };
 
     this.cancelGeneration();
+    this.model.activity = activity;
+    this.publish();
     const isCurrent = () =>
       !this.disposed &&
       generation === this.amendGeneration &&
@@ -588,7 +559,10 @@ export class SourceControlService implements vscode.Disposable {
     } catch (error) {
       if (isCurrent()) throw error;
     } finally {
-      if (isCurrent()) this.publish();
+      if (this.model.activity === activity) {
+        this.model.activity = null;
+        this.publish();
+      }
     }
   }
 
@@ -597,43 +571,22 @@ export class SourceControlService implements vscode.Disposable {
     title: string,
     action: (runtime: SourceControlBackend) => Promise<void>,
   ): Promise<void> {
-    if (this.model.busy) return;
-    this.amendGeneration++;
-    // Acquire before any await, including trust, repository lookup and save dialogs.
-    this.model.busy = true;
-    this.cancelGeneration();
-    this.model.error = null;
-    this.publish();
-    let runtime: SourceControlBackend | null = null;
-
-    try {
-      // Publish busy contexts before a native Git command opens a quick picker.
-      await publishSourceControlContexts(this.model);
-      runtime = await this.initialize();
-      if (this.disposed) return;
-      requireLiveRepository(runtime, this.model, id);
-      const current = runtime;
-
-      await vscode.window.withProgress(
-        { location: vscode.ProgressLocation.SourceControl, title },
-        () => action(current),
-      );
-    } finally {
-      if (!this.disposed) {
-        try {
-          await runtime?.status(id);
-        } catch {
-          // A repository can close while its action or save dialog is open.
-        }
-
-        await this.refresh();
-      }
-
-      // Native menus must be enabled before the webview exposes editable rows.
-      await clearSourceControlBusy();
-      this.model.busy = false;
-      this.publish();
-    }
+    await runSourceControlWrite({
+      id,
+      title,
+      action,
+      model: this.model,
+      reads: this.readProgress,
+      beforeWrite: () => {
+        this.amendGeneration++;
+        this.refreshGeneration++;
+        this.cancelGeneration();
+      },
+      initialize: () => this.initialize(),
+      closed: () => this.disposed,
+      publish: () => this.publish(),
+      refresh: () => this.refresh(),
+    });
   }
 
   private cancelGeneration(): void {

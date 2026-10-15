@@ -17,33 +17,3 @@
   overflow: hidden;
   position: relative;
 }
-.history[aria-busy='true']::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  height: 2px;
-  width: 33%;
-  z-index: 1;
-  pointer-events: none;
-  background: var(--vscode-progressBar-background, #0078d4);
-  animation: loading 1.2s ease-in-out infinite;
-}
-@keyframes loading {
-  from {
-    transform: translateX(-100%);
-  }
-  to {
-    transform: translateX(310%);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .history[aria-busy='true']::before {
-    animation: none;
-    left: 33%;
-  }
-}
-:global(.vscode-reduce-motion) .history[aria-busy='true']::before {
-  animation: none;
-  left: 33%;
-}

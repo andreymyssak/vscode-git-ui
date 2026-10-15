@@ -91,10 +91,12 @@ export async function run(): Promise<string[]> {
     await page.getByRole('button', { name: 'Rollback', exact: true }).click();
     await unstageNew;
     assert.equal(await fixture.runGit(['ls-files', '--', 'src/new.txt']), '');
-    const added = frame.getByRole('treeitem', {
-      name: 'src/new.txt',
-      exact: true,
-    });
+    const added = frame
+      .getByRole('tree', { name: 'Changes', exact: true })
+      .getByRole('treeitem', {
+        name: 'src/new.txt',
+        exact: true,
+      });
 
     await expect(added).toBeVisible();
     const row = await added.evaluate((node) => ({

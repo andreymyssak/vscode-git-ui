@@ -29,7 +29,7 @@ export function HistoryPane({
 }) {
   const [settled, setSettled] = useState(data);
   const retained =
-    data.loading &&
+    (data.loading || data.retainHistory) &&
     !data.commits.length &&
     settled.commits.length > 0 &&
     settled.repository?.id === data.repository?.id;
@@ -38,7 +38,10 @@ export function HistoryPane({
   const displayed = retained
     ? {
         ...settled,
-        loading: true,
+        refs: data.refs,
+        repository: data.repository,
+        operation: data.operation,
+        loading: data.loading,
         nextCursor: null,
         showHash: data.showHash,
         presentation: data.presentation,
@@ -51,8 +54,8 @@ export function HistoryPane({
   return (
     <HistoryContent
       data={displayed}
-      inactive={retained}
-      onIntent={retained ? ignoreIntent : onIntent}
+      inactive={retained || data.retainHistory === true}
+      onIntent={retained || data.retainHistory ? ignoreIntent : onIntent}
     />
   );
 }

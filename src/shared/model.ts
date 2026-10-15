@@ -132,6 +132,11 @@ export type GitAction =
       expectedSha: string;
       expectedUpstream: string;
     }
+  | {
+      kind: 'continue-update';
+      method: 'checkout' | 'merge' | 'rebase';
+      continuation: BranchUpdateContinuation;
+    }
   | { kind: 'fetch-all' }
   | {
       kind: 'edit-commit-message';
@@ -175,7 +180,20 @@ export type OperationResult =
       message: string;
       recovery?: 'source-control';
       branchRestore?: BranchRestoreHandle;
+      updateDecision?: BranchUpdateDecision;
     };
+export interface BranchUpdateContinuation {
+  target: Extract<GitAction, { kind: 'update-branch' }>;
+  checkout: { ref: string | null; sha: string };
+  fetchedSha: string;
+  incomingCount: number;
+  remote: string;
+  remoteRef: string;
+}
+export interface BranchUpdateDecision {
+  kind: 'checkout' | 'integrate';
+  continuation: BranchUpdateContinuation;
+}
 export interface BranchDeletionTarget {
   refId: string;
   expectedSha: string;

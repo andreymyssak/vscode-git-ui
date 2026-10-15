@@ -1,6 +1,11 @@
 import { normalizeHistoryFilters } from '@contracts/history-filters';
 import { readHistoryPresentation } from '@contracts/history-presentation';
-import type { PanelBody, Result, SetupState } from '@contracts/messages';
+import type {
+  ActiveLogOperation,
+  PanelBody,
+  Result,
+  SetupState,
+} from '@contracts/messages';
 import type {
   CommitRecord,
   FileChange,
@@ -20,7 +25,10 @@ export interface ViewState {
   repository: RepositoryInfo | null;
   repositories: RepositoryInfo[];
   refs: Reference[];
+  referencesReady: boolean;
   worktrees: WorktreeInfo[];
+  worktreesLoading: boolean;
+  worktreesError: string | null;
   commits: CommitRecord[];
   scope: Scope;
   selectedRefId: string | null;
@@ -35,7 +43,9 @@ export interface ViewState {
   generation: number;
   nextCursor: string | null;
   loading: boolean;
+  operation: ActiveLogOperation | null;
   restoring: boolean;
+  retainHistory: boolean;
   error: string | null;
   setup: SetupState;
   text: string;
@@ -68,7 +78,10 @@ export function initialView(): ViewState {
     repository: null,
     repositories: [],
     refs: [],
+    referencesReady: false,
     worktrees: [],
+    worktreesLoading: false,
+    worktreesError: null,
     commits: [],
     scope: { kind: 'head' },
     selectedRefId: null,
@@ -83,7 +96,9 @@ export function initialView(): ViewState {
     generation: 0,
     nextCursor: null,
     loading: false,
+    operation: null,
     restoring: false,
+    retainHistory: false,
     error: null,
     setup: 'ready',
     text: '',
@@ -112,7 +127,10 @@ export function reduceView(state: ViewState, event: ViewEvent): ViewState {
         scope: event.scope,
         generation: state.generation + 1,
         loading: true,
+        worktreesLoading: false,
+        referencesReady: false,
         restoring: false,
+        retainHistory: false,
         error: null,
         commits: [],
         selectedSha: null,
@@ -187,6 +205,23 @@ export function reduceView(state: ViewState, event: ViewEvent): ViewState {
         return { ...state, setup: body.state, repositories: body.repositories };
       }
 
+      // A write outlives the history queries the user can start while it runs.
+      if (body.kind === 'operation-progress') {
+        if (event.message.repositoryId !== state.repository?.id) return state;
+        if (body.operation === null)
+          return state.operation?.requestId === event.message.requestId
+            ? { ...state, operation: null }
+            : state;
+
+        return {
+          ...state,
+          operation: {
+            requestId: event.message.requestId,
+            ...body.operation,
+          },
+        };
+      }
+
       if (generation < state.generation) return state;
       if (
         state.repository &&
@@ -220,7 +255,14 @@ export function reduceView(state: ViewState, event: ViewEvent): ViewState {
             filters: normalizeHistoryFilters(body.filters),
             generation,
             loading: true,
+            worktreesLoading:
+              generation === state.generation &&
+              body.repository.id === state.repository?.id
+                ? state.worktreesLoading
+                : false,
+            referencesReady: false,
             restoring: body.preserve === true,
+            retainHistory: false,
             error: null,
             commits: [],
             selectedSha: preserveSelection ? state.selectedSha : null,
@@ -263,6 +305,7 @@ export function reduceView(state: ViewState, event: ViewEvent): ViewState {
             setup: 'ready',
             repository: body.repository,
             refs: body.page.refs,
+            referencesReady: true,
             selectedRefId:
               state.selectedRefId &&
               body.page.refs.some((ref) => ref.id === state.selectedRefId)
@@ -300,6 +343,7 @@ export function reduceView(state: ViewState, event: ViewEvent): ViewState {
             generation,
             loading: body.restoring === true,
             restoring: body.restoring === true,
+            retainHistory: false,
             error: null,
           };
         }
@@ -308,13 +352,31 @@ export function reduceView(state: ViewState, event: ViewEvent): ViewState {
           return generation === state.generation && state.restoring
             ? { ...state, loading: false, restoring: false }
             : state;
+        case 'history-interrupted':
+          return generation === state.generation
+            ? {
+                ...state,
+                loading: false,
+                restoring: false,
+                retainHistory: true,
+                referencesReady: false,
+                nextCursor: null,
+              }
+            : state;
         case 'focus-log':
           return { ...state, activeView: 'log' };
         case 'notice':
           return state;
         case 'references':
-          return generation === state.generation
-            ? { ...state, refs: body.references }
+          return generation === state.generation &&
+            (!body.repository ||
+              body.repository.id === event.message.repositoryId)
+            ? {
+                ...state,
+                refs: body.references,
+                referencesReady: true,
+                repository: body.repository ?? state.repository,
+              }
             : state;
         case 'selection': {
           const selectedSha = state.commits.some(
@@ -342,7 +404,15 @@ export function reduceView(state: ViewState, event: ViewEvent): ViewState {
         }
 
         case 'worktrees':
-          return { ...state, worktrees: body.worktrees };
+          return { ...state, worktrees: body.worktrees, worktreesError: null };
+        case 'worktrees-loading':
+          return {
+            ...state,
+            worktreesLoading: body.loading,
+            ...(body.loading ? { worktreesError: null } : {}),
+          };
+        case 'worktrees-error':
+          return { ...state, worktreesError: body.message };
         case 'reveal':
           if (!state.commits.some((commit) => commit.sha === body.sha))
             return state;

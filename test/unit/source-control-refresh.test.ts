@@ -109,7 +109,7 @@ test('native repository actions reject competing writes while their picker is op
   expect(service.model.busy).toBe(false);
 });
 
-test('repository writes remain busy until a superseding status refresh completes', async (t) => {
+test('repository writes release editing while a superseding status refresh owns read activity', async (t) => {
   function get<T>(key: string): T | undefined;
   function get<T>(key: string, defaultValue: T): T;
   function get<T>(...args: [string, T?]): T | undefined {
@@ -152,7 +152,8 @@ test('repository writes remain busy until a superseding status refresh completes
   old.resolve([]);
   // Flush the resolved read and command completion through the event loop.
   await delay(0);
-  expect(service.model.busy).toBe(true);
+  expect(service.model.busy).toBe(false);
+  expect(service.model.activity?.title).toBe('Refreshing changes…');
   latest.resolve([
     {
       path: 'new.txt',
@@ -165,8 +166,58 @@ test('repository writes remain busy until a superseding status refresh completes
   ]);
   await Promise.all([action, refresh]);
   expect(service.model.busy).toBe(false);
+  expect(service.model.activity).toBeNull();
   expect(service.model.requireRepository('file:///repo').changes).toEqual({
     kind: 'ready',
     items: [expect.objectContaining({ path: 'new.txt', status: 'untracked' })],
   });
+});
+
+test('Changes activity waits for the current refresh instead of combining reads from different generations', async (t) => {
+  function get<T>(key: string): T | undefined;
+  function get<T>(key: string, defaultValue: T): T;
+  function get<T>(...args: [string, T?]): T | undefined {
+    return args[1];
+  }
+
+  const service = new SourceControlService(
+    { get, keys: () => [], update: async () => {} },
+    () => {},
+  );
+  const oldOperation = deferred<[]>();
+  const latestChanges = deferred<WorkingFile[]>();
+
+  await service.refresh();
+  const before = host.workingChanges.mock.calls.length;
+  const operations = vi
+    .spyOn(host.backend, 'operation')
+    .mockReturnValueOnce(oldOperation.promise)
+    .mockResolvedValue([]);
+
+  host.workingChanges
+    .mockResolvedValueOnce([])
+    .mockReturnValueOnce(latestChanges.promise);
+  const action = service.handle({
+    kind: 'fetch',
+    repositoryId: 'file:///repo',
+  });
+  const pending = [action];
+
+  t.onTestFinished(async () => {
+    oldOperation.resolve([]);
+    latestChanges.resolve([]);
+    await Promise.allSettled(pending);
+    operations.mockRestore();
+    service.dispose();
+  });
+  await vi.waitFor(() =>
+    expect(host.workingChanges).toHaveBeenCalledTimes(before + 1),
+  );
+  expect(service.model.activity?.title).toBe('Refreshing changes…');
+  pending.push(service.refresh());
+  await vi.waitFor(() => expect(operations).toHaveBeenCalledTimes(2));
+  await delay(0);
+  expect(service.model.activity?.title).toBe('Refreshing changes…');
+  latestChanges.resolve([]);
+  await vi.waitFor(() => expect(service.model.activity).toBeNull());
 });

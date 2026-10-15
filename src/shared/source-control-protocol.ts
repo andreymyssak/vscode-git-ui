@@ -296,6 +296,11 @@ function state(value: unknown): value is SourceControlState {
     nullableText(value.repositoryId) &&
     tab(value.tab) &&
     typeof value.busy === 'boolean' &&
+    (value.activity === undefined ||
+      value.activity === null ||
+      (isRecord(value.activity) &&
+        identity(value.activity.repositoryId) &&
+        identity(value.activity.title))) &&
     typeof value.generating === 'boolean' &&
     (value.reveal === null ||
       (isRecord(value.reveal) &&

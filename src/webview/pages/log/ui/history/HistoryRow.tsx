@@ -83,6 +83,7 @@ export function HistoryRow({
     references ?? data.refs.filter((ref) => ref.sha === commit.sha);
   const context = {
     webviewSection: 'commit',
+    logOperationBusy: false,
     repositoryId: data.repository?.id ?? '',
     generation: data.generation,
     commitSha: commit.sha,

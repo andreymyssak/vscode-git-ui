@@ -21,6 +21,27 @@
   font-size: 12px;
   transform: rotate(45deg);
 }
+.spinner {
+  display: inline-flex;
+  color: var(--vscode-progressBar-background, #0078d4);
+}
+.spinner :global(.codicon) {
+  transform: none;
+  animation: spin 1.2s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .spinner :global(.codicon) {
+    animation: none;
+  }
+}
+:global(.vscode-reduce-motion) .spinner :global(.codicon) {
+  animation: none;
+}
 .tooltip {
   z-index: 1100;
   max-width: min(320px, calc(100vw - 16px));

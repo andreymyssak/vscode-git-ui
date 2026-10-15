@@ -1,17 +1,30 @@
 import { realpath } from 'node:fs/promises';
 
 import { extensionIdentity } from '../../shared/extension-identity';
+import type { BranchUpdateDecision, GitAction } from '../../shared/model';
 import type { GitRepository } from './api';
 import type { BranchUpdate, UpdateCheckout } from './branch-update-target';
 import { updateCheckout, validateUpdateTarget } from './branch-update-target';
 import type { GitCli } from './cli';
+import { readWithCancellation } from './read-cancellation';
 
 export interface UpdateBranchDialogs {
-  updateDiverged(target: {
+  updateDiverged?(target: {
     branch: string;
     upstream: string;
     currentBranch: string | null;
   }): Promise<'merge' | 'rebase' | 'checkout' | null>;
+}
+
+export class BranchUpdateBlocked extends Error {
+  constructor(
+    readonly decision: BranchUpdateDecision,
+    branch: string,
+  ) {
+    super(
+      `"${branch}" has local commits and incoming changes. ${decision.kind === 'checkout' ? 'Check it out to update it.' : 'Choose Rebase or Merge to update it.'}`,
+    );
+  }
 }
 
 export interface BranchUpdateResult {
@@ -125,6 +138,25 @@ export async function updateBranch(
   }
 
   const currentBranch = original.ref?.slice('refs/heads/'.length) ?? null;
+
+  const continuation = {
+    target: { ...action },
+    checkout: original,
+    fetchedSha: fetched,
+    incomingCount: behind,
+    remote: target.remote,
+    remoteRef: target.remoteRef,
+  };
+
+  // Report the completed Update before offering a separate optional action.
+  if (!dialogs.updateDiverged)
+    throw new BranchUpdateBlocked(
+      {
+        kind: original.ref !== action.refId ? 'checkout' : 'integrate',
+        continuation,
+      },
+      branch,
+    );
   const choice = await dialogs.updateDiverged({
     branch,
     upstream: action.expectedUpstream.replace(/^refs\/(?:remotes|heads)\//, ''),
@@ -132,6 +164,74 @@ export async function updateBranch(
   });
 
   if (choice === null) return null;
+
+  return continueBranchUpdate(
+    repo,
+    cli,
+    id,
+    {
+      kind: 'continue-update',
+      method: choice,
+      continuation,
+    },
+    signal,
+    onWrite,
+  );
+}
+
+/** Resume only the captured Update decision; never fetch or adopt a newer target. */
+export async function continueBranchUpdate(
+  repo: Pick<
+    GitRepository,
+    'rootUri' | 'getCommit' | 'checkout' | 'merge' | 'rebase'
+  >,
+  cli: Pick<GitCli, 'run'>,
+  id: string,
+  request: Extract<GitAction, { kind: 'continue-update' }>,
+  signal?: AbortSignal,
+  onWrite?: (backend: 'api' | 'cli') => void,
+): Promise<BranchUpdateResult> {
+  const {
+    target: action,
+    checkout: original,
+    fetchedSha: fetched,
+    remote,
+    remoteRef,
+  } = request.continuation;
+  const choice = request.method;
+  const branch = action.refId.slice('refs/heads/'.length);
+  const count = request.continuation.incomingCount;
+  const incoming = `${count} incoming commit${count === 1 ? '' : 's'}`;
+  const root = await realpath(repo.rootUri.fsPath);
+  const finalCheck = async (
+    checkout = original,
+    tip = action.expectedSha,
+    cancellable = true,
+    requireClean = true,
+  ) => {
+    const currentUpstream = await readWithCancellation(
+      () => repo.getCommit(action.expectedUpstream),
+      cancellable ? signal : undefined,
+    );
+
+    if (currentUpstream.hash !== fetched)
+      throw new Error('The tracked upstream changed. Refresh before updating.');
+    const current = await validateUpdateTarget(
+      cli,
+      id,
+      root,
+      action,
+      checkout,
+      tip,
+      cancellable ? signal : undefined,
+      requireClean,
+    );
+
+    if (current.remote !== remote || current.remoteRef !== remoteRef)
+      throw new Error('The tracked upstream changed. Refresh before updating.');
+    if (cancellable) signal?.throwIfAborted();
+  };
+
   if (original.ref !== action.refId) {
     if (choice !== 'checkout')
       throw new Error('Check out this branch before choosing Merge or Rebase.');

@@ -245,11 +245,25 @@ export async function run() {
 
       const updateNotification = workbench.getByRole('dialog', {
         name: current
-          ? 'Error: "main" has local commits and incoming changes. Choose Rebase or Merge.'
+          ? 'Error: "main" has local commits and incoming changes. Choose Rebase or Merge to update it.'
           : 'Error: "topic" has local commits and incoming changes. Check it out to update it.',
       });
 
       await expect(updateNotification).toBeVisible({ timeout: 30000 });
+      await expect
+        .poll(() => completed, {
+          message:
+            'Update must finish while its optional recovery notification remains open',
+        })
+        .toBe(true);
+      await expect(branch.locator('.codicon-loading')).toHaveCount(0);
+      await expect(frame.locator('#history-pane')).toHaveAttribute(
+        'aria-busy',
+        'false',
+      );
+      await expect(
+        workbench.locator('.quick-input-widget:visible'),
+      ).toHaveCount(0);
       await expect(workbench.locator('.monaco-dialog-box:visible')).toHaveCount(
         0,
       );
@@ -325,7 +339,7 @@ export async function run() {
       if (current)
         await expect(
           workbench.getByText(
-            '"main" has local commits and incoming changes. Choose Rebase or Merge.',
+            '"main" has local commits and incoming changes. Choose Rebase or Merge to update it.',
             { exact: true },
           ),
         )
@@ -348,9 +362,7 @@ export async function run() {
             );
             throw error;
           });
-      for (const action of current
-        ? ['Rebase', 'Merge', 'Cancel']
-        : ['Checkout Branch'])
+      for (const action of current ? ['Rebase', 'Merge'] : ['Checkout Branch'])
         await expect(
           workbench.getByRole('button', { name: action, exact: true }),
         ).toBeVisible();
@@ -361,19 +373,14 @@ export async function run() {
           ).toHaveCount(0);
       }
 
-      if (choice === 'Cancel')
+      if (cancelled)
         await updateNotification
           .getByRole('button', { name: /Clear Notification/ })
           .evaluate((node) => (node as HTMLElement).click());
       else
         await workbench
           .getByRole('button', {
-            name:
-              choice === 'Checkout'
-                ? 'Checkout Branch'
-                : choice === 'Current Cancel'
-                  ? 'Cancel'
-                  : choice,
+            name: choice === 'Checkout' ? 'Checkout Branch' : choice,
             exact: true,
           })
           .evaluate((node) => (node as HTMLElement).click());

@@ -3,25 +3,6 @@ import * as vscode from 'vscode';
 import type { OperationDialogs } from '../git/operations';
 
 export const operationDialogs: OperationDialogs = {
-  async updateDiverged({ branch, currentBranch }) {
-    if (currentBranch !== branch) {
-      const choice = await vscode.window.showErrorMessage(
-        `"${branch}" has local commits and incoming changes. Check it out to update it.`,
-        'Checkout Branch',
-      );
-
-      return choice === 'Checkout Branch' ? 'checkout' : null;
-    }
-
-    const choice = await vscode.window.showErrorMessage(
-      `"${branch}" has local commits and incoming changes. Choose Rebase or Merge.`,
-      'Rebase',
-      'Merge',
-      'Cancel',
-    );
-
-    return choice === 'Rebase' ? 'rebase' : choice === 'Merge' ? 'merge' : null;
-  },
   async remoteCheckout(ref, locals) {
     const choices = locals.map((local) => ({
       label: local.name,

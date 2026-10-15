@@ -5,7 +5,10 @@ import { join } from 'node:path';
 import { afterAll, assert, beforeAll, expect, test } from 'vitest';
 
 import type { GitApiAccess, GitRepository } from '../../src/extension/git/api';
-import { updateBranch } from '../../src/extension/git/branch-update';
+import {
+  continueBranchUpdate,
+  updateBranch,
+} from '../../src/extension/git/branch-update';
 import type { GitCli } from '../../src/extension/git/cli';
 import { createOperations } from '../../src/extension/git/operations';
 
@@ -102,6 +105,9 @@ function updateFixture() {
     head: oldTip,
     tip: oldTip,
     upstream: 'refs/remotes/origin/topic',
+    remote: 'origin',
+    remoteRef: 'refs/heads/topic',
+    upstreamTip: fetchedTip,
     counts: '0\t1',
     dirty: false,
     fetches: 0,
@@ -117,7 +123,7 @@ function updateFixture() {
       state.fetches++;
     },
     getCommit: async (ref: string) => ({
-      hash: ref === 'HEAD' ? state.head : fetchedTip,
+      hash: ref === 'HEAD' ? state.head : state.upstreamTip,
       message: '',
       parents: [],
     }),
@@ -154,7 +160,7 @@ function updateFixture() {
             ? state.head
             : oldTip;
       if (args[0] === 'for-each-ref')
-        return `refs/heads/topic\0${state.tip}\0${state.upstream}\0origin\0refs/heads/topic\0${state.symbolic}\n`;
+        return `refs/heads/topic\0${state.tip}\0${state.upstream}\0${state.remote}\0${state.remoteRef}\0${state.symbolic}\n`;
       if (args[0] === 'rev-list') return state.counts;
       if (args[0] === 'worktree')
         return `worktree ${join(root, 'other')}\0${state.detachedWorktree ? 'detached' : `branch ${state.occupied ? 'refs/heads/topic' : 'refs/heads/main'}`}\0\0`;
@@ -172,6 +178,140 @@ function updateFixture() {
 
   return { state, repo, cli, action };
 }
+
+for (const method of ['checkout', 'merge', 'rebase'] as const)
+  for (const change of [
+    'checkout',
+    'head',
+    'tip',
+    'upstream',
+    'remote',
+    'remoteRef',
+    'upstreamTip',
+    'dirty',
+    'occupied',
+    'operation',
+  ] as const)
+    test(`deferred Update ${method} revalidates ${change} before writing`, async (t) => {
+      const f = updateFixture();
+
+      if (method !== 'checkout') f.state.checkout = 'refs/heads/topic';
+      const action = {
+        kind: 'continue-update' as const,
+        method,
+        continuation: {
+          target: { ...f.action },
+          checkout: { ref: f.state.checkout, sha: f.state.head },
+          fetchedSha: fetchedTip,
+          incomingCount: 2,
+          remote: 'origin',
+          remoteRef: 'refs/heads/topic',
+        },
+      };
+
+      if (change === 'checkout') f.state.checkout = 'refs/heads/elsewhere';
+      if (change === 'head') f.state.head = resultTip;
+      if (change === 'tip') f.state.tip = resultTip;
+      if (change === 'upstream') f.state.upstream = 'refs/remotes/other/topic';
+      if (change === 'remote') f.state.remote = 'other';
+      if (change === 'remoteRef') f.state.remoteRef = 'refs/heads/other';
+      if (change === 'upstreamTip') f.state.upstreamTip = resultTip;
+      if (change === 'dirty') f.state.dirty = true;
+      if (change === 'occupied') f.state.occupied = true;
+      if (change === 'operation') {
+        const path = join(root, 'MERGE_HEAD');
+
+        await writeFile(path, oldTip);
+        t.onTestFinished(() => rm(path, { force: true }));
+      }
+
+      await expect(
+        continueBranchUpdate(f.repo, f.cli, 'one', action),
+      ).rejects.toThrow();
+      expect(f.state.writes).toEqual([]);
+      expect(f.state.fetches).toBe(0);
+    });
+
+for (const method of ['merge', 'rebase'] as const)
+  test(`deferred Update ${method} rejects a checkout change during its last upstream read`, async () => {
+    const f = updateFixture();
+    let reads = 0;
+
+    f.state.checkout = 'refs/heads/topic';
+    f.repo.getCommit = async () => {
+      if (++reads === 2) f.state.checkout = 'refs/heads/elsewhere';
+
+      return { hash: fetchedTip, message: '', parents: [] };
+    };
+
+    await expect(
+      continueBranchUpdate(f.repo, f.cli, 'one', {
+        kind: 'continue-update',
+        method,
+        continuation: {
+          target: { ...f.action },
+          checkout: { ref: 'refs/heads/topic', sha: oldTip },
+          fetchedSha: fetchedTip,
+          incomingCount: 2,
+          remote: 'origin',
+          remoteRef: 'refs/heads/topic',
+        },
+      }),
+    ).rejects.toThrow(/changed/);
+    expect(reads).toBe(2);
+    expect(f.state.writes).toEqual([]);
+  });
+
+test('deferred Update checkout switches only to the captured branch without fetching again', async () => {
+  const f = updateFixture();
+  const result = await continueBranchUpdate(f.repo, f.cli, 'one', {
+    kind: 'continue-update',
+    method: 'checkout',
+    continuation: {
+      target: { ...f.action },
+      checkout: { ref: f.state.checkout, sha: f.state.head },
+      fetchedSha: fetchedTip,
+      incomingCount: 2,
+      remote: 'origin',
+      remoteRef: 'refs/heads/topic',
+    },
+  });
+
+  expect(result.message).toBe(
+    'Checked out "topic". Choose Update to bring it up to date.',
+  );
+  expect(f.state.writes).toEqual(['checkout topic']);
+  expect(f.state.checkout).toBe('refs/heads/topic');
+  expect(f.state.fetches).toBe(0);
+});
+
+for (const current of [false, true])
+  test(`divergent Update finishes with a captured recovery action when current=${current}`, async () => {
+    const f = updateFixture();
+
+    f.state.counts = '1\t2';
+    if (current) f.state.checkout = 'refs/heads/topic';
+    await expect(
+      updateBranch(f.repo, f.cli, 'one', f.action, {}),
+    ).rejects.toMatchObject({
+      message: current
+        ? '"topic" has local commits and incoming changes. Choose Rebase or Merge to update it.'
+        : '"topic" has local commits and incoming changes. Check it out to update it.',
+      decision: {
+        kind: current ? 'integrate' : 'checkout',
+        continuation: {
+          target: f.action,
+          checkout: { ref: f.state.checkout, sha: oldTip },
+          fetchedSha: fetchedTip,
+          incomingCount: 2,
+          remote: 'origin',
+          remoteRef: 'refs/heads/topic',
+        },
+      },
+    });
+    expect(f.state.writes).toEqual([]);
+    expect(f.state.fetches).toBe(1);
+  });
 
 test('Update fast-forwards another tracked branch without changing checkout', async () => {
   const f = updateFixture();

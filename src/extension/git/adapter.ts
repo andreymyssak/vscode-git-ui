@@ -49,6 +49,7 @@ export interface GitAdapter {
     repositoryId: string,
     input: HistoryInput,
     signal?: AbortSignal,
+    onReferences?: (references: Reference[]) => Promise<void>,
   ): Promise<HistoryPage>;
   resolve(repositoryId: string, input: string): Promise<ResolveResult>;
   changes(
@@ -75,6 +76,7 @@ export interface GitAdapter {
     repositoryId: string,
     action: GitAction,
     context?: AbortSignal,
+    progress?: (phase: 'waiting' | 'running') => Promise<void>,
   ): Promise<OperationResult>;
   subscribe(repositoryId: string, changed: () => void): Disposable;
   subscribeRepositories(changed: () => void): Disposable;
@@ -125,15 +127,15 @@ export async function createGitAdapter(
     authors: (id, signal) => history.authors(id, signal),
     repositories: () => access.repositories(),
     references: (id) => readReferences(access, id, cli),
-    history: async (id, input, signal) => {
+    history: async (id, input, signal, onReferences) => {
       await observations.settled(id);
 
-      return history.page(id, input, signal);
+      return history.page(id, input, signal, onReferences);
     },
     resolve: (id, input) => resolveCommit(access, cli, id, input),
     changes: createChangeQueries(access, cli),
     worktrees: (id) => readWorktrees(access, cli, id),
-    operate: async (id, action, context) => {
+    operate: async (id, action, context, progress) => {
       if (
         action.kind === 'squash-commits' ||
         action.kind === 'edit-commit-message'
@@ -143,12 +145,8 @@ export async function createGitAdapter(
           return { kind: 'error', backend: null, message: recoveryFailure };
       }
 
-      const result = await operate(id, action, context);
-
-      // Deliver the write's queued history events before the panel reloads it.
-      await observations.settled(id);
-
-      return result;
+      // History reads own metadata settling; a finished write releases its lane.
+      return operate(id, action, context, progress);
     },
     prepareMessageEdit: async (id, sha, branch, headSha) => {
       if (sha !== headSha) {

@@ -74,7 +74,7 @@ export class PanelNotifications {
 
     await this.failed(id, source, message);
     await this.options.send(
-      { kind: 'error', message },
+      { kind: source === 'worktrees' ? 'worktrees-error' : 'error', message },
       requestId,
       id,
       generation,

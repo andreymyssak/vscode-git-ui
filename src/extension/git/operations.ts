@@ -10,7 +10,11 @@ import { deleteBranch, deleteBranches } from './branch-deletion';
 import { integrateBranch } from './branch-integration';
 import { BranchRestores } from './branch-restore';
 import type { UpdateBranchDialogs } from './branch-update';
-import { updateBranch } from './branch-update';
+import {
+  BranchUpdateBlocked,
+  continueBranchUpdate,
+  updateBranch,
+} from './branch-update';
 import { cherryPickCommits } from './cherry-pick';
 import type { GitCli } from './cli';
 import { dropCommits } from './drop-commits';
@@ -50,33 +54,48 @@ export function createOperations(
   id: string,
   action: GitAction,
   context?: AbortSignal,
+  progress?: (phase: 'waiting' | 'running') => Promise<void>,
 ) => Promise<OperationResult> {
   const restores = new BranchRestores(access, cli);
 
-  return (id, requested, context) => {
+  return async (id, requested, context, progress) => {
     const action =
-      requested.kind === 'cherry-pick-files' ||
-      requested.kind === 'revert-files'
-        ? { ...requested, files: requested.files.map((file) => ({ ...file })) }
-        : requested.kind === 'delete-worktrees'
+      requested.kind === 'continue-update'
+        ? {
+            ...requested,
+            continuation: {
+              ...requested.continuation,
+              target: { ...requested.continuation.target },
+              checkout: { ...requested.continuation.checkout },
+            },
+          }
+        : requested.kind === 'cherry-pick-files' ||
+            requested.kind === 'revert-files'
           ? {
               ...requested,
-              worktrees: requested.worktrees.map((item) => ({ ...item })),
+              files: requested.files.map((file) => ({ ...file })),
             }
-          : requested.kind === 'delete-branches'
+          : requested.kind === 'delete-worktrees'
             ? {
                 ...requested,
-                branches: requested.branches.map((branch) => ({ ...branch })),
+                worktrees: requested.worktrees.map((item) => ({ ...item })),
               }
-            : 'target' in requested
+            : requested.kind === 'delete-branches'
               ? {
                   ...requested,
-                  target: {
-                    ...requested.target,
-                    shas: [...requested.target.shas],
-                  },
+                  branches: requested.branches.map((branch) => ({ ...branch })),
                 }
-              : requested;
+              : 'target' in requested
+                ? {
+                    ...requested,
+                    target: {
+                      ...requested.target,
+                      shas: [...requested.target.shas],
+                    },
+                  }
+                : requested;
+
+    await progress?.('waiting');
 
     return withRepositoryOperation<OperationResult>(
       cli,
@@ -238,6 +257,23 @@ export function createOperations(
               );
               message = 'Commit message updated.';
               break;
+
+            case 'continue-update': {
+              const result = await continueBranchUpdate(
+                repo,
+                cli,
+                id,
+                action,
+                context,
+                (chosen) => {
+                  backend = chosen;
+                },
+              );
+
+              backend = result.backend;
+              message = result.message;
+              break;
+            }
 
             case 'update-branch': {
               backend = 'cli';
@@ -492,6 +528,9 @@ export function createOperations(
           return {
             kind: conflict ? 'conflict' : 'error',
             backend,
+            ...(error instanceof BranchUpdateBlocked
+              ? { updateDecision: error.decision }
+              : {}),
             ...(conflict ||
             unfinished ||
             error instanceof GitRequiresSourceControl ||
@@ -533,6 +572,7 @@ export function createOperations(
         }
       },
       context,
+      () => progress?.('running'),
     ).catch((error: unknown): OperationResult =>
       context && isReadCancellation(error, context)
         ? { kind: 'cancelled', backend: null }

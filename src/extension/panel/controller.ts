@@ -10,13 +10,9 @@ import type {
 } from '../../shared/messages';
 import type { HistoryInput, ScrollAnchor, Selection } from '../../shared/model';
 import type { GitAdapter } from '../git/adapter';
+import { runPanelAction } from './action-runner';
 import type { ActionPrompts } from './actions';
-import {
-  isHistoryRewrite,
-  offerBranchRestore,
-  PanelActions,
-  publishOperationResult,
-} from './actions';
+import { PanelActions } from './actions';
 import { type AuthorPicker, chooseHistoryAuthors } from './authors';
 import type { CommitJump } from './commit-jump';
 import { CommitNavigation, unavailableNavigation } from './commit-navigation';
@@ -25,8 +21,16 @@ import { PanelHistory } from './history';
 import type { NavigationPrompts } from './navigate';
 import { PanelNavigator } from './navigate';
 import { comparisonSource, PanelNotifications } from './notifications';
+import { describeLogAction } from './operation-description';
+import { PanelOperations } from './operation-progress';
 import { parseRequest } from './protocol';
-import { type FileHandle, getRepository, QuerySession } from './queries';
+import {
+  type FileHandle,
+  getRepository,
+  QuerySession,
+  waitForQuery,
+} from './queries';
+import { queuedActionCurrent } from './queued-action';
 import { DeferredRepositoryRefresh } from './repository-refresh';
 import { reconcileSelection } from './selection';
 import {
@@ -34,6 +38,7 @@ import {
   PanelWorktrees,
   type WorktreeOpening,
 } from './worktrees';
+import { PanelWriteOwnership } from './write-ownership';
 
 export interface ControllerOptions
   extends ActionPrompts, NavigationPrompts, WorktreeOpening {
@@ -69,9 +74,22 @@ export class PanelController {
 
   private subscription: Disposable | null = null;
   private closed = false;
+  private repositoryEpoch = 0;
   private readonly commitNavigation: CommitNavigation | null;
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly repositoryRefresh = new DeferredRepositoryRefresh();
+  private readonly operations = new PanelOperations(
+    ({ body, requestId, repositoryId }) =>
+      this.send(body, requestId, repositoryId),
+  );
+
+  private readonly writes = new PanelWriteOwnership(
+    this.session,
+    this.operations,
+    () => this.closed,
+    (body, id, generation) => this.send(body, 'write-start', id, generation),
+  );
+
   private refreshRestore: {
     repositoryId: string;
     selection: Selection | null;
@@ -203,6 +221,7 @@ export class PanelController {
         generation,
         body,
       });
+      if (body.kind === 'loading') await this.operations.publish(id);
     }
   }
 
@@ -326,6 +345,11 @@ export class PanelController {
       this.repository(request.repositoryId);
       if (request.repositoryId !== this.session.repositoryId)
         throw new Error('This request belongs to another repository.');
+      if (
+        body.kind === 'action' &&
+        this.operations.has(request.repositoryId, JSON.stringify(body.action))
+      )
+        return;
       if (body.kind === 'history') {
         const desired = this.session.selection;
         const anchor = this.session.anchor;
@@ -486,6 +510,7 @@ export class PanelController {
     if (cancelNavigation) this.commitNavigation?.cancel();
     if (!current() || !(await this.setup()) || !current()) return;
     this.repository(id);
+    this.repositoryEpoch++;
     this.refreshRestore = null;
     if (this.session.repositoryId)
       this.options.adapter!.invalidateHistory(this.session.repositoryId);
@@ -494,7 +519,14 @@ export class PanelController {
     this.input = { scope: { kind: 'head' }, text: '', cursor: null };
     const changed = () => {
       if (this.closed || this.session.repositoryId !== id) return;
-      if (this.repositoryRefresh.defer(id, changed)) return;
+      if (this.repositoryRefresh.defer(id, changed)) {
+        if (this.operations.isRefreshing(id)) this.session.abort.abort();
+
+        return;
+      }
+
+      // Invalidate immediately; a slow read must not publish during the debounce.
+      this.session.abort.abort();
       if (this.refreshTimer) clearTimeout(this.refreshTimer);
       this.refreshTimer = setTimeout(() => {
         this.refreshTimer = null;
@@ -525,92 +557,53 @@ export class PanelController {
     action: UserAction,
     request: PanelRequest,
   ): Promise<void> {
-    const rangeRevision = this.session.rangeRevision;
-    const rewritesHistory = isHistoryRewrite(action);
-    let pause =
-      action.kind === 'cherry-pick-files' || action.kind === 'revert-files'
-        ? this.repositoryRefresh.pause(request.repositoryId)
-        : null;
+    const epoch = this.repositoryEpoch;
+    const current = queuedActionCurrent(action, this.session);
+    const prepared =
+      action.kind === 'update-branch'
+        ? this.actions!.prepareUpdate(action.refId)
+        : undefined;
 
-    try {
-      const reviewed = await this.actions!.review(action, request);
-      const operation = reviewed.action;
-
-      if (!operation) return;
-      if (rewritesHistory)
-        pause = this.repositoryRefresh.pause(request.repositoryId);
-      if (
-        operation.kind === 'edit-commit-message' &&
-        (!this.session.current(request.repositoryId, request.generation) ||
-          reviewed.context?.aborted)
-      )
-        throw new Error(
-          'The history changed before the commit message could be saved. Select the commit again.',
-        );
-      const result = await this.options.adapter!.operate(
-        request.repositoryId,
-        operation,
-        reviewed.context,
-      );
-
-      if (
-        !this.closed &&
-        (rewritesHistory || action.kind === 'cherry-pick-commits') &&
-        result.kind === 'cancelled'
-      )
-        await this.options.reportActionError?.(
-          'The history operation was cancelled because the view context changed. The commits were left unchanged.',
-        );
-      if (rewritesHistory) {
+    await this.operations.run({
+      repositoryId: request.repositoryId,
+      requestId: request.requestId,
+      description: describeLogAction(action),
+      key: JSON.stringify(action),
+      independent: prepared !== undefined,
+      work: async (progress) => {
         if (
           this.closed ||
-          !this.session.current(request.repositoryId, request.generation) ||
-          this.session.rangeRevision !== rangeRevision ||
-          reviewed.context?.aborted
-        ) {
-          if (result.kind === 'error' || result.kind === 'conflict')
-            await this.options.reportActionError?.(result.message);
-
+          !this.options.trusted() ||
+          epoch !== this.repositoryEpoch
+        )
           return;
-        }
-
-        if (result.kind === 'success' && result.replacementSha)
-          this.session.selection = {
-            sha: result.replacementSha,
-            parentSha: null,
-            filePath: null,
-          };
-      }
-
-      const current = () =>
-        !this.closed && this.session.repositoryId === request.repositoryId;
-      const deletionReported = offerBranchRestore(
-        result,
-        request.repositoryId,
-        {
-          ...this.options,
-          adapter: this.options.adapter!,
-          current,
-          refresh: () => this.refresh(),
-        },
-      );
-
-      await publishOperationResult(result, action.kind, {
-        current,
-        refresh: () => this.refresh(),
-        send: (result) =>
-          this.send({ kind: 'operation', result }, request.requestId),
-        reportError: deletionReported
-          ? undefined
-          : this.options.reportActionError,
-        reportInfo: deletionReported
-          ? undefined
-          : this.options.reportActionInfo,
-        revealSourceControl: this.options.revealSourceControl,
-      });
-    } finally {
-      pause?.dispose();
-    }
+        if (!prepared && !current())
+          throw new Error(
+            'The target of the queued action changed. Select it and try again.',
+          );
+        await runPanelAction(
+          action,
+          {
+            ...request,
+            generation: this.session.generation,
+          },
+          {
+            session: this.session,
+            adapter: this.options.adapter!,
+            actions: this.actions!,
+            repositoryRefresh: this.repositoryRefresh,
+            operations: this.operations,
+            progress,
+            options: this.options,
+            closed: () => this.closed,
+            refresh: () => this.refresh(),
+            beginWrite: () => this.writes.begin(request.repositoryId),
+            send: (body, requestId) => this.send(body, requestId),
+          },
+          prepared,
+        );
+      },
+    });
   }
 
   private async reload(
@@ -624,6 +617,8 @@ export class PanelController {
     const selectionEpoch = this.session.detailEpoch;
 
     try {
+      await this.historyQuery!.start(this.input, requestId, true);
+      if (!current()) return;
       if (this.input.scope.kind === 'ref') {
         const refId = this.input.scope.refId;
         const refs = await this.options.adapter!.references(id);
@@ -748,10 +743,17 @@ export class PanelController {
     this.options.adapter!.invalidateHistory(id);
     this.session.begin(id);
     const generation = this.session.generation;
+    const signal = this.session.abort.signal;
 
     this.refreshRestore = { repositoryId: id, selection: desired, anchor };
     try {
-      await this.reload(desired, anchor, 'refresh');
+      await waitForQuery(
+        Promise.all([
+          this.reload(desired, anchor, 'refresh'),
+          this.worktreeQuery.load(),
+        ]),
+        signal,
+      );
     } catch (error) {
       if (this.session.current(id, generation))
         await this.notifications.readFailed(
@@ -768,7 +770,6 @@ export class PanelController {
 
     if (!this.session.current(id, generation)) return;
     this.refreshRestore = null;
-    await this.worktreeQuery.load();
   }
 
   dispose(): void {

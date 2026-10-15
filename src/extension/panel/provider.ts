@@ -32,6 +32,7 @@ import {
   showBranchDeleted,
   showOperationError,
   showOperationInfo,
+  showUpdateBlocked,
 } from '../native/operation-feedback';
 import { openWorktree } from '../native/worktrees';
 import { type CommitJump, CommitJumpQueue } from './commit-jump';
@@ -138,8 +139,10 @@ export class GitViewProvider implements vscode.WebviewViewProvider {
     let initializing: Promise<PanelController | null> | null = null;
     let initialization: AbortController | null = null;
     let closed = false;
+    let ready = false;
     let initializationEpoch = 0;
     const initialize = async (): Promise<PanelController | null> => {
+      ready = false;
       initialization?.abort();
       const owner = new AbortController();
 
@@ -209,6 +212,7 @@ export class GitViewProvider implements vscode.WebviewViewProvider {
         reportBranchDeleted: showBranchDeleted,
         reportActionError: showOperationError,
         reportActionInfo: showOperationInfo,
+        reportUpdateBlocked: showUpdateBlocked,
         revealSourceControl: async () => {
           await vscode.commands.executeCommand('workbench.view.scm');
         },
@@ -367,10 +371,13 @@ export class GitViewProvider implements vscode.WebviewViewProvider {
         !closed &&
         controller === result &&
         parseRequest(message)?.body.kind === 'ready'
-      )
-        this.jumps.attach((target, current) =>
-          result.revealCommit(target, current),
-        );
+      ) {
+        ready = true;
+        if (view.visible)
+          this.jumps.attach((target, current) =>
+            result.revealCommit(target, current),
+          );
+      }
     };
 
     const messages = webview.onDidReceiveMessage((message: unknown) => {
@@ -427,9 +434,14 @@ export class GitViewProvider implements vscode.WebviewViewProvider {
       }
     });
     const visibility = view.onDidChangeVisibility(() => {
-      // Hidden views can lose their frontend while retaining this controller.
-      // Wait for the recreated frontend's ready message before another jump.
       if (!view.visible) this.jumps.detach();
+      else if (ready && controller) {
+        const currentController = controller;
+
+        this.jumps.attach((target, current) =>
+          currentController.revealCommit(target, current),
+        );
+      }
     });
 
     const cleanup = () => {

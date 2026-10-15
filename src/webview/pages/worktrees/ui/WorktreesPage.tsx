@@ -12,6 +12,7 @@ import {
   dispatchContextMenu,
   Icon,
   offsetPointerContextMenu,
+  ProgressBar,
 } from '@webview/shared/ui';
 
 import styles from './WorktreesPage.module.css';
@@ -20,6 +21,8 @@ export interface WorktreesPageProps {
   worktrees: readonly WorktreeInfo[];
   repositoryId?: string;
   generation?: number;
+  busy?: boolean;
+  error?: string | null;
   onRequest(this: void, body: RequestBody): void;
 }
 
@@ -37,6 +40,8 @@ export function WorktreesPage({
   onRequest,
   repositoryId = '',
   generation = 0,
+  busy = false,
+  error = null,
 }: WorktreesPageProps) {
   const [selection, setSelection] = useState<{
     ids: string[];
@@ -110,7 +115,13 @@ export function WorktreesPage({
   };
 
   return (
-    <section id="worktrees-view" className={styles.page} aria-label="Worktrees">
+    <section
+      id="worktrees-view"
+      className={styles.page}
+      aria-label="Worktrees"
+      aria-busy={busy}
+    >
+      <ProgressBar active={busy} />
       <div
         className={styles.toolbar}
         role="toolbar"
@@ -173,6 +184,7 @@ export function WorktreesPage({
                 ].join(' · ')}
                 data-vscode-context={JSON.stringify({
                   webviewSection: 'worktree',
+                  logOperationBusy: false,
                   preventDefaultContextMenuItems: true,
                   repositoryId: repositoryId,
                   generation: generation,
@@ -271,7 +283,8 @@ export function WorktreesPage({
             );
           })}
         </div>
-        {!worktrees.length && (
+        {error && <p className={styles.empty}>{error}</p>}
+        {!worktrees.length && !busy && !error && (
           <p className={styles.empty}>No worktrees to show.</p>
         )}
       </div>

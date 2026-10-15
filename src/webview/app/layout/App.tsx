@@ -26,6 +26,12 @@ export function App({ bridge }: { bridge: BrowserBridge }) {
             repositoryId={state.repository?.id ?? ''}
             generation={state.generation}
             worktrees={state.worktrees}
+            error={state.worktreesError}
+            busy={
+              state.worktreesLoading ||
+              (state.operation?.section === 'worktrees' &&
+                state.operation.phase === 'running')
+            }
             onRequest={request}
           />
         </div>

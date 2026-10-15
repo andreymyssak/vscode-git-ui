@@ -25,6 +25,14 @@ export interface Result<T> {
   generation: number;
   body: T;
 }
+export interface ActiveLogOperation {
+  requestId: string;
+  label: string;
+  refIds: string[];
+  phase: 'waiting' | 'running' | 'refreshing';
+  section?: 'branches' | 'history' | 'worktrees';
+  queued?: Pick<ActiveLogOperation, 'label' | 'refIds' | 'section'>[];
+}
 export type SetupState =
   'ready' | 'no-repository' | 'git-disabled' | 'untrusted';
 export type BranchActionKind =
@@ -144,6 +152,7 @@ export type PanelBody =
       restoring?: boolean;
     }
   | { kind: 'history-settled' }
+  | { kind: 'history-interrupted' }
   | { kind: 'details'; commit: CommitRecord }
   | {
       kind: 'files';
@@ -158,6 +167,16 @@ export type PanelBody =
       message: string;
     }
   | { kind: 'worktrees'; worktrees: WorktreeInfo[] }
+  | { kind: 'worktrees-loading'; loading: boolean }
+  | { kind: 'worktrees-error'; message: string }
   | { kind: 'operation'; result: OperationResult }
+  | {
+      kind: 'operation-progress';
+      operation: Omit<ActiveLogOperation, 'requestId'> | null;
+    }
   | { kind: 'error'; message: string }
-  | { kind: 'references'; references: Reference[] };
+  | {
+      kind: 'references';
+      references: Reference[];
+      repository?: RepositoryInfo;
+    };

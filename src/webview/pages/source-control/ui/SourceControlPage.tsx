@@ -5,6 +5,7 @@ import type {
   SourceControlState,
   SourceControlTab,
 } from '@contracts/source-control';
+import { ProgressBar } from '@webview/shared/ui';
 
 import { revealSection } from '../model/change-groups';
 import { folderKey, messageHeightLimits, readView } from '../model/view-state';
@@ -115,6 +116,7 @@ export function SourceControlPage({ bridge }: { bridge: SourceControlBridge }) {
   return (
     <section
       aria-label="Source Control"
+      aria-busy={state?.busy || !!state?.activity}
       data-source-control
       className={styles.page}
       data-vscode-context={JSON.stringify({
@@ -123,6 +125,7 @@ export function SourceControlPage({ bridge }: { bridge: SourceControlBridge }) {
         repositoryId: repository?.info.id ?? null,
       })}
     >
+      <ProgressBar active={!!state?.busy || !!state?.activity} />
       <header className={styles.header}>
         <div
           role="tablist"
@@ -169,6 +172,15 @@ export function SourceControlPage({ bridge }: { bridge: SourceControlBridge }) {
           ))}
         </div>
       </header>
+      {state?.activity && (
+        <p
+          role="status"
+          aria-label="Source Control activity"
+          className={styles.srOnly}
+        >
+          {state.activity.title}
+        </p>
+      )}
       {!!state && state.repositories.length > 1 && (
         <label className={styles.repository}>
           <span className={styles.srOnly}>Repository</span>

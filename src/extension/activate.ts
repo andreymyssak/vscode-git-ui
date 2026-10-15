@@ -105,6 +105,8 @@ export function activate(context: vscode.ExtensionContext): void {
       SNAPSHOT_DOCUMENT_SCHEME,
       new SnapshotDocumentProvider(),
     ),
-    vscode.window.registerWebviewViewProvider(LOG_VIEW_ID, provider),
+    vscode.window.registerWebviewViewProvider(LOG_VIEW_ID, provider, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
   );
 }

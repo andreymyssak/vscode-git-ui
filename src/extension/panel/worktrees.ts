@@ -4,7 +4,7 @@ import type { GitAction, Reference, WorktreeInfo } from '../../shared/model';
 import { canOpenWorktree } from '../../shared/worktree-selection';
 import type { GitAdapter } from '../git/adapter';
 import type { PanelNotifications } from './notifications';
-import type { QuerySession } from './queries';
+import { type QuerySession, waitForQuery } from './queries';
 
 interface WorktreePublication {
   adapter: GitAdapter | null;
@@ -15,20 +15,51 @@ interface WorktreePublication {
 
 /** Keeps list reads and issued worktree handles in the same generation. */
 export class PanelWorktrees {
+  private revision = 0;
+  private read = new AbortController();
+
   constructor(private readonly publication: WorktreePublication) {}
 
-  async load(requestId = 'host'): Promise<void> {
+  load(requestId = 'host'): Promise<void> {
+    this.read.abort();
+    this.read = new AbortController();
+
+    return waitForQuery(
+      this.loadCurrent(requestId, ++this.revision),
+      AbortSignal.any([
+        this.read.signal,
+        this.publication.session.abort.signal,
+      ]),
+    );
+  }
+
+  private async loadCurrent(
+    requestId: string,
+    revision: number,
+  ): Promise<void> {
     const { adapter, session } = this.publication;
 
     if (!adapter) return;
     const id = session.repositoryId;
     const generation = session.generation;
+    const current = () =>
+      revision === this.revision && session.current(id, generation);
     let worktrees;
 
     try {
+      await this.publication.send(
+        { kind: 'worktrees-loading', loading: true },
+        requestId,
+      );
+      if (!current()) return;
       worktrees = await adapter.worktrees(id);
+      if (!current()) return;
+      session.worktrees.clear();
+      for (const worktree of worktrees)
+        session.worktrees.set(worktree.id, worktree);
+      await this.publication.send({ kind: 'worktrees', worktrees }, requestId);
     } catch (error) {
-      if (session.current(id, generation))
+      if (current())
         await this.publication.notifications.readFailed(
           'worktrees',
           error,
@@ -37,15 +68,13 @@ export class PanelWorktrees {
           id,
           generation,
         );
-
-      return;
+    } finally {
+      if (current())
+        await this.publication.send(
+          { kind: 'worktrees-loading', loading: false },
+          requestId,
+        );
     }
-
-    if (!session.current(id, generation)) return;
-    session.worktrees.clear();
-    for (const worktree of worktrees)
-      session.worktrees.set(worktree.id, worktree);
-    await this.publication.send({ kind: 'worktrees', worktrees }, requestId);
   }
 }
 

@@ -155,10 +155,15 @@ export async function selectNativeRepository(
       .getByPlaceholder('Select repository', { exact: true });
 
     await input.fill(basename(vscode.Uri.parse(repositoryId).fsPath));
-    await expect(
-      frame.page().locator('.quick-input-list .monaco-list-row'),
-    ).toHaveCount(1);
-    await input.press('Enter');
+    const choice = frame
+      .page()
+      .locator('.quick-input-list .monaco-list-row')
+      .getByText(basename(vscode.Uri.parse(repositoryId).fsPath), {
+        exact: true,
+      });
+
+    await expect(choice).toHaveCount(1);
+    await choice.click();
   }
 
   return nativePanel(repositoryId);

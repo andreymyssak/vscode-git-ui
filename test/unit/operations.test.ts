@@ -1,6 +1,6 @@
 import { tmpdir } from 'node:os';
 
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 
 import type {
   GitAPI,
@@ -11,6 +11,50 @@ import {
   createOperations,
   OperationQueue,
 } from '../../src/extension/git/operations';
+import { deferred } from '../fixtures/deferred';
+
+test('an operation waiting for the shared Git lock reports waiting before running', async (t) => {
+  const held = deferred<void>();
+  let fetches = 0;
+  const repo = {
+    fetch: async () => {
+      if (++fetches === 1) await held.promise;
+    },
+    status: async () => {},
+  } as unknown as GitRepository;
+  const access: GitApiAccess = {
+    api: {} as GitAPI,
+    repository: () => repo,
+    repositories: () => [],
+  };
+  const run = createOperations(
+    access,
+    { run: async () => tmpdir() },
+    { remoteCheckout: async () => null },
+  );
+  const first = run('waiting-operation', { kind: 'fetch-all' });
+
+  await vi.waitFor(() => expect(fetches).toBe(1));
+  const phases: string[] = [];
+  const second = run(
+    'waiting-operation',
+    { kind: 'fetch-all' },
+    undefined,
+    async (phase) => {
+      phases.push(phase);
+    },
+  );
+
+  t.onTestFinished(async () => {
+    held.resolve();
+    await Promise.allSettled([first, second]);
+  });
+  await vi.waitFor(() => expect(phases).toEqual(['waiting']));
+  expect(fetches).toBe(1);
+  held.resolve();
+  await Promise.all([first, second]);
+  expect(phases).toEqual(['waiting', 'running']);
+});
 
 test('an edit queued behind another operation performs no write after its view is cancelled', async (t) => {
   let release!: () => void;

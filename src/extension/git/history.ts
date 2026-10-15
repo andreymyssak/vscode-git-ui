@@ -47,6 +47,7 @@ export interface HistoryQueries {
     id: string,
     input: HistoryInput,
     signal?: AbortSignal,
+    onReferences?: (references: Reference[]) => Promise<void>,
   ): Promise<HistoryPage>;
   invalidate(id: string): void;
 }
@@ -89,7 +90,7 @@ export function createHistoryQueries(
       for (const [token, cursor] of cursors)
         if (cursor.snapshot.repositoryId === id) cursors.delete(token);
     },
-    async page(id, input, signal) {
+    async page(id, input, signal, onReferences) {
       signal?.throwIfAborted();
       const started = revision(id);
       const filters = normalizeHistoryFilters(input.filters);
@@ -116,6 +117,10 @@ export function createHistoryQueries(
         cachedCommits = cache.read(id, snapshot.cacheKey, offset)?.commits;
       } else {
         const refs = await readReferences(access, id, cli);
+
+        signal?.throwIfAborted();
+        await onReferences?.(refs);
+        signal?.throwIfAborted();
         const repo = access.repository(id);
         let head: string | null = null;
 

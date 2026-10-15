@@ -18,6 +18,17 @@ const host = vi.hoisted(() => ({
 }));
 
 vi.mock('vscode', () => ({ window: {} }));
+vi.mock('../../src/extension/git/cli', async () => {
+  const { tmpdir } = await import('node:os');
+
+  return {
+    GitCli: class {
+      async run() {
+        return tmpdir();
+      }
+    },
+  };
+});
 vi.mock('../../src/extension/git/api', () => ({
   getGitApi: async () => ({
     api: {
@@ -44,6 +55,8 @@ vi.mock('../../src/extension/git/api', () => ({
       },
     },
     repository: () => ({
+      fetch: async () => {},
+      status: async () => {},
       state: {
         HEAD: undefined,
         worktrees: [],
@@ -187,4 +200,28 @@ test('disposing during a metadata read suppresses late notifications', async () 
     held.resolve([]);
     adapter.dispose();
   }
+});
+
+test('completed Git writes return while unrelated metadata observations are still pending', async (t) => {
+  const adapter = await fixture();
+  const held = deferred<GitRef[]>();
+
+  host.read = () => held.promise;
+  adapter.subscribe('fixture', () => {});
+  t.onTestFinished(() => {
+    held.resolve([]);
+    adapter.dispose();
+  });
+  await vi.waitFor(() => expect(host.reads).toBe(1));
+  let result: unknown;
+  const pending = adapter
+    .operate('fixture', { kind: 'fetch-all' })
+    .then((value) => {
+      result = value;
+    });
+
+  await vi.waitFor(() =>
+    expect(result).toEqual({ kind: 'success', backend: 'api' }),
+  );
+  await pending;
 });

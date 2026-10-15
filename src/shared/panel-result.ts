@@ -3,6 +3,7 @@ import { isHistoryFilters } from './history-filters';
 import type { PanelBody, Result } from './messages';
 import type {
   BranchRestoreHandle,
+  BranchUpdateDecision,
   CommitRecord,
   FileChange,
   HistoryPage,
@@ -37,6 +38,20 @@ function isRepository(value: unknown): value is RepositoryInfo {
     isString(value.rootUri) &&
     isNullableString(value.headSha) &&
     isNullableString(value.branch)
+  );
+}
+
+function isOperationDescription(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    (value.section === undefined ||
+      value.section === 'branches' ||
+      value.section === 'history' ||
+      value.section === 'worktrees') &&
+    isString(value.label) &&
+    value.label.length > 0 &&
+    isStringArray(value.refIds) &&
+    value.refIds.every((ref) => /^refs\/(?:heads|remotes|tags)\/.+/.test(ref))
   );
 }
 
@@ -153,6 +168,42 @@ function isBranchRestore(value: unknown): value is BranchRestoreHandle {
   );
 }
 
+function isUpdateDecision(value: unknown): value is BranchUpdateDecision {
+  if (
+    !isRecord(value) ||
+    (value.kind !== 'checkout' && value.kind !== 'integrate')
+  )
+    return false;
+  const continuation = value.continuation;
+
+  if (!isRecord(continuation)) return false;
+  const { target, checkout } = continuation;
+  const isSha = (sha: unknown) =>
+    isString(sha) && /^(?:[a-f\d]{40}|[a-f\d]{64})$/i.test(sha);
+
+  return (
+    isRecord(target) &&
+    target.kind === 'update-branch' &&
+    isString(target.refId) &&
+    /^refs\/heads\/.+/.test(target.refId) &&
+    isSha(target.expectedSha) &&
+    isString(target.expectedUpstream) &&
+    /^refs\/(?:heads|remotes)\/.+/.test(target.expectedUpstream) &&
+    isRecord(checkout) &&
+    (checkout.ref === null ||
+      (isString(checkout.ref) && /^refs\/heads\/.+/.test(checkout.ref))) &&
+    isSha(checkout.sha) &&
+    isSha(continuation.fetchedSha) &&
+    isFiniteNumber(continuation.incomingCount) &&
+    Number.isSafeInteger(continuation.incomingCount) &&
+    continuation.incomingCount > 0 &&
+    isString(continuation.remote) &&
+    continuation.remote.length > 0 &&
+    isString(continuation.remoteRef) &&
+    continuation.remoteRef.length > 0
+  );
+}
+
 function isOperation(value: unknown): value is OperationResult {
   if (
     !isRecord(value) ||
@@ -178,6 +229,8 @@ function isOperation(value: unknown): value is OperationResult {
   return (
     (value.kind === 'error' || value.kind === 'conflict') &&
     isString(value.message) &&
+    (value.updateDecision === undefined ||
+      isUpdateDecision(value.updateDecision)) &&
     (value.recovery === undefined || value.recovery === 'source-control')
   );
 }
@@ -273,6 +326,7 @@ const validators = {
     isOptionalFilters(body.filters) &&
     isOptionalBoolean(body.restoring),
   'history-settled': () => true,
+  'history-interrupted': () => true,
   'focus-log': () => true,
   details: (body) => isCommit(body.commit),
   files: (body) =>
@@ -286,10 +340,24 @@ const validators = {
     isString(body.message),
   worktrees: (body) =>
     Array.isArray(body.worktrees) && body.worktrees.every(isWorktree),
+  'worktrees-loading': (body) => typeof body.loading === 'boolean',
+  'worktrees-error': (body) => isString(body.message),
   operation: (body) => isOperation(body.result),
+  'operation-progress': (body) =>
+    body.operation === null ||
+    (isRecord(body.operation) &&
+      isOperationDescription(body.operation) &&
+      (body.operation.queued === undefined ||
+        (Array.isArray(body.operation.queued) &&
+          body.operation.queued.every(isOperationDescription))) &&
+      (body.operation.phase === 'waiting' ||
+        body.operation.phase === 'running' ||
+        body.operation.phase === 'refreshing')),
   error: (body) => isString(body.message),
   references: (body) =>
-    Array.isArray(body.references) && body.references.every(isReference),
+    Array.isArray(body.references) &&
+    body.references.every(isReference) &&
+    (body.repository === undefined || isRepository(body.repository)),
 } satisfies Record<
   PanelBody['kind'],
   (body: Record<string, unknown>) => boolean

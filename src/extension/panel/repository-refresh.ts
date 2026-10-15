@@ -39,4 +39,8 @@ export class DeferredRepositoryRefresh {
 
     if (entry) entry.pending = null;
   }
+
+  hasPending(repositoryId: string): boolean {
+    return this.paused.get(repositoryId)?.pending != null;
+  }
 }

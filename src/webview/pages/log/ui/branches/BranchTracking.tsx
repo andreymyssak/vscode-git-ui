@@ -19,8 +19,12 @@ import styles from './BranchTracking.module.css';
 
 export function BranchTracking({
   tracking,
+  progress,
+  queued = false,
 }: {
-  tracking: NonNullable<Reference['tracking']>;
+  tracking: Reference['tracking'];
+  progress: string | null;
+  queued?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const { refs, floatingStyles, context } = useFloating({
@@ -44,11 +48,12 @@ export function BranchTracking({
     useRole(context, { role: 'tooltip' }),
   ]);
   const counts = [
-    tracking.behind ? `${tracking.behind} incoming` : null,
-    tracking.ahead ? `${tracking.ahead} outgoing` : null,
+    tracking?.behind ? `${tracking.behind} incoming` : null,
+    tracking?.ahead ? `${tracking.ahead} outgoing` : null,
   ].filter(Boolean);
-  const total = (tracking.behind ?? 0) + (tracking.ahead ?? 0);
-  const summary = `${counts.join(' and ')} ${total === 1 ? 'commit' : 'commits'}`;
+  const total = (tracking?.behind ?? 0) + (tracking?.ahead ?? 0);
+  const summary =
+    progress ?? `${counts.join(' and ')} ${total === 1 ? 'commit' : 'commits'}`;
 
   return (
     <>
@@ -60,13 +65,17 @@ export function BranchTracking({
         aria-label={summary}
         title=""
       >
-        {tracking.behind ? (
+        {progress ? (
+          <span className={queued ? undefined : styles.spinner}>
+            <Icon name={queued ? 'clock' : 'loading'} />
+          </span>
+        ) : tracking?.behind ? (
           <span data-incoming="" className={styles.incoming}>
             <Icon name="arrow-down" />
             {tracking.behind > 99 ? '99+' : tracking.behind}
           </span>
         ) : null}
-        {tracking.ahead ? (
+        {!progress && tracking?.ahead ? (
           <span data-outgoing="" className={styles.outgoing}>
             <Icon name="arrow-up" />
             {tracking.ahead > 99 ? '99+' : tracking.ahead}

@@ -33,7 +33,11 @@ export function ActionButton({
     onOpenChange: setOpen,
     placement: 'right',
     strategy: 'fixed',
-    middleware: [offset(6), flip(), shift({ padding: 8 })],
+    middleware: [
+      offset(6),
+      flip({ fallbackAxisSideDirection: 'start' }),
+      shift({ padding: 8 }),
+    ],
     whileElementsMounted: autoUpdate,
   });
   const { getReferenceProps, getFloatingProps } = useInteractions([

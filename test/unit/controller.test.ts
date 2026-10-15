@@ -277,7 +277,16 @@ test('conflict results notify natively with Source Control recovery', async (t) 
   await f.controller.handle(
     f.request({ kind: 'action', action: { kind: 'fetch-all' } }),
   );
-  expect(f.sent.at(-1)?.body.kind).toBe('operation');
+  expect(
+    f.sent.find((message) => message.body.kind === 'operation')?.body,
+  ).toEqual({
+    kind: 'operation',
+    result: {
+      kind: 'conflict',
+      backend: 'cli',
+      message: 'Resolve through Source Control',
+    },
+  });
   expect(reportActionError).toHaveBeenCalledExactlyOnceWith(
     'Resolve through Source Control',
     true,

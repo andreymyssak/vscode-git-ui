@@ -29,7 +29,8 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-async function outcome(operation: Promise<OperationResult>, timeout = 500) {
+// These assert queue ownership, not Git's latency on a busy test machine.
+async function outcome(operation: Promise<OperationResult>, timeout = 5000) {
   return Promise.race([
     operation,
     delay(timeout).then(() => ({ kind: 'timeout' })),
@@ -152,13 +153,16 @@ if ((${readStage === 'common-directory' ? "args.includes('--git-common-dir')" : 
       );
       let pid = 0;
 
-      await vi.waitFor(async () => {
-        const marker = z
-          .object({ pid: z.number().int().positive() })
-          .parse(JSON.parse(await readFile(enteredPath, 'utf8')));
+      await vi.waitFor(
+        async () => {
+          const marker = z
+            .object({ pid: z.number().int().positive() })
+            .parse(JSON.parse(await readFile(enteredPath, 'utf8')));
 
-        pid = marker.pid;
-      });
+          pid = marker.pid;
+        },
+        { timeout: 5000 },
+      );
       context.abort(new Error('The selection changed.'));
       second = run('fixture', {
         kind: 'create-branch',
@@ -238,7 +242,7 @@ test('cancellation after a branch write starts retains its queue ownership and s
       expectedSha: f.c,
       name: 'next',
     });
-    expect((await outcome(first)).kind).toBe('timeout');
+    expect((await outcome(first, 500)).kind).toBe('timeout');
     expect(
       (
         await f.runGit([
