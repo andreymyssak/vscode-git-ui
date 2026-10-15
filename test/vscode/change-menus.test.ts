@@ -302,6 +302,8 @@ describe('Changes context actions', () => {
     }
   });
 
+  // Commit, stash and selected-file restore each run real Git and native UI.
+  // Allow Windows process startup across the full workflow.
   it('commits and stashes the highlighted files while preserving a different checked and staged file', async () => {
     const { fixture, frame } = await prepare();
 
@@ -377,5 +379,5 @@ describe('Changes context actions', () => {
       await frame.page().keyboard.press('Escape');
       await dispose(fixture);
     }
-  });
+  }).timeout(60000);
 });
