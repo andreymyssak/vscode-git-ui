@@ -1,9 +1,10 @@
 import { useEffect, useRef } from 'react';
 
-import type { LogData, LogIntent } from './view';
+import type { HistoryData } from './selectors';
+import type { LogIntent } from './view';
 
 export function useHistoryPaging(
-  data: LogData,
+  data: HistoryData,
   viewportHeight: number,
   onIntent: (intent: LogIntent) => void,
 ) {

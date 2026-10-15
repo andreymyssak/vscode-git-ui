@@ -2,11 +2,11 @@ import { realpath } from 'node:fs/promises';
 
 import { extensionIdentity } from '../../shared/extension-identity';
 import type { BranchUpdateDecision, GitAction } from '../../shared/model';
+import { readWithCancellation } from '../read-cancellation';
 import type { GitRepository } from './api';
 import type { BranchUpdate, UpdateCheckout } from './branch-update-target';
 import { updateCheckout, validateUpdateTarget } from './branch-update-target';
 import type { GitCli } from './cli';
-import { readWithCancellation } from './read-cancellation';
 
 export interface UpdateBranchDialogs {
   updateDiverged?(target: {

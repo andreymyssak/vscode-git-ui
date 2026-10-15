@@ -1,8 +1,8 @@
 import type { CommitRangeTarget } from '../../shared/model';
+import { isReadCancellation, readWithCancellation } from '../read-cancellation';
 import type { GitApiAccess } from './api';
 import type { GitCli } from './cli';
 import { actualParents } from './parents';
-import { isReadCancellation, readWithCancellation } from './read-cancellation';
 import {
   GitRequiresSourceControl,
   requireCleanWorkingTree,

@@ -99,7 +99,8 @@ let saved: unknown;
 window.addEventListener('message', (event: MessageEvent) => {
   const response = parseSourceControlResponse(event.data);
 
-  if (response) Object.assign(state, response.state);
+  if (response?.kind === 'source-control-state')
+    Object.assign(state, response.state);
 });
 
 const requests: SourceControlRequest[] = [];
@@ -127,7 +128,21 @@ Reflect.set(window, 'acquireVsCodeApi', () => ({
       case 'message':
         repo.draft = request.message;
         repo.draftEditId = request.editId;
-        break;
+        queueMicrotask(() =>
+          window.dispatchEvent(
+            new MessageEvent('message', {
+              data: {
+                kind: 'source-control-draft',
+                repositoryId: request.repositoryId,
+                message: request.message,
+                editId: request.editId,
+                generating: state.generating,
+              },
+            }),
+          ),
+        );
+
+        return;
       case 'check':
         repo.checked = request.checked
           ? [...new Set([...repo.checked, ...request.paths])]

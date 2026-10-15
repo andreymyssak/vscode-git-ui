@@ -22,6 +22,8 @@ Failed browser tests retain their trace and screenshot under `test-results/`, al
 
 VS Code tests run inside the desktop editor using Microsoft's `@vscode/test-cli` and `@vscode/test-electron`. Installed-extension tests install the built VSIX into an isolated profile, then run selected VS Code suites and acceptance scenarios. `scripts/test/installed-actions.ts` tests branch actions, notifications and user choices against that installed copy.
 
+The full extension workflow runs for pull requests, pushes to `main`, and manual dispatch. Feature-branch pushes and tags do not start a second full run. A newer update to the same pull request cancels its superseded workflow; pushes to `main` and manual runs have separate concurrency groups and keep running.
+
 CI runs code/local tests, browser tests, native VS Code tests, and installed-package tests in parallel groups on Linux, macOS and Windows. A shared build prepares the VSIX and compiled tests once. VS Code jobs use Stable. Linux browser jobs install Chromium's system dependencies; native, Restricted Mode and installed-package tests run under Xvfb with a 1920×1080 virtual display. The Linux test launchers use Microsoft's `test-electron` sandbox flags for downloaded editors; these flags apply only to test windows. Each job reports its checks and saves results; the overall summary includes every platform and group and fails if a required check fails or does not run.
 
 ## VS Code compatibility

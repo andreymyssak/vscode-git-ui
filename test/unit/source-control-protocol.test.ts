@@ -312,3 +312,22 @@ describe('source-control boundary', () => {
     },
   );
 });
+
+it('validates lightweight draft acknowledgements without a repository tree', () => {
+  const ack = {
+    kind: 'source-control-draft',
+    repositoryId: 'repo',
+    message: 'Current draft',
+    editId: 'session:1',
+    generating: false,
+  };
+
+  expect(parseSourceControlResponse(ack)).toEqual(ack);
+  for (const invalid of [
+    { ...ack, editId: '' },
+    { ...ack, generating: 'no' },
+    { ...ack, message: 'x'.repeat(65537) },
+    { ...ack, repositoryId: null },
+  ])
+    expect(parseSourceControlResponse(invalid)).toBeNull();
+});

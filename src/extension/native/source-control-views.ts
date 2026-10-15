@@ -9,6 +9,7 @@ import {
 } from '../../shared/extension-identity';
 import type {
   SourceControlRequest,
+  SourceControlResponse,
   SourceControlState,
 } from '../../shared/source-control';
 import {
@@ -81,8 +82,11 @@ export class SourceControlViews
   private view: vscode.WebviewView | null = null;
 
   constructor(private readonly context: vscode.ExtensionContext) {
-    this.service = new SourceControlService(context.workspaceState, (state) =>
-      this.publish(state),
+    this.service = new SourceControlService(
+      context.workspaceState,
+      (state) => this.publish(state),
+      undefined,
+      (ack) => this.deliver(ack),
     );
     this.subscriptions.push(
       this.service,
@@ -168,10 +172,14 @@ export class SourceControlViews
   }
 
   private publish(state: SourceControlState): void {
+    this.deliver({ kind: 'source-control-state', state });
+  }
+
+  private deliver(response: SourceControlResponse): void {
     if (this.view)
-      void Promise.resolve(
-        this.view.webview.postMessage({ kind: 'source-control-state', state }),
-      ).catch(() => undefined);
+      void Promise.resolve(this.view.webview.postMessage(response)).catch(
+        () => undefined,
+      );
   }
 
   private commandRequest(

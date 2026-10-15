@@ -1,4 +1,4 @@
-import { readCancellationError } from './read-cancellation';
+import { readCancellationError } from '../read-cancellation';
 
 export interface GitApiInitialization {
   readonly state: 'uninitialized' | 'initialized';

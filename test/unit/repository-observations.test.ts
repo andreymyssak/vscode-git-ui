@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 import { expect, test, vi } from 'vitest';
 
 import { createGitAdapter } from '../../src/extension/git/adapter';
-import type { GitRef } from '../../src/extension/git/api';
+import type { GitRef, GitRepository } from '../../src/extension/git/api';
 import { deferred } from '../fixtures/deferred';
 
 const host = vi.hoisted(() => ({
   refs: [] as GitRef[],
   listeners: new Set<() => void>(),
-  openListeners: new Set<() => void>(),
-  closeListeners: new Set<() => void>(),
+  openListeners: new Set<(repository: GitRepository) => void>(),
+  closeListeners: new Set<(repository: GitRepository) => void>(),
   repositoryDisposals: 0,
   reads: 0,
   disposals: 0,
@@ -23,6 +23,10 @@ vi.mock('../../src/extension/git/cli', async () => {
 
   return {
     GitCli: class {
+      readOnly() {
+        return this;
+      }
+
       async run() {
         return tmpdir();
       }
@@ -33,7 +37,7 @@ vi.mock('../../src/extension/git/api', () => ({
   getGitApi: async () => ({
     api: {
       git: { path: 'git' },
-      onDidOpenRepository: (listener: () => void) => {
+      onDidOpenRepository: (listener: (repository: GitRepository) => void) => {
         host.openListeners.add(listener);
 
         return {
@@ -43,7 +47,7 @@ vi.mock('../../src/extension/git/api', () => ({
           },
         };
       },
-      onDidCloseRepository: (listener: () => void) => {
+      onDidCloseRepository: (listener: (repository: GitRepository) => void) => {
         host.closeListeners.add(listener);
 
         return {
@@ -129,26 +133,30 @@ test('repository-list subscriptions stop notifying and release both native liste
 
   try {
     assert.ok(opened && closed);
-    opened();
-    closed();
+    const repository = {
+      rootUri: { toString: () => 'fixture' },
+    } as GitRepository;
+
+    opened(repository);
+    closed(repository);
     expect(changes).toBe(2);
     subscription.dispose();
     subscription.dispose();
-    opened();
-    closed();
+    opened(repository);
+    closed(repository);
     expect(changes).toBe(2);
-    expect(host.openListeners.size).toBe(0);
-    expect(host.closeListeners.size).toBe(0);
-    expect(host.repositoryDisposals).toBe(2);
+    expect(host.openListeners.size).toBe(1);
+    expect(host.closeListeners.size).toBe(1);
+    expect(host.repositoryDisposals).toBe(0);
     const current = adapter.subscribeRepositories(() => changes++);
     const late = [...host.openListeners][0];
 
     assert.ok(late);
     adapter.dispose();
     current.dispose();
-    late();
+    late(repository);
     expect(changes).toBe(2);
-    expect(host.repositoryDisposals).toBe(4);
+    expect(host.repositoryDisposals).toBe(2);
     expect(() => adapter.subscribeRepositories(() => {})).toThrow('disposed');
     expect(() => adapter.subscribe('fixture', () => {})).toThrow('disposed');
   } finally {

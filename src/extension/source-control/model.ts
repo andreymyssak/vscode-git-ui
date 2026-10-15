@@ -14,6 +14,7 @@ import type {
 } from '../../shared/source-control';
 import { isRecord } from '../../shared/validation';
 import { CheckedFiles } from '../changes/checked-files';
+import { diagnostics } from '../diagnostics';
 
 interface DraftStorage {
   get(key: string): unknown;
@@ -41,6 +42,8 @@ type ModelState = Omit<SourceControlState, 'hoverDelay' | 'repositories'> & {
 /** Host-owned inclusion and drafts survive recreation of the webview document. */
 export class SourceControlModel {
   readonly repositories = new Map<string, RepositorySession>();
+  private draftStorageFailed = false;
+  private draftStorageGeneration = 0;
   private readonly drafts = new Map<string, string>();
   private readonly stashViewIds = new Map<string, Map<string, string>>();
   private readonly draftEditIds = new Map<string, string>();
@@ -353,15 +356,31 @@ export class SourceControlModel {
     else this.drafts.delete(id);
     if (editId === null) this.draftEditIds.delete(id);
     else this.draftEditIds.set(id, editId);
-    void Promise.resolve(
-      this.storage.update(
-        DRAFT_KEY,
-        [...this.drafts].map(([repositoryId, value]) => ({
-          repositoryId,
-          message: value,
-        })),
-      ),
-    ).catch(() => undefined);
+    const snapshot = [...this.drafts].map(([repositoryId, value]) => ({
+      repositoryId,
+      message: value,
+    }));
+    const generation = ++this.draftStorageGeneration;
+    const failed = (error: unknown) => {
+      if (generation !== this.draftStorageGeneration) return;
+      if (!this.draftStorageFailed)
+        diagnostics.record('draft.storage-failed', { error });
+      this.draftStorageFailed = true;
+    };
+
+    try {
+      void Promise.resolve(this.storage.update(DRAFT_KEY, snapshot)).then(
+        () => {
+          if (generation !== this.draftStorageGeneration) return;
+          if (this.draftStorageFailed)
+            diagnostics.record('draft.storage-recovered');
+          this.draftStorageFailed = false;
+        },
+        failed,
+      );
+    } catch (error) {
+      failed(error);
+    }
   }
 
   selectionIdentity(id: string): string {

@@ -21,6 +21,7 @@ import {
 
 import { SQUASH_RECOVERY_OWNER } from '../../shared/extension-identity';
 import { hasErrorCode, isRecord } from '../../shared/validation';
+import { backgroundRead } from './background-read';
 import type { GitCli } from './cli';
 import type { SquashSnapshot } from './squash';
 import { validateSquashMessage } from './squash';
@@ -82,35 +83,41 @@ export class SquashRecovery {
     private readonly cli: Pick<GitCli, 'run'>,
   ) {}
 
-  private async identity(id: string) {
-    const root = await realpath(
-      (await this.cli.run(id, ['rev-parse', '--show-toplevel'])).replace(
-        /\r?\n$/,
-        '',
-      ),
-    );
-    const statePath = async (state: string) => {
-      const path = (
-        await this.cli.run(id, [
-          'rev-parse',
-          '--path-format=absolute',
-          '--git-path',
-          state,
-        ])
-      ).replace(/\r?\n$/, '');
+  private identity(id: string) {
+    return backgroundRead(async (signal) => {
+      const topLevel = await this.cli.run(
+        id,
+        ['rev-parse', '--show-toplevel'],
+        signal,
+      );
 
-      if (!isAbsolute(path))
-        throw new Error('Git returned an invalid recovery state path.');
+      signal.throwIfAborted();
+      const root = await realpath(topLevel.replace(/\r?\n$/, ''));
 
-      return resolve(path);
-    };
+      // realpath cannot be interrupted, so a late completion must not start Git.
+      signal.throwIfAborted();
+      const statePath = async (state: string) => {
+        const path = (
+          await this.cli.run(
+            id,
+            ['rev-parse', '--path-format=absolute', '--git-path', state],
+            signal,
+          )
+        ).replace(/\r?\n$/, '');
 
-    const statePaths = await Promise.all([
-      statePath('rebase-merge'),
-      statePath('rebase-apply'),
-    ]);
+        if (!isAbsolute(path))
+          throw new Error('Git returned an invalid recovery state path.');
 
-    return { root, statePaths };
+        return resolve(path);
+      };
+
+      const statePaths = await Promise.all([
+        statePath('rebase-merge'),
+        statePath('rebase-apply'),
+      ]);
+
+      return { root, statePaths };
+    });
   }
 
   async create(

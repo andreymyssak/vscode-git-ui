@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.4.2](https://github.com/andreymyssak/vscode-git-ui/compare/v0.4.1...v0.4.2) (2026-10-15)
+
+### Bug Fixes
+
+- Reconnect Log and Changes after a repository reopens, and ignore results from its previous session. ([a5e3cfa](https://github.com/andreymyssak/vscode-git-ui/commit/a5e3cfa79bdec438133bb29176fde78c2a3fc1a1))
+- Refresh affected repositories independently and reduce traffic while typing commit messages.
+- Cancel stalled background reads and coalesce recovery scans while preserving Git write and cleanup safety.
+- Add the native `Git UI: Show Output` command for private operation diagnostics and draft storage failures.
+
 ## [0.4.1](https://github.com/andreymyssak/vscode-git-ui/compare/v0.4.0...v0.4.1) (2026-10-15)
 
 ### Bug Fixes

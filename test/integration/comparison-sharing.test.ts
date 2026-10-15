@@ -1,5 +1,8 @@
+import { join } from 'node:path';
+
 import { expect, test } from 'vitest';
 
+import type { GitChange } from '../../src/extension/git/api';
 import { createChangeQueries } from '../../src/extension/git/changes';
 import { GitCli } from '../../src/extension/git/cli';
 import { deferred } from '../fixtures/deferred';
@@ -74,6 +77,54 @@ test('a failed shared comparison can be retried without retaining its rejected p
     await expect(changes('fixture', f.c, f.b)).resolves.toEqual([]);
     expect(reads).toBe(2);
   } finally {
+    await f.dispose();
+  }
+});
+
+test('a replacement repository starts a fresh comparison and old results cannot repopulate its cache', async () => {
+  const f = await createSquashFixture();
+  const old = deferred<void>();
+  const entered = deferred<void>();
+  let reads = 0;
+
+  try {
+    const repo = f.access.repository('fixture');
+
+    repo.getCommit = async (sha) => ({
+      hash: sha,
+      parents: [],
+      message: 'Fixture',
+    });
+    repo.diffBetween = async () => {
+      if (++reads === 1) {
+        entered.resolve();
+        await old.promise;
+
+        return [
+          {
+            status: 2,
+            originalUri: { fsPath: join(f.root, 'old.txt') },
+            uri: { fsPath: join(f.root, 'old.txt') },
+          } as unknown as GitChange,
+        ];
+      }
+
+      return [];
+    };
+
+    const changes = createChangeQueries(f.access, new GitCli(f.access));
+    const previous = changes('fixture', f.c, f.b);
+
+    await entered.promise;
+    changes.invalidate('fixture');
+    await changes('fixture', f.c, f.b);
+    expect(reads).toBe(2);
+    old.resolve();
+    await previous;
+    expect(await changes('fixture', f.c, f.b)).toEqual([]);
+    expect(reads).toBe(2);
+  } finally {
+    old.resolve();
     await f.dispose();
   }
 });

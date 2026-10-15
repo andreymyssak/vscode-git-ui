@@ -2,6 +2,7 @@ import type { Disposable } from 'vscode';
 
 import type { GitApiAccess, GitRepository } from '../api';
 import { GitCli } from '../cli';
+import type { RepositoryEvent } from '../repository-event';
 import { withRepositoryOperation } from '../repository-operations';
 
 export type BeforeWrite = () => void;
@@ -10,22 +11,30 @@ export function createRepositoryAccess(access: GitApiAccess) {
   let disposed = false;
   // API wrappers change on lookup; open/close events define repository lifetime.
   const lifetimes = new Map<string, symbol>();
-  const listeners = new Set<() => void>();
+  const listeners = new Set<(event?: RepositoryEvent) => void>();
+  const observers = new Set<{ id: string; bind(): void; dispose(): void }>();
   const subscriptions = new Set<Disposable>();
-  const notify = () => {
-    for (const listener of listeners) listener();
+  const notify = (event: RepositoryEvent) => {
+    for (const listener of listeners) listener(event);
   };
 
   subscriptions.add(
     access.api.onDidCloseRepository((repository) => {
       lifetimes.delete(repository.rootUri.toString());
-      notify();
+      const id = repository.rootUri.toString();
+
+      for (const observer of observers)
+        if (observer.id === id) observer.dispose();
+      notify({ kind: 'closed', repositoryId: id });
     }),
   );
   subscriptions.add(
     access.api.onDidOpenRepository((repository) => {
       lifetimes.set(repository.rootUri.toString(), Symbol());
-      notify();
+      const id = repository.rootUri.toString();
+
+      for (const observer of observers) if (observer.id === id) observer.bind();
+      notify({ kind: 'opened', repositoryId: id });
     }),
   );
 
@@ -72,14 +81,24 @@ export function createRepositoryAccess(access: GitApiAccess) {
       async write<T>(
         beforeWrite: BeforeWrite,
         action: (cli: GitCli, repository: GitRepository) => Promise<T>,
+        discovery?: { signal: AbortSignal | undefined },
       ): Promise<T> {
-        return withRepositoryOperation(cli, id, async () => {
-          const live = current();
+        // Only queue-key discovery is bounded for background inspection. Once
+        // acquired, cleanup/writes keep the original CLI and await completion.
+        const preflight = discovery ? cli.readOnly(discovery.signal) : cli;
 
-          beforeWrite();
+        return withRepositoryOperation(
+          preflight,
+          id,
+          async () => {
+            const live = current();
 
-          return action(cli, live);
-        });
+            beforeWrite();
+
+            return action(cli, live);
+          },
+          discovery?.signal,
+        );
       },
     };
   }
@@ -91,7 +110,10 @@ export function createRepositoryAccess(access: GitApiAccess) {
 
       return access.repositories();
     },
-    subscribeRepositories(this: void, changed: () => void): Disposable {
+    subscribeRepositories(
+      this: void,
+      changed: (event?: RepositoryEvent) => void,
+    ): Disposable {
       if (disposed) throw new Error('The Source Control backend was disposed.');
       listeners.add(changed);
 
@@ -102,14 +124,33 @@ export function createRepositoryAccess(access: GitApiAccess) {
       };
     },
     subscribe(this: void, id: string, changed: () => void): Disposable {
-      const subscription = requireRepository(id).state.onDidChange(changed);
+      let listener: Disposable | null = null;
+      let generation: symbol | null = null;
+      const observer = {
+        id,
+        bind() {
+          listener?.dispose();
+          const owner = Symbol();
 
-      subscriptions.add(subscription);
+          generation = owner;
+          listener = requireRepository(id).state.onDidChange(() => {
+            if (!disposed && generation === owner) changed();
+          });
+        },
+        dispose() {
+          generation = null;
+          listener?.dispose();
+          listener = null;
+        },
+      };
+
+      observer.bind();
+      observers.add(observer);
 
       return {
         dispose() {
-          subscriptions.delete(subscription);
-          subscription.dispose();
+          observers.delete(observer);
+          observer.dispose();
         },
       };
     },
@@ -118,6 +159,8 @@ export function createRepositoryAccess(access: GitApiAccess) {
       disposed = true;
       for (const subscription of subscriptions) subscription.dispose();
       subscriptions.clear();
+      for (const observer of observers) observer.dispose();
+      observers.clear();
       listeners.clear();
       lifetimes.clear();
     },

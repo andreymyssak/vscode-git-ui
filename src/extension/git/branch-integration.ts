@@ -1,8 +1,8 @@
 import type { GitAction, Reference } from '../../shared/model';
+import { readWithCancellation } from '../read-cancellation';
 import type { GitRepository } from './api';
 import { updateCheckout } from './branch-update-target';
 import type { GitCli } from './cli';
-import { readWithCancellation } from './read-cancellation';
 import {
   requireCleanWorkingTree,
   requireNoGitOperation,

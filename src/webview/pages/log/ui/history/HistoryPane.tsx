@@ -14,8 +14,9 @@ import type { CommitGesture } from '../../model/commit-selection';
 import { fitColumns } from '../../model/history-columns';
 import { historyDestination } from '../../model/history-navigation';
 import { useHistoryWindow } from '../../model/history-window';
+import type { HistoryData } from '../../model/selectors';
 import { useHistoryPaging } from '../../model/useHistoryPaging';
-import type { LogData, LogIntent } from '../../model/view';
+import type { LogIntent } from '../../model/view';
 import { HistoryColumns } from './HistoryColumns';
 import styles from './HistoryPane.module.css';
 import { HistoryRow } from './HistoryRow';
@@ -24,7 +25,7 @@ export function HistoryPane({
   data,
   onIntent,
 }: {
-  data: LogData;
+  data: HistoryData;
   onIntent(this: void, intent: LogIntent): void;
 }) {
   const [settled, setSettled] = useState(data);
@@ -40,7 +41,6 @@ export function HistoryPane({
         ...settled,
         refs: data.refs,
         repository: data.repository,
-        operation: data.operation,
         loading: data.loading,
         nextCursor: null,
         showHash: data.showHash,
@@ -67,7 +67,7 @@ function HistoryContent({
   onIntent,
   inactive,
 }: {
-  data: LogData;
+  data: HistoryData;
   onIntent(this: void, intent: LogIntent): void;
   inactive: boolean;
 }) {

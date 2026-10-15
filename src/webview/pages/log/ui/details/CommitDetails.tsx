@@ -6,12 +6,13 @@ import {
   buildReferenceLabels,
   descriptions,
 } from '../../model/reference-labels';
-import type { LogData, LogIntent } from '../../model/view';
+import type { DetailsData } from '../../model/selectors';
+import type { LogIntent } from '../../model/view';
 import { ChangedFiles } from './ChangedFiles';
 import styles from './CommitDetails.module.css';
 
 type DetailsSnapshot = Pick<
-  LogData,
+  DetailsData,
   | 'details'
   | 'files'
   | 'fileErrors'
@@ -24,7 +25,7 @@ export function CommitDetails({
   data,
   onIntent,
 }: {
-  data: LogData;
+  data: DetailsData;
   onIntent(this: void, intent: LogIntent): void;
 }) {
   const repositoryId = data.repository?.id ?? null;

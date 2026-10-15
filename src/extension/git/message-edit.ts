@@ -4,12 +4,12 @@ import { join } from 'node:path';
 
 import { extensionIdentity } from '../../shared/extension-identity';
 import type { GitAction } from '../../shared/model';
+import { readWithCancellation } from '../read-cancellation';
 import type { GitApiAccess } from './api';
 import type { GitCli } from './cli';
 import type { CommitRewriteSnapshot } from './commit-rewrite';
 import { validateRewriteRange } from './commit-rewrite';
 import { attachedBranch, readCommit } from './commit-suffix';
-import { readWithCancellation } from './read-cancellation';
 import { supportsSquashGit, validateSquashMessage } from './squash';
 import { createSquashEditors, probeSquashRuntime } from './squash-editor';
 import type { SquashServices } from './squash-operation';

@@ -7,7 +7,8 @@ import {
   currentBranchAncestors,
   resolveExpansion,
 } from '../../model/branch-tree-state';
-import type { LogData, LogIntent } from '../../model/view';
+import type { BranchData } from '../../model/selectors';
+import type { LogIntent } from '../../model/view';
 import styles from './BranchesPane.module.css';
 import type { TreeMemory } from './BranchTree';
 import { BranchTree } from './BranchTree';
@@ -18,7 +19,7 @@ export function BranchesPane({
   data,
   onIntent,
 }: {
-  data: LogData;
+  data: BranchData;
   onIntent(this: void, intent: LogIntent): void;
 }) {
   // The typed custom-element boundary owns mutable focus/scroll cells, not React data.

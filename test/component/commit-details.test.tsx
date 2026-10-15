@@ -277,7 +277,7 @@ test('all parent counts load once while collapsed and failed comparisons remain 
   expect(screen.queryByRole('button', { name: 'Retry comparison' })).toBeNull();
   rerender(
     <StrictMode>
-      <CommitDetails data={{ ...data, showHash: true }} onIntent={onIntent} />
+      <CommitDetails data={{ ...data }} onIntent={onIntent} />
     </StrictMode>,
   );
   expect(onIntent).toHaveBeenCalledTimes(3);

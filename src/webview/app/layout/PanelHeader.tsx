@@ -1,7 +1,8 @@
 import { classifySearch } from '@contracts/search';
 import { Icon } from '@webview/shared/ui';
 
-import type { BrowserController } from '../model/useBrowserState';
+import type { BrowserSession } from '../model/browser-session';
+import { useBrowserSelector } from '../model/useBrowserState';
 import styles from './PanelHeader.module.css';
 
 const setupGuidance = {
@@ -12,10 +13,27 @@ const setupGuidance = {
 };
 
 export function PanelHeader({
-  state,
+  store,
   request,
   setActiveView,
-}: BrowserController) {
+}: Pick<BrowserSession, 'store' | 'request' | 'setActiveView'>) {
+  const state = useBrowserSelector(store, (state) => ({
+    repository: state.repository,
+    repositories: state.repositories,
+    refs: state.refs,
+    filters: state.filters,
+    text: state.text,
+    scope: state.scope,
+    activeView: state.activeView,
+    loading: state.loading,
+    worktreesLoading: state.worktreesLoading,
+    operation: state.operation,
+    restoring: state.restoring,
+    setup: state.setup,
+    commitCount: state.commits.length,
+    retainHistory: state.retainHistory,
+    error: state.error,
+  }));
   const scope =
     !state.filters.regex && classifySearch(state.text) === 'hash-and-text'
       ? 'All branches search · ' + state.text
@@ -67,7 +85,7 @@ export function PanelHeader({
           : state.setup !== 'ready'
             ? setupGuidance[state.setup]
             : state.activeView === 'log' &&
-                state.commits.length === 0 &&
+                state.commitCount === 0 &&
                 !state.retainHistory &&
                 !state.error
               ? 'No commits in these results.'

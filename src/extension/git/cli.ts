@@ -3,7 +3,9 @@ import { mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, normalize } from 'node:path';
 
+import { diagnostics } from '../diagnostics';
 import type { GitApiAccess } from './api';
+import { backgroundRead, backgroundReadTimeoutMs } from './background-read';
 import type { SquashEditors } from './squash-editor';
 
 interface Execution {
@@ -81,7 +83,29 @@ function execute(
 }
 
 export class GitCli {
-  constructor(private readonly access: GitApiAccess) {}
+  constructor(
+    private readonly access: GitApiAccess,
+    private readonly readOwner?: {
+      signal: AbortSignal | undefined;
+      timeoutMs: number;
+    },
+  ) {}
+
+  /** Explicit opt-in: mutating calls keep the original unbounded writer instance. */
+  readOnly(
+    signal?: AbortSignal,
+    timeoutMs = this.readOwner?.timeoutMs ?? backgroundReadTimeoutMs,
+  ): GitCli {
+    const inherited = this.readOwner?.signal;
+
+    return new GitCli(this.access, {
+      signal:
+        inherited && signal
+          ? AbortSignal.any([inherited, signal])
+          : (inherited ?? signal),
+      timeoutMs,
+    });
+  }
 
   get executablePath(): string {
     return this.access.api.git.path;
@@ -166,6 +190,53 @@ export class GitCli {
   }
 
   private async executeBytes(
+    repositoryId: string,
+    args: readonly string[],
+    execution: Execution,
+  ): Promise<Buffer> {
+    const started = performance.now();
+
+    diagnostics.record('command.started', { repositoryId, command: args[0] });
+    try {
+      const inherited = this.readOwner?.signal;
+      const requested = execution.signal;
+      const signal =
+        inherited && requested
+          ? AbortSignal.any([inherited, requested])
+          : (inherited ?? requested);
+      const result = this.readOwner
+        ? await backgroundRead(
+            (owner) =>
+              this.executeChecked(repositoryId, args, {
+                ...execution,
+                signal: owner,
+              }),
+            signal,
+            this.readOwner.timeoutMs,
+          )
+        : await this.executeChecked(repositoryId, args, execution);
+
+      diagnostics.record('command.finished', {
+        repositoryId,
+        command: args[0],
+        outcome: 'success',
+        elapsedMs: performance.now() - started,
+      });
+
+      return result;
+    } catch (error) {
+      diagnostics.record('command.finished', {
+        repositoryId,
+        command: args[0],
+        outcome: execution.signal?.aborted ? 'cancelled' : 'error',
+        error,
+        elapsedMs: performance.now() - started,
+      });
+      throw error;
+    }
+  }
+
+  private async executeChecked(
     repositoryId: string,
     args: readonly string[],
     execution: Execution,

@@ -145,7 +145,7 @@ test.each([
     expect(await f.remoteGit(['rev-parse', 'main'])).toBe(remoteHead);
     expect((await f.remoteGit(['tag', '--list'])).trim()).toBe('v1.0.0');
   },
-  60000,
+  Math.max(60000, workflowTimeout),
 );
 
 test('preview leaves the version, notes, working tree and tags unchanged', async () => {

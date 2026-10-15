@@ -8,9 +8,9 @@ import * as vscode from 'vscode';
 
 import { extensionIdentity } from '../../shared/extension-identity';
 import type { RepositoryInfo } from '../../shared/model';
+import { readWithCancellation } from '../read-cancellation';
 import type { GitApiInitialization } from './api-initialization';
 import { waitForGitInitialization } from './api-initialization';
-import { readWithCancellation } from './read-cancellation';
 
 export interface GitRef {
   readonly type: 0 | 1 | 2;

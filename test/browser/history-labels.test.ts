@@ -206,14 +206,14 @@ test('keyboard focus exposes reference names and Escape dismisses them', async (
   await expect(references).toBeFocused();
 });
 
-test('an open reference list follows a smaller viewport without clipping', async ({
+test('a focused reference list follows a smaller viewport without clipping', async ({
   page,
 }) => {
   await page
     .locator('[data-commit-row]')
     .first()
     .locator('[data-references]')
-    .hover();
+    .focus();
   const tooltip = page.getByRole('tooltip');
 
   await expect(tooltip).toBeVisible();

@@ -1,9 +1,9 @@
 import type { CommitRangeTarget } from '../../shared/model';
+import { readWithCancellation } from '../read-cancellation';
 import type { GitApiAccess } from './api';
 import type { GitCli } from './cli';
 import { attachedBranch, validateCommitSuffix } from './commit-suffix';
 import { GitPartialCompletion } from './partial-completion';
-import { readWithCancellation } from './read-cancellation';
 
 export async function dropCommits(
   access: GitApiAccess,

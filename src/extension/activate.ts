@@ -6,6 +6,7 @@ import {
   LOG_VIEW_ID,
   SNAPSHOT_DOCUMENT_SCHEME,
 } from '../shared/extension-identity';
+import { installDiagnostics } from './diagnostics';
 import { registerBlame } from './native/blame-commands';
 import { EmptyDocumentProvider } from './native/empty-document';
 import { SnapshotDocumentProvider } from './native/snapshot-document';
@@ -13,6 +14,15 @@ import { registerSourceControlViews } from './native/source-control-views';
 import { GitViewProvider } from './panel/provider';
 
 export function activate(context: vscode.ExtensionContext): void {
+  const log = vscode.window.createOutputChannel('Git UI', { log: true });
+
+  context.subscriptions.push(
+    log,
+    installDiagnostics((level, entry) => log[level](entry)),
+    vscode.commands.registerCommand(commandId('show-output'), () =>
+      log.show(true),
+    ),
+  );
   registerSourceControlViews(context);
   const provider = new GitViewProvider(
     context.extensionUri,

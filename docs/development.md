@@ -40,6 +40,8 @@ npm run package
 
 Install `.artifacts/git-ui-native.vsix` through **Extensions: Install from VSIX...**. The package command builds the extension, creates the VSIX with Microsoft's `@vscode/vsce`, and verifies its contents. Runtime assets and licenses ship through an explicit allowlist; tests, agent tools and development dependencies stay outside it.
 
+For operation and refresh diagnostics, run **Git UI: Show Output** from the Command Palette to open the native Git UI log. Choose Debug for that channel to include read, command and queue timings. Entries omit raw paths, arguments, file contents and commit messages.
+
 ## Try the example repository
 
 From the project root, run:

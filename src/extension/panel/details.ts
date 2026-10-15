@@ -160,7 +160,12 @@ export class PanelDetails {
     let files;
 
     try {
-      files = await this.adapter.changes(id, sha, parentSha);
+      files = await this.adapter.changes(
+        id,
+        sha,
+        parentSha,
+        this.session.detailAbort.signal,
+      );
     } catch (error) {
       if (!current()) return;
       const message =

@@ -2,6 +2,7 @@ import type { Disposable } from 'vscode';
 
 import type { GitApiAccess } from './api';
 import { historyChangeFilter } from './history-events';
+import type { RepositoryEvent } from './repository-event';
 
 /** One native listener and coalesced metadata producer per observed repository. */
 export function createRepositoryObservations({
@@ -17,34 +18,83 @@ export function createRepositoryObservations({
     string,
     {
       consumers: Set<{ changed(): void }>;
-      observation: ReturnType<typeof historyChangeFilter>;
-      listener: Disposable;
+      settled(): Promise<void>;
+      dispose(): void;
+      bind(): void;
     }
   >();
-  const subscriptions = new Set<Disposable>();
   let closed = false;
+  const repositoryConsumers = new Set<(event?: RepositoryEvent) => void>();
+  const retire = (id: string) => {
+    const owner = repositories.get(id);
+
+    if (!owner) return;
+    owner.dispose();
+  };
+
+  const lifecycle = (event: RepositoryEvent) => {
+    if (closed) return;
+    retire(event.repositoryId);
+    if (event.kind === 'opened') repositories.get(event.repositoryId)?.bind();
+    invalidate(event.repositoryId);
+    onEvent();
+    for (const changed of repositoryConsumers) changed(event);
+  };
+
+  const opened = access.api.onDidOpenRepository((repository) =>
+    lifecycle({
+      kind: 'opened',
+      repositoryId: repository.rootUri.toString(),
+    }),
+  );
+  const removed = access.api.onDidCloseRepository((repository) =>
+    lifecycle({
+      kind: 'closed',
+      repositoryId: repository.rootUri.toString(),
+    }),
+  );
 
   return {
     settled(this: void, id: string): Promise<void> {
-      return repositories.get(id)?.observation.settled() ?? Promise.resolve();
+      return repositories.get(id)?.settled() ?? Promise.resolve();
     },
     subscribe(this: void, id: string, changed: () => void): Disposable {
       if (closed) throw new Error('Repository observations are disposed.');
       let owner = repositories.get(id);
 
       if (!owner) {
-        const repository = access.repository(id);
         const consumers = new Set<{ changed(): void }>();
-        const observation = historyChangeFilter(repository, () => {
-          invalidate(id);
-          for (const consumer of consumers) consumer.changed();
-        });
-        const listener = repository.state.onDidChange(() => {
-          onEvent();
-          void observation.check();
-        });
+        let binding: {
+          observation: ReturnType<typeof historyChangeFilter>;
+          listener: Disposable;
+        } | null = null;
+        const dispose = () => {
+          binding?.listener.dispose();
+          binding?.observation.dispose();
+          binding = null;
+        };
 
-        owner = { consumers, observation, listener };
+        owner = {
+          consumers,
+          dispose,
+          settled: () => binding?.observation.settled() ?? Promise.resolve(),
+          bind() {
+            dispose();
+            const repository = access.repository(id);
+            const observation = historyChangeFilter(repository, () => {
+              invalidate(id);
+              for (const consumer of consumers) consumer.changed();
+            });
+            const listener = repository.state.onDidChange(() => {
+              if (binding?.observation !== observation) return;
+              onEvent();
+              void observation.check();
+            });
+
+            binding = { observation, listener };
+          },
+        };
+        owner.bind();
         repositories.set(id, owner);
       }
 
@@ -57,48 +107,36 @@ export function createRepositoryObservations({
         dispose() {
           if (!current.consumers.delete(consumer)) return;
           if (current.consumers.size) return;
-          current.listener.dispose();
-          current.observation.dispose();
-          repositories.delete(id);
+          current.dispose();
+          if (repositories.get(id) === current) repositories.delete(id);
         },
       };
     },
-    subscribeRepositories(this: void, changed: () => void): Disposable {
+    subscribeRepositories(
+      this: void,
+      changed: (event?: RepositoryEvent) => void,
+    ): Disposable {
       if (closed) throw new Error('Repository observations are disposed.');
-      let active = true;
-      const refresh = () => {
-        if (!active || closed) return;
-        onEvent();
-        changed();
-      };
+      repositoryConsumers.add(changed);
 
-      const opened = access.api.onDidOpenRepository(refresh);
-      const removed = access.api.onDidCloseRepository(refresh);
-      const subscription = {
+      return {
         dispose() {
-          if (!active) return;
-          active = false;
-          subscriptions.delete(subscription);
-          opened.dispose();
-          removed.dispose();
+          repositoryConsumers.delete(changed);
         },
       };
-
-      subscriptions.add(subscription);
-
-      return subscription;
     },
     dispose(this: void) {
       if (closed) return;
       closed = true;
       for (const owner of repositories.values()) {
         owner.consumers.clear();
-        owner.observation.dispose();
-        owner.listener.dispose();
+        owner.dispose();
       }
 
       repositories.clear();
-      for (const subscription of subscriptions) subscription.dispose();
+      opened.dispose();
+      removed.dispose();
+      repositoryConsumers.clear();
     },
   };
 }

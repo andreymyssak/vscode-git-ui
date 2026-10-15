@@ -1652,3 +1652,35 @@ test('Abort is hidden when there are no conflicts', () => {
 
   expect(button).not.toBeInTheDocument();
 });
+
+test('lightweight draft ACKs enable actions and ignore old ACKs after the newest edit completes', async () => {
+  const user = userEvent.setup();
+  const app = session(initialState(), null, false);
+  const message = screen.getByRole('textbox', { name: 'Commit message' });
+
+  await user.type(message, 'Latest');
+  const edits = app.requests.filter((request) => request.kind === 'message');
+  const latest = edits.at(-1);
+  const oldest = edits[0];
+
+  if (!latest || !oldest) throw new Error('Expected message edits');
+  const acknowledge = (request: typeof latest) =>
+    act(() => {
+      for (const listener of app.listeners)
+        listener({
+          kind: 'source-control-draft',
+          repositoryId: request.repositoryId,
+          message: request.message,
+          editId: request.editId,
+          generating: false,
+        });
+    });
+
+  acknowledge(oldest);
+  expect(message).toHaveValue('Latest');
+  acknowledge(latest);
+  expect(message).toHaveValue('Latest');
+  expect(screen.getByRole('button', { name: 'Commit' })).toBeEnabled();
+  acknowledge(oldest);
+  expect(message).toHaveValue('Latest');
+});

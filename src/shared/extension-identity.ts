@@ -63,6 +63,7 @@ export function commandId(
     | BranchActionKind
     | CommitActionKind
     | WorktreeActionKind
+    | 'show-output'
     | 'annotate-blame'
     | 'close-blame'
     | 'open-blame-commit'

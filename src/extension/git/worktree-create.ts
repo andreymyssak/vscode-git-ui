@@ -3,10 +3,10 @@ import { isAbsolute } from 'node:path';
 
 import type { GitAction, Reference } from '../../shared/model';
 import { hasErrorCode } from '../../shared/validation';
+import { readWithCancellation } from '../read-cancellation';
 import type { GitRepository } from './api';
 import type { GitCli } from './cli';
 import { GitPartialCompletion } from './partial-completion';
-import { readWithCancellation } from './read-cancellation';
 
 type Creation = Extract<GitAction, { kind: 'create-worktree' }>;
 

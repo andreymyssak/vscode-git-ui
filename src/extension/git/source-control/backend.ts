@@ -8,6 +8,7 @@ import type {
   WorkingFile,
 } from '../../../shared/source-control';
 import { getGitApi } from '../api';
+import { backgroundRead } from '../background-read';
 import { updateCheckout } from '../branch-update-target';
 import {
   clearSelectedChangeRecovery,
@@ -81,17 +82,21 @@ export async function createSourceControlBackend(signal?: AbortSignal) {
         );
       });
     },
-    headCommit: (id: string) =>
-      repositories.lease(id).current().getCommit('HEAD'),
-    workingChanges: (id: string) =>
-      readWorkingChanges(repositories.lease(id).cli, id),
-    operation(id: string) {
+    headCommit: (id: string, signal?: AbortSignal) =>
+      backgroundRead(
+        () => repositories.lease(id).current().getCommit('HEAD'),
+        signal,
+      ),
+    workingChanges: (id: string, signal?: AbortSignal) =>
+      readWorkingChanges(repositories.lease(id).cli.readOnly(signal), id),
+    operation(id: string, signal?: AbortSignal) {
       const lease = repositories.lease(id);
 
       // Reconcile only under the shared writer queue, after an in-flight patch settles.
       return lease.write(
         () => {},
-        async (cli) => {
+        async (writer) => {
+          const cli = writer.readOnly(signal);
           const record = await readSelectedChangeRecovery(
             cli,
             id,
@@ -121,6 +126,7 @@ export async function createSourceControlBackend(signal?: AbortSignal) {
 
           return readSourceControlOperation(cli, id, lease.root.fsPath);
         },
+        { signal },
       );
     },
     prepareAbort(id: string, token: string) {
@@ -139,9 +145,12 @@ export async function createSourceControlBackend(signal?: AbortSignal) {
           );
       });
     },
-    stashes: (id: string) => readStashes(repositories.lease(id).cli, id),
+    stashes: (id: string, signal?: AbortSignal) =>
+      readStashes(repositories.lease(id).cli.readOnly(signal), id),
     stashFiles: (id: string, stash: Stash) =>
-      readStashFiles(repositories.lease(id).cli, id, stash),
+      backgroundRead((signal) =>
+        readStashFiles(repositories.lease(id).cli.readOnly(signal), id, stash),
+      ),
     prepareChanges: (options: {
       id: string;
       files: readonly WorkingFile[];

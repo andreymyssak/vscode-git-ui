@@ -71,7 +71,12 @@ export type ViewEvent =
     }
   | { kind: 'select-ref'; refId: string | null }
   | { kind: 'apply-scope'; scope: Scope }
-  | { kind: 'select-commit'; sha: string; gesture?: CommitGesture }
+  | {
+      kind: 'select-commit';
+      sha: string;
+      gesture?: CommitGesture;
+      scrollTop?: number;
+    }
   | { kind: 'view'; view: 'log' | 'worktrees' };
 export function initialView(): ViewState {
   return {
@@ -157,6 +162,7 @@ export function reduceView(state: ViewState, event: ViewEvent): ViewState {
         ...state,
         selectedSha: event.sha,
         commitRange,
+        scrollTop: event.scrollTop ?? state.scrollTop,
         ...(state.selectedSha === event.sha
           ? {}
           : {

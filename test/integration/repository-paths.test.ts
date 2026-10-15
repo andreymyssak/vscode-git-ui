@@ -52,3 +52,29 @@ test('Git commands still reject a nested directory posing as the repository root
     await fixture.dispose();
   }
 });
+
+test('background CLI reads time out without changing normal writer execution', async () => {
+  const fixture = await createFixture({ prefix: 'git-ui read deadline ' });
+
+  try {
+    const cli = new GitCli(squashAccess(fixture.root));
+    const read = cli.readOnly(undefined, 100);
+
+    await expect(
+      read.run('fixture', [
+        '-c',
+        'alias.wait=!node -e "setTimeout(()=>{},1000)"',
+        'wait',
+      ]),
+    ).rejects.toMatchObject({ name: 'TimeoutError' });
+    // The original writer remains usable and never inherits a read deadline.
+    await cli.run('fixture', ['config', 'gitui.deadline-test', 'preserved']);
+    expect(
+      (
+        await cli.run('fixture', ['config', '--get', 'gitui.deadline-test'])
+      ).trim(),
+    ).toBe('preserved');
+  } finally {
+    await fixture.dispose();
+  }
+});

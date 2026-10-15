@@ -168,9 +168,8 @@ describe('Native Changes conflict actions', () => {
         const document = await vscode.workspace.openTextDocument(uri);
 
         await expect
-          .poll(() => document.getText())
-          .toBe(`${choice.toLowerCase()}\n`);
-        assert.ok(document.isDirty);
+          .poll(() => ({ text: document.getText(), dirty: document.isDirty }))
+          .toEqual({ text: `${choice.toLowerCase()}\n`, dirty: true });
         assert.ok(
           await fixture.runGit(['ls-files', '--unmerged', '--', 'src/a.txt']),
         );

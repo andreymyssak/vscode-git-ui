@@ -53,7 +53,7 @@ export interface HistoryQueries {
 }
 export function createHistoryQueries(
   access: GitApiAccess,
-  cli: GitCli,
+  reader: GitCli,
   clock: () => number = Date.now,
 ): HistoryQueries {
   const cursors = new Map<string, Cursor>();
@@ -67,6 +67,7 @@ export function createHistoryQueries(
 
   return {
     async authors(id, signal) {
+      const cli = reader.readOnly(signal);
       const refs = await readReferences(access, id, cli);
       const repo = access.repository(id);
       let head: string | null = null;
@@ -91,6 +92,8 @@ export function createHistoryQueries(
         if (cursor.snapshot.repositoryId === id) cursors.delete(token);
     },
     async page(id, input, signal, onReferences) {
+      const cli = reader.readOnly(signal);
+
       signal?.throwIfAborted();
       const started = revision(id);
       const filters = normalizeHistoryFilters(input.filters);

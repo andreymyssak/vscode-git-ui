@@ -2,7 +2,10 @@ import { expect, test, vi } from 'vitest';
 import * as vscode from 'vscode';
 
 import { SourceControlService } from '../../src/extension/source-control/service';
-import type { SourceControlState } from '../../src/shared/source-control';
+import type {
+  SourceControlDraftAck,
+  SourceControlState,
+} from '../../src/shared/source-control';
 import { parseSourceControlResponse } from '../../src/shared/source-control-protocol';
 
 const host = vi.hoisted(() => {
@@ -99,20 +102,24 @@ async function fixture() {
   }
 
   const states: SourceControlState[] = [];
+  const acks: SourceControlDraftAck[] = [];
   const storage: vscode.Memento = {
     get,
     keys: () => [],
     update: async () => {},
   };
-  const service = new SourceControlService(storage, (state) =>
-    states.push(state),
+  const service = new SourceControlService(
+    storage,
+    (state) => states.push(state),
+    undefined,
+    (ack) => acks.push(ack),
   );
 
   await service.refresh();
   service.model.requireRepository('repo').checked.setFile('sample.txt', true);
   service.model.setDraft('repo', 'My commit');
 
-  return { service, states };
+  return { service, states, acks };
 }
 
 test('a completed Commit releases editing while an unrelated stash read is pending', async (t) => {
@@ -368,4 +375,36 @@ test.each([
   } finally {
     service.dispose();
   }
+});
+
+test('typing acknowledges only the canonical draft without publishing the repository tree', async (t) => {
+  const { service, states, acks } = await fixture();
+
+  t.onTestFinished(() => service.dispose());
+  await vi.waitFor(() =>
+    expect(states.at(-1)?.repositories[0]?.changes.kind).toBe('ready'),
+  );
+  const publications = states.length;
+
+  for (let i = 1; i <= 12; i++)
+    await service.handle({
+      kind: 'message',
+      repositoryId: 'repo',
+      message: `draft ${i}`,
+      editId: `session:${i}`,
+    });
+  expect(states).toHaveLength(publications);
+  expect(acks).toHaveLength(12);
+  expect(acks.at(-1)).toEqual({
+    kind: 'source-control-draft',
+    repositoryId: 'repo',
+    message: 'draft 12',
+    editId: 'session:12',
+    generating: false,
+  });
+  expect(service.model.draft('repo')).toBe('draft 12');
+  await service.handle({ kind: 'ready', repositoryId: 'repo', tab: 'commit' });
+  await vi.waitFor(() =>
+    expect(states.at(-1)?.repositories[0]?.draft).toBe('draft 12'),
+  );
 });
