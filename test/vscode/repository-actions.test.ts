@@ -139,11 +139,13 @@ describe('Source Control repository actions', () => {
   it('opens native branch pickers from the title menu and targets the selected repository', async () => {
     const fixture = await createFixture({ prefix: 'git-ui-quick-branch-' });
     const other = await createFixture({ prefix: 'git-ui-quick-other-' });
+    let frame: Frame | undefined;
 
     try {
       const head = (await fixture.runGit(['rev-parse', 'HEAD'])).trim();
       const otherHead = (await other.runGit(['rev-parse', 'HEAD'])).trim();
-      const frame = await openSelected(fixture, other);
+
+      frame = await openSelected(fixture, other);
       const page = await menu(frame);
 
       for (const name of [
@@ -236,7 +238,14 @@ describe('Source Control repository actions', () => {
       await activateNativeMenu(
         page.getByRole('menuitem', { name: 'Checkout', exact: true }),
       );
-      await expect(widget).toBeVisible();
+      // Native Checkout shows its picker before loading refs and listeners.
+      // Wait for this picker and its choices before filtering the branch list.
+      await expect(input).toHaveAttribute(
+        'placeholder',
+        'Select a branch or tag to checkout',
+      );
+      await expect(widget.getByText('main', { exact: true })).toBeVisible();
+      await expect(input).toBeFocused();
       await input.fill('main');
       await acceptNativeQuickPick({ widget, input, label: 'main' });
       await expect
@@ -333,6 +342,13 @@ describe('Source Control repository actions', () => {
           ]),
         )
         .toBe('');
+    } catch (error) {
+      if (frame)
+        await captureNativeActionFailure({
+          frame,
+          name: 'repository-branches',
+        });
+      throw error;
     } finally {
       await dispose(fixture, other);
     }
