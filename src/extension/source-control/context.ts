@@ -20,6 +20,9 @@ export async function publishSourceControlContexts(
       0)
     : 0;
 
+  // Keep native repository title actions independent of the busy key. VS Code
+  // debounces menu rebuilds, which can restore toolbar focus after a picker opens.
+  // The host's model.busy guard still rejects competing actions.
   await Promise.all(
     [
       ['gitUI.changesHasChecked', checked > 0],

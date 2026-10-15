@@ -490,103 +490,103 @@
         "command": "gitUI.pull",
         "title": "Pull",
         "category": "Git UI",
-        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasRepository"
+        "enablement": "isWorkspaceTrusted && gitUI.changesHasRepository"
       },
       {
         "command": "gitUI.push",
         "title": "Push",
         "category": "Git UI",
-        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasRepository"
+        "enablement": "isWorkspaceTrusted && gitUI.changesHasRepository"
       },
       {
         "command": "gitUI.checkout-branch",
         "title": "Checkout",
         "category": "Git UI",
-        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasRepository"
+        "enablement": "isWorkspaceTrusted && gitUI.changesHasRepository"
       },
       {
         "command": "gitUI.new-branch",
         "title": "New Branch",
         "category": "Git UI",
-        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasRepository"
+        "enablement": "isWorkspaceTrusted && gitUI.changesHasRepository"
       },
       {
         "command": "gitUI.new-branch-checkout",
         "title": "New Branch and Checkout",
         "category": "Git UI",
-        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasRepository"
+        "enablement": "isWorkspaceTrusted && gitUI.changesHasRepository"
       },
       {
         "command": "gitUI.fetch",
         "title": "Fetch",
         "category": "Git UI",
-        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasRepository"
+        "enablement": "isWorkspaceTrusted && gitUI.changesHasRepository"
       },
       {
         "command": "gitUI.merge-current",
         "title": "Merge",
         "category": "Git UI",
-        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasRepository"
+        "enablement": "isWorkspaceTrusted && gitUI.changesHasRepository"
       },
       {
         "command": "gitUI.rebase-current",
         "title": "Rebase",
         "category": "Git UI",
-        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasRepository"
+        "enablement": "isWorkspaceTrusted && gitUI.changesHasRepository"
       },
       {
         "command": "gitUI.new-branch-from",
         "title": "New Branch and Checkout From",
         "category": "Git UI",
-        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasRepository"
+        "enablement": "isWorkspaceTrusted && gitUI.changesHasRepository"
       },
       {
         "command": "gitUI.rename-current-branch",
         "title": "Rename",
         "category": "Git UI",
-        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasRepository"
+        "enablement": "isWorkspaceTrusted && gitUI.changesHasRepository"
       },
       {
         "command": "gitUI.delete-local-branch",
         "title": "Delete Branch",
         "category": "Git UI",
-        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasRepository"
+        "enablement": "isWorkspaceTrusted && gitUI.changesHasRepository"
       },
       {
         "command": "gitUI.delete-remote-branch",
         "title": "Delete Remote Branch",
         "category": "Git UI",
-        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasRepository"
+        "enablement": "isWorkspaceTrusted && gitUI.changesHasRepository"
       },
       {
         "command": "gitUI.publish-branch",
         "title": "Publish Branch",
         "category": "Git UI",
-        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasRepository"
+        "enablement": "isWorkspaceTrusted && gitUI.changesHasRepository"
       },
       {
         "command": "gitUI.create-tag",
         "title": "Create Tag",
         "category": "Git UI",
-        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasRepository"
+        "enablement": "isWorkspaceTrusted && gitUI.changesHasRepository"
       },
       {
         "command": "gitUI.delete-tag",
         "title": "Delete Tag",
         "category": "Git UI",
-        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasRepository"
+        "enablement": "isWorkspaceTrusted && gitUI.changesHasRepository"
       },
       {
         "command": "gitUI.delete-remote-tag",
         "title": "Delete Remote Tag",
         "category": "Git UI",
-        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasRepository"
+        "enablement": "isWorkspaceTrusted && gitUI.changesHasRepository"
       },
       {
         "command": "gitUI.push-tags",
         "title": "Push Tags",
         "category": "Git UI",
-        "enablement": "isWorkspaceTrusted && !gitUI.sourceControlBusy && gitUI.changesHasRepository"
+        "enablement": "isWorkspaceTrusted && gitUI.changesHasRepository"
       }
     ],
     "menus": {

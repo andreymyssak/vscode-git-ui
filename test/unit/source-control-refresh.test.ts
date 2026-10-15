@@ -1,7 +1,7 @@
 import { setTimeout as delay } from 'node:timers/promises';
 
 import { expect, test, vi } from 'vitest';
-import * as vscode from 'vscode';
+import type * as vscode from 'vscode';
 
 import { SourceControlService } from '../../src/extension/source-control/service';
 import type { WorkingFile } from '../../src/shared/source-control';
@@ -69,7 +69,7 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-test('native repository actions wait for the busy toolbar context before opening their picker', async (t) => {
+test('native repository actions reject competing writes while their picker is open', async (t) => {
   function get<T>(key: string): T | undefined;
   function get<T>(key: string, defaultValue: T): T;
   function get<T>(...args: [string, T?]): T | undefined {
@@ -85,23 +85,12 @@ test('native repository actions wait for the busy toolbar context before opening
   const pending = deferred<void>();
 
   await service.refresh();
-  const native = vi.spyOn(host.backend, 'repositoryAction');
-  const context = vi
-    .spyOn(vscode.commands, 'executeCommand')
-    .mockImplementation(async (command, ...args: unknown[]) => {
-      if (
-        command === 'setContext' &&
-        args[0] === 'gitUI.sourceControlBusy' &&
-        args[1] === true
-      )
-        await pending.promise;
-
-      return undefined;
-    });
+  const native = vi
+    .spyOn(host.backend, 'repositoryAction')
+    .mockImplementation(() => pending.promise);
 
   t.onTestFinished(() => {
     pending.resolve();
-    context.mockRestore();
     native.mockRestore();
     service.dispose();
   });
@@ -110,16 +99,10 @@ test('native repository actions wait for the busy toolbar context before opening
     repositoryId: 'file:///repo',
   });
 
-  await delay(0);
-  expect(context).toHaveBeenCalledWith(
-    'setContext',
-    'gitUI.sourceControlBusy',
-    true,
-  );
-  expect(native).not.toHaveBeenCalled();
+  await vi.waitFor(() => expect(native).toHaveBeenCalledTimes(1));
   expect(service.model.busy).toBe(true);
   await service.handle({ kind: 'pull', repositoryId: 'file:///repo' });
-  expect(native).not.toHaveBeenCalled();
+  expect(native).toHaveBeenCalledTimes(1);
   pending.resolve();
   await action;
   expect(native).toHaveBeenCalledTimes(1);
