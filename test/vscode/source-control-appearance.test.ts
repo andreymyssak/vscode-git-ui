@@ -26,6 +26,8 @@ async function typography(label: Locator) {
 
 async function hoverSnapshot(hover: Locator, contentsSelector?: string) {
   return hover.evaluate((element, contentsSelector) => {
+    if (!element.isConnected)
+      throw new Error('Hover detached before its styles were captured.');
     const style = getComputedStyle(element);
     const contents = contentsSelector
       ? element.querySelector(contentsSelector)
@@ -322,16 +324,22 @@ describe('Source Control appearance', () => {
             ? await folderBadge(nativeLabel, true)
             : undefined;
 
-        // Use the native keyboard action to avoid losing a mouse hover during theme redraws.
-        await vscode.commands.executeCommand('list.showHover');
         const nativeHover = page
           .locator('.monaco-hover.workbench-hover')
           .filter({ visible: true });
+        let snapshot: Awaited<ReturnType<typeof hoverSnapshot>> | undefined;
 
-        // Read transient native hover contents and styles in one DOM snapshot.
-        const snapshot = await hoverSnapshot(nativeHover, '.hover-contents');
+        // Native theme redraws can detach a hover between locator resolution and
+        // capture. Reopen and read it until the reference has rendered styles.
+        await expect(async () => {
+          await vscode.commands.executeCommand('list.showHover');
+          const rendered = await hoverSnapshot(nativeHover, '.hover-contents');
 
-        assert.ok(snapshot.text.includes(join(fixture.root, comparison.path)));
+          expect(rendered.text).toContain(join(fixture.root, comparison.path));
+          expect(Object.values(rendered.appearance)).not.toContain('');
+          snapshot = rendered;
+        }).toPass({ timeout: 5000 });
+        assert.ok(snapshot);
         native.push({
           name: comparison.name,
           path: comparison.path,

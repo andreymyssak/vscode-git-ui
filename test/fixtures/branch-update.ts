@@ -71,6 +71,15 @@ export async function divergentFixture(branch: string, conflict = false) {
         expectedUpstream: 'refs/remotes/origin/main',
       },
       async dispose() {
+        if (
+          access.api.repositories.some(
+            (repository) => repository.rootUri.toString() === id,
+          )
+        )
+          await vscode.commands.executeCommand(
+            'git.close',
+            vscode.Uri.file(fixture.root),
+          );
         await Promise.all([
           fixture.dispose(),
           rm(remote, { recursive: true, force: true }),
