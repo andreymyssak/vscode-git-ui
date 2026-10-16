@@ -71,10 +71,10 @@ describe('native squash menu workflow', () => {
       const references = rows.first().locator('[data-references]');
 
       await references.hover();
-      await expect(frame.getByRole('tooltip')).toBeVisible();
+      await expect(frame.locator('[data-reference-tooltip]')).toBeVisible();
       await references.focus();
       await refreshNativeHistory(frame, id);
-      await expect(frame.getByRole('tooltip')).toHaveCount(0);
+      await expect(frame.locator('[data-reference-tooltip]')).toHaveCount(0);
       const singleActions = [
         /^Copy Revision Number$/,
         /^Edit Commit Message/,
