@@ -68,8 +68,11 @@ describe('native squash menu workflow', () => {
       await workbench.bringToFront();
       const rows = frame.locator('[data-commit-row]');
 
-      await rows.first().locator('[data-references]').focus();
+      const references = rows.first().locator('[data-references]');
+
+      await references.hover();
       await expect(frame.getByRole('tooltip')).toBeVisible();
+      await references.focus();
       await refreshNativeHistory(frame, id);
       await expect(frame.getByRole('tooltip')).toHaveCount(0);
       const singleActions = [

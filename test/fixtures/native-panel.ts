@@ -213,7 +213,8 @@ export async function refreshNativeHistory(
   await vscode.commands.executeCommand('notifications.hideToasts');
   const refresh = frame.getByRole('button', { name: 'Refresh', exact: true });
 
-  // Dismiss an interactive reference popup through its normal keyboard path.
+  // Leave reference markers before dismissing their live or delayed popups.
+  await frame.page().mouse.move(0, 0);
   await refresh.focus();
   await refresh.press('Escape');
   await refresh.click();
