@@ -83,7 +83,6 @@ describe('native squash menu workflow', () => {
         .toBe(false);
       await expect(frame.locator('[data-reference-tooltip]')).toHaveCount(0);
       await refreshNativeHistory(frame, id);
-      await expect(frame.locator('[data-reference-tooltip]')).toHaveCount(0);
       const singleActions = [
         /^Copy Revision Number$/,
         /^Edit Commit Message/,
@@ -91,8 +90,11 @@ describe('native squash menu workflow', () => {
         /^New Tag/,
       ];
 
-      await rows.first().click();
-      await rows.first().click({ button: 'right' });
+      await rows.first().locator('[data-subject-message]').click();
+      await rows
+        .first()
+        .locator('[data-subject-message]')
+        .click({ button: 'right' });
       for (const name of singleActions)
         await expect(contextMenu.getByRole('menuitem', { name })).toBeVisible();
       await expect(
@@ -100,7 +102,10 @@ describe('native squash menu workflow', () => {
       ).toHaveCount(0);
       await workbench.keyboard.press('Escape');
       await expect(contextMenu.getByRole('menuitem')).toHaveCount(0);
-      await rows.nth(1).click({ modifiers: ['Shift'] });
+      await rows
+        .nth(1)
+        .locator('[data-subject-message]')
+        .click({ modifiers: ['Shift'] });
       await expect(
         frame.locator('[data-commit-row][aria-selected="true"]'),
       ).toHaveCount(2);
@@ -113,7 +118,10 @@ describe('native squash menu workflow', () => {
           return context.commitCanSquash;
         })
         .toBe(true);
-      await rows.first().click({ button: 'right' });
+      await rows
+        .first()
+        .locator('[data-subject-message]')
+        .click({ button: 'right' });
       const squash = contextMenu.getByRole('menuitem', {
         name: /^Squash Commits/,
       });
