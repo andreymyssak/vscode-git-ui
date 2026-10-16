@@ -8,6 +8,7 @@
 
 ### Bug Fixes
 
+- **blame:** open commits clicked while a history refresh is pending ([a1f08ec](https://github.com/andreymyssak/vscode-git-ui/commit/a1f08ecf66676ebf0f923a77075434fbd82b83bc))
 - **blame:** preserve the latest commit jump across repository refreshes ([2ecbdda](https://github.com/andreymyssak/vscode-git-ui/commit/2ecbdda1024c5845ecf8694648e132b7cdfbae99))
 
 ## [0.4.2](https://github.com/andreymyssak/vscode-git-ui/compare/v0.4.1...v0.4.2) (2026-10-15)
