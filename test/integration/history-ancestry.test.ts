@@ -1,7 +1,7 @@
 import { rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { expect, test, vi } from 'vitest';
+import { expect, type MockInstance, test, vi } from 'vitest';
 
 import type { GitCommit, GitRepository } from '../../src/extension/git/api';
 import { GitCli } from '../../src/extension/git/cli';
@@ -24,6 +24,18 @@ const records = (...shas: string[]): CommitRecord[] =>
     authorDate: null,
     commitDate: null,
   }));
+
+async function settleStreams(
+  streamed: MockInstance<GitCli['stream']>,
+): Promise<void> {
+  // Membership can resolve before its shared Git process releases the fixture.
+  await Promise.allSettled(
+    streamed.mock.results.flatMap((result) =>
+      result.type === 'return' ? [result.value] : [],
+    ),
+  );
+  streamed.mockRestore();
+}
 
 async function linearFixture(count: number) {
   const fixture = await createFixture({ prefix: 'git-ui ancestry ' });
@@ -123,7 +135,7 @@ test('a late deep-page subscriber cannot miss an ancestor already passed by a sh
     await expect(late).resolves.toEqual([passed]);
   } finally {
     reader.dispose();
-    streamed.mockRestore();
+    await settleStreams(streamed);
     await f.dispose();
   }
 });
@@ -169,7 +181,7 @@ test('multi-tip pages share real ancestry and distinguish both merge parents fro
     ).toHaveLength(1);
   } finally {
     reader.dispose();
-    streamed.mockRestore();
+    await settleStreams(streamed);
     await f.dispose();
   }
 });
@@ -204,7 +216,7 @@ test('a deep real walk retains nearby pages and reruns for an uncached ancestor 
     expect(walks()).toBe(2);
   } finally {
     reader.dispose();
-    streamed.mockRestore();
+    await settleStreams(streamed);
     await f.dispose();
   }
 });
@@ -235,7 +247,7 @@ test('changing HEAD recomputes membership even when the displayed tips and commi
     ).toHaveLength(2);
   } finally {
     reader.dispose();
-    streamed.mockRestore();
+    await settleStreams(streamed);
     await f.dispose();
   }
 });
@@ -264,7 +276,7 @@ test('invalidation discards negative ancestry answers when a real shallow bounda
     ).toHaveLength(2);
   } finally {
     reader.dispose();
-    streamed.mockRestore();
+    await settleStreams(streamed);
     await f.dispose();
   }
 });
@@ -389,7 +401,7 @@ test('production history paging reuses one ancestry stream and invalidation star
     ).toHaveLength(2);
   } finally {
     history.dispose();
-    streamed.mockRestore();
+    await settleStreams(streamed);
     await f.dispose();
   }
 });
@@ -438,6 +450,7 @@ test('a fresh history snapshot recomputes ancestry after unshallowing with uncha
   const access = { ...f.access, repository: () => ({ ...repository }) };
   let now = 0;
   const history = createHistoryQueries(access, new GitCli(access), () => now);
+  const streamed = vi.spyOn(GitCli.prototype, 'stream');
   const input: HistoryInput = {
     scope: { kind: 'all' },
     text: '',
@@ -472,6 +485,7 @@ test('a fresh history snapshot recomputes ancestry after unshallowing with uncha
     ]);
   } finally {
     history.dispose();
+    await settleStreams(streamed);
     await f.dispose();
   }
 });

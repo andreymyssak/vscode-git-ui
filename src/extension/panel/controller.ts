@@ -283,7 +283,8 @@ export class PanelController {
     if (
       kind === 'choose-repository' ||
       (kind === 'history' && request.body.cursor === null) ||
-      (this.session.current(request.repositoryId, request.generation) &&
+      (this.session.repositoryId === request.repositoryId &&
+        this.session.generation === request.generation &&
         [
           'restore',
           'go-to',
@@ -524,12 +525,16 @@ export class PanelController {
     const changed = () => {
       if (this.closed || this.session.repositoryId !== id) return;
       if (this.repositoryRefresh.defer(id, changed)) {
-        if (this.operations.isRefreshing(id)) this.session.abort.abort();
+        if (this.operations.isRefreshing(id)) {
+          this.commitNavigation?.pauseForRefresh();
+          this.session.abort.abort();
+        }
 
         return;
       }
 
       // Invalidate immediately; a slow read must not publish during the debounce.
+      this.commitNavigation?.pauseForRefresh();
       this.session.abort.abort();
       if (!this.visible) {
         this.presentationDirty = true;
@@ -647,6 +652,7 @@ export class PanelController {
   async setVisible(visible: boolean): Promise<void> {
     this.visible = visible;
     if (this.closed) return;
+    if (!visible) this.commitNavigation?.cancel();
     if (!visible && this.refreshTimer) {
       clearTimeout(this.refreshTimer);
       this.refreshTimer = null;
@@ -704,7 +710,8 @@ export class PanelController {
         signal,
       );
     } catch (error) {
-      if (this.session.current(id, generation))
+      if (this.session.current(id, generation)) {
+        this.commitNavigation?.refreshSettled({ kind: 'failed' });
         await this.notifications.readFailed(
           'history',
           error,
@@ -713,16 +720,19 @@ export class PanelController {
           id,
           generation,
         );
+      }
 
       return;
     }
 
     if (!this.session.current(id, generation)) return;
     this.refreshRestore = null;
+    this.commitNavigation?.refreshSettled();
   }
 
   dispose(): void {
     this.closed = true;
+    this.commitNavigation?.cancel();
     if (this.refreshTimer) clearTimeout(this.refreshTimer);
     this.subscription?.dispose();
     this.repositorySubscription?.dispose();

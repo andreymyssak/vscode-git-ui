@@ -83,6 +83,7 @@ describe('native Git UI blame', () => {
       });
       let started = false;
       let pending: Thenable<unknown> | undefined;
+      let newerResult: unknown;
 
       repository.getCommit = async (ref) => {
         if (ref === older && !started) {
@@ -121,16 +122,14 @@ describe('native Git UI blame', () => {
           },
         );
         await expect.poll(() => started).toBe(true);
-        assert.equal(
-          await vscode.commands.executeCommand(commandId('open-blame-commit'), {
-            documentUri: vscode.Uri.file(path).toString(),
-            sha: newer,
-          }),
-          true,
+        newerResult = await vscode.commands.executeCommand(
+          commandId('open-blame-commit'),
+          { documentUri: vscode.Uri.file(path).toString(), sha: newer },
         );
+        assert.equal(newerResult, true);
         await selectedCommit(id, newer);
         release();
-        await pending;
+        assert.equal(await pending, false);
         await selectedCommit(id, newer);
         if (failOlder) {
           const page = await workbench();
@@ -142,6 +141,32 @@ describe('native Git UI blame', () => {
             }),
           ).toHaveCount(0);
         }
+      } catch (error) {
+        const page = await workbench();
+
+        await vscode.commands.executeCommand('notifications.showList');
+        await writeFile(
+          join(
+            process.env.GIT_UI_TEST_ARTIFACTS ?? '.artifacts',
+            `blame-click-order-${failOlder ? 'fails' : 'finishes'}-failure.json`,
+          ),
+          JSON.stringify({
+            started,
+            newerResult,
+            notifications: await page
+              .locator('.notification-list-item')
+              .allTextContents(),
+            documents: await Promise.all(
+              page.frames().map(async (frame) => ({
+                url: frame.url().replace(/\?.*$/, ''),
+                content: await frame
+                  .evaluate(() => document.body?.innerText.slice(0, 5000))
+                  .catch(() => null),
+              })),
+            ),
+          }),
+        );
+        throw error;
       } finally {
         release();
         await pending;

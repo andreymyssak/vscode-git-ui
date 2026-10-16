@@ -167,11 +167,10 @@ describe('native squash menu workflow', () => {
           ),
       );
       const access = await getGitApi();
+      const id = vscode.Uri.file(fixture.root).toString();
 
       await access.api.openRepository(vscode.Uri.file(fixture.root));
-      await access
-        .repository(vscode.Uri.file(fixture.root).toString())
-        .status();
+      await access.repository(id).status();
       await vscode.commands.executeCommand(`${LOG_VIEW_ID}.focus`);
       await expect
         .poll(async () => {
@@ -400,6 +399,11 @@ describe('native squash menu workflow', () => {
       const squashed = (await fixture.runGit(['rev-parse', 'HEAD'])).trim();
 
       for (const choice of ['Cancel', 'Drop']) {
+        // Settle the preceding rewrite's native observations before capturing
+        // the next range. A fresh generation must still contain its exact HEAD.
+        await access.repository(id).status();
+        await refreshNativeHistory(frame, id);
+        await expect(rows.first()).toHaveAttribute('data-sha', squashed);
         await rows.first().press('Enter');
         await expect(frame.locator('#details')).toHaveAttribute(
           'aria-busy',
@@ -429,6 +433,11 @@ describe('native squash menu workflow', () => {
               currentContext: await rows
                 .first()
                 .getAttribute('data-vscode-context'),
+              head: {
+                expected: squashed,
+                git: (await fixture.runGit(['rev-parse', 'HEAD'])).trim(),
+                native: access.repository(id).state.HEAD?.commit ?? null,
+              },
               status: await frame!.locator('#status').textContent(),
               busy: await frame!.locator('#history').getAttribute('inert'),
               workbench: (await workbench.locator('body').innerText()).slice(

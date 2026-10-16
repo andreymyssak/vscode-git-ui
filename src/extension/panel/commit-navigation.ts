@@ -22,9 +22,20 @@ interface CommitNavigationPorts {
   closed(): boolean;
 }
 
+type RefreshResult = { kind: 'ready' } | { kind: 'failed' };
+
+interface HostJump {
+  epoch: number;
+  refresh: {
+    completion: Promise<RefreshResult>;
+    finish(result: RefreshResult): void;
+  } | null;
+}
+
 /** Publishes a commit jump through the existing query and detail session. */
 export class CommitNavigation {
   private navigationRevision = 0;
+  private hostJump: HostJump | null = null;
   hostNavigation = false;
 
   constructor(private readonly ports: CommitNavigationPorts) {}
@@ -32,6 +43,29 @@ export class CommitNavigation {
   cancel(): void {
     this.navigationRevision++;
     this.ports.navigator.cancel();
+    this.refreshSettled();
+    this.hostJump = null;
+  }
+
+  pauseForRefresh(): void {
+    const jump = this.hostJump;
+
+    if (!jump) return;
+    // Retire the old read immediately, but retain its immutable user target.
+    jump.epoch++;
+    jump.refresh?.finish({ kind: 'ready' });
+    let finish: (result: RefreshResult) => void = () => {};
+
+    const completion = new Promise<RefreshResult>((resolve) => {
+      finish = resolve;
+    });
+
+    jump.refresh = { completion, finish };
+    this.ports.navigator.cancel();
+  }
+
+  refreshSettled(result: RefreshResult = { kind: 'ready' }): void {
+    this.hostJump?.refresh?.finish(result);
   }
 
   async goTo(
@@ -135,22 +169,63 @@ export class CommitNavigation {
     const first = !this.hostNavigation;
 
     this.hostNavigation = true;
-    const revision = ++this.navigationRevision;
+    this.cancel();
+    const revision = this.navigationRevision;
+    const jump: HostJump = { epoch: 0, refresh: null };
 
-    this.ports.navigator.cancel();
-    if (!(await this.ports.setup())) throw unavailableNavigation();
-    const current = () =>
+    this.hostJump = jump;
+    const latest = () =>
       !this.ports.closed() &&
       revision === this.navigationRevision &&
       sourceCurrent();
+    let initialize = first;
 
+    try {
+      while (latest()) {
+        const refresh = jump.refresh;
+
+        if (refresh) {
+          const result = await refresh.completion;
+
+          if (!latest()) return;
+          if (jump.refresh !== refresh) continue;
+          jump.refresh = null;
+          // The normal refresh owns failure reporting, including native notices.
+          if (result.kind === 'failed')
+            throw new DOMException('History refresh failed.', 'AbortError');
+        }
+
+        const epoch = jump.epoch;
+        const current = () => latest() && epoch === jump.epoch;
+
+        try {
+          await this.revealTarget(target, current, initialize);
+        } catch (error) {
+          if (!latest()) return;
+          if (!jump.refresh) throw error;
+        }
+
+        initialize = false;
+        if (!jump.refresh) return;
+      }
+    } finally {
+      if (this.hostJump === jump) this.hostJump = null;
+    }
+  }
+
+  private async revealTarget(
+    target: CommitJump,
+    current: () => boolean,
+    initialize: boolean,
+  ): Promise<void> {
+    if (!(await this.ports.setup())) throw unavailableNavigation();
     if (!current()) return;
     this.ports.repository(target.repositoryId);
     await this.ports.send({ kind: 'focus-log' }, 'commit-jump');
     if (!current()) return;
     if (this.ports.session.repositoryId !== target.repositoryId) {
       await this.ports.selectRepository(target.repositoryId, current);
-    } else if (first) {
+    } else if (initialize) {
       this.ports.session.begin(target.repositoryId);
       await this.ports.history.load(
         this.ports.getInput(),

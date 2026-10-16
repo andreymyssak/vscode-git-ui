@@ -58,6 +58,10 @@ describe('Update with an uncheckable worktree', () => {
       const branch = frame.locator('[data-ref="refs/heads/topic"]');
 
       await expect(branch).toBeVisible();
+      await expect(branch).toHaveAttribute(
+        'data-vscode-context',
+        /"refCanUpdate":true/,
+      );
       await branch.evaluate((node) => {
         node.addEventListener(
           'contextmenu',
