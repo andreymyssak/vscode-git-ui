@@ -6,6 +6,10 @@
 
 - load large histories and file lists incrementally with optional Git cache optimization ([078ae84](https://github.com/andreymyssak/vscode-git-ui/commit/078ae8448cfda348df5a6c01d560ceee5be24d55))
 
+### Bug Fixes
+
+- **blame:** preserve the latest commit jump across repository refreshes ([2ecbdda](https://github.com/andreymyssak/vscode-git-ui/commit/2ecbdda1024c5845ecf8694648e132b7cdfbae99))
+
 ## [0.4.2](https://github.com/andreymyssak/vscode-git-ui/compare/v0.4.1...v0.4.2) (2026-10-15)
 
 ### Bug Fixes
