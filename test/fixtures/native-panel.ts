@@ -211,7 +211,12 @@ export async function refreshNativeHistory(
 
   // Fixture cleanup can leave native toasts over the webview's toolbar.
   await vscode.commands.executeCommand('notifications.hideToasts');
-  await frame.getByRole('button', { name: 'Refresh', exact: true }).click();
+  const refresh = frame.getByRole('button', { name: 'Refresh', exact: true });
+
+  // Dismiss an interactive reference popup through its normal keyboard path.
+  await refresh.focus();
+  await refresh.press('Escape');
+  await refresh.click();
   await expect
     .poll(async () => {
       const context = JSON.parse(

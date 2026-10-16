@@ -66,8 +66,12 @@ describe('native squash menu workflow', () => {
       const contextMenu = workbench.locator('.monaco-menu');
 
       await workbench.bringToFront();
-      await refreshNativeHistory(frame, id);
       const rows = frame.locator('[data-commit-row]');
+
+      await rows.first().locator('[data-references]').focus();
+      await expect(frame.getByRole('tooltip')).toBeVisible();
+      await refreshNativeHistory(frame, id);
+      await expect(frame.getByRole('tooltip')).toHaveCount(0);
       const singleActions = [
         /^Copy Revision Number$/,
         /^Edit Commit Message/,
