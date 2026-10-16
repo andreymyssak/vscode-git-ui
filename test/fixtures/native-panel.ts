@@ -5,6 +5,7 @@ import { chromium, expect } from '@playwright/test';
 import * as vscode from 'vscode';
 
 import { EXTENSION_ID } from '../../src/shared/extension-identity';
+import { activateNativeButton } from './native-menu';
 
 declare global {
   var nativeTestBrowser: Browser | undefined;
@@ -217,7 +218,7 @@ export async function refreshNativeHistory(
   await frame.page().mouse.move(0, 0);
   await refresh.focus();
   await refresh.press('Escape');
-  await refresh.click();
+  await activateNativeButton(refresh);
   await expect
     .poll(async () => {
       const context = JSON.parse(

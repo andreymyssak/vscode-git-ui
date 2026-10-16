@@ -84,7 +84,9 @@ for (const width of [620, 1280])
     }
 
     await spinner.hover();
-    await expect(page.getByRole('tooltip')).toHaveText('Updating main…');
+    await expect(
+      page.getByRole('tooltip', { name: 'Updating main…', exact: true }),
+    ).toHaveText('Updating main…');
     await page.mouse.move(0, 0);
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await expect(current.locator('.codicon-loading')).toHaveCSS(

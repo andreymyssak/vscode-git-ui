@@ -26,6 +26,7 @@ describe('native squash menu workflow', () => {
     const fixture = await createFixture({
       prefix: 'git-ui-native commit menu ',
     });
+    const sampleUri = vscode.Uri.file(join(fixture.root, 'sample.txt'));
     const menu = vscode.workspace.getConfiguration('window');
     const previous = menu.inspect<string>('menuStyle')?.globalValue;
     let workbench: Page | undefined;
@@ -73,6 +74,10 @@ describe('native squash menu workflow', () => {
       await references.hover();
       await expect(frame.locator('[data-reference-tooltip]')).toBeVisible();
       await references.focus();
+      await vscode.window.showTextDocument(sampleUri);
+      await expect
+        .poll(() => frame.evaluate(() => document.hasFocus()))
+        .toBe(false);
       await refreshNativeHistory(frame, id);
       await expect(frame.locator('[data-reference-tooltip]')).toHaveCount(0);
       const singleActions = [
@@ -119,10 +124,26 @@ describe('native squash menu workflow', () => {
       try {
         if (workbench) await workbench.keyboard.press('Escape');
       } finally {
-        await Promise.all([
-          menu.update('menuStyle', previous, vscode.ConfigurationTarget.Global),
-          fixture.dispose(),
-        ]);
+        try {
+          const tabs = vscode.window.tabGroups.all.flatMap((group) =>
+            group.tabs.filter(
+              (tab) =>
+                tab.input instanceof vscode.TabInputText &&
+                tab.input.uri.toString() === sampleUri.toString(),
+            ),
+          );
+
+          if (tabs.length) await vscode.window.tabGroups.close(tabs);
+        } finally {
+          await Promise.all([
+            menu.update(
+              'menuStyle',
+              previous,
+              vscode.ConfigurationTarget.Global,
+            ),
+            fixture.dispose(),
+          ]);
+        }
       }
     }
   });

@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 
 import { getGitApi } from '../../src/extension/git/api';
 import { LOG_VIEW_ID } from '../../src/shared/extension-identity';
+import { isRecord } from '../../src/shared/validation';
 import {
   refreshNativeHistory,
   selectNativeRepository,
@@ -43,6 +44,26 @@ describe('native header controls', () => {
 
       stage = 'wait for fixture history';
       await expect(row).toHaveAttribute('data-sha', head);
+      const generation = async () => {
+        const context: unknown = JSON.parse(
+          (await row.getAttribute('data-vscode-context')) ?? '{}',
+        );
+
+        assert.ok(isRecord(context));
+        assert.equal(context.repositoryId, rootUri.toString());
+        assert.ok(typeof context.generation === 'number');
+
+        return context.generation;
+      };
+
+      const previousGeneration = await generation();
+
+      stage = 'physically refresh current history';
+      await expect(frame.locator('[data-reference-tooltip]')).toHaveCount(0);
+      await frame
+        .getByRole('button', { name: 'Refresh', exact: true })
+        .click({ timeout: 5000 });
+      await expect.poll(generation).toBeGreaterThan(previousGeneration);
       const branchSearch = frame.getByRole('searchbox', {
         name: 'Branch or tag',
       });
