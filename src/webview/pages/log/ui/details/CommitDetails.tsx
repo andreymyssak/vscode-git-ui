@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { Icon } from '@webview/shared/ui';
+import { Icon, ProgressBar } from '@webview/shared/ui';
 
 import {
   buildReferenceLabels,
@@ -65,6 +65,18 @@ export function CommitDetails({
     (!!data.selectedSha &&
       ((!complete && !failed) || data.details?.sha !== data.selectedSha)) ||
     (data.loading && !data.details);
+  const comparisons = data.details?.parents.length
+    ? data.details.parents
+    : [null];
+  const filesPending =
+    !!data.selectedSha &&
+    !data.error &&
+    (data.details?.sha !== data.selectedSha ||
+      comparisons.some(
+        (parent) =>
+          !Object.hasOwn(data.files, parent ?? 'root') &&
+          !data.fileErrors[parent ?? 'root'],
+      ));
   const retained =
     !!settled &&
     settled.repositoryId === repositoryId &&
@@ -88,95 +100,96 @@ export function CommitDetails({
       aria-busy={pending && !data.error}
       inert={retained}
     >
-      {commit ? (
-        <>
-          <section className={styles['changes-section']}>
-            <ChangedFiles
-              key={commit.sha}
-              data={displayed}
-              onIntent={onIntent}
-              inactive={retained}
-            />
-          </section>
-          <section className={styles['commit-info']} data-commit-info="">
-            <div className={styles['commit-description']}>
-              <pre className={styles['commit-message']}>{commit.message}</pre>
-              <div className={styles['commit-metadata']}>
+      <section
+        className={styles['changes-section']}
+        aria-label="Changed files"
+        aria-busy={filesPending}
+      >
+        <ProgressBar active={filesPending} />
+        {commit ? (
+          <ChangedFiles
+            key={commit.sha}
+            data={displayed}
+            onIntent={onIntent}
+            inactive={retained}
+          />
+        ) : !data.error && !data.selectedSha ? (
+          <p className={styles.empty}>
+            Select a commit to see its details and changed files.
+          </p>
+        ) : null}
+      </section>
+      {commit && (
+        <section className={styles['commit-info']} data-commit-info="">
+          <div className={styles['commit-description']}>
+            <pre className={styles['commit-message']}>{commit.message}</pre>
+            <div className={styles['commit-metadata']}>
+              <p>
+                <span className={styles['commit-sha']} title={commit.sha}>
+                  {commit.sha.slice(0, 8)}
+                </span>{' '}
+                <span>{commit.authorName ?? 'Unknown author'}</span>
+              </p>
+              {commit.authorEmail && (
                 <p>
-                  <span className={styles['commit-sha']} title={commit.sha}>
-                    {commit.sha.slice(0, 8)}
-                  </span>{' '}
-                  <span>{commit.authorName ?? 'Unknown author'}</span>
-                </p>
-                {commit.authorEmail && (
-                  <p>
-                    <a
-                      className={styles.email}
-                      href={'mailto:' + encodeURIComponent(commit.authorEmail)}
-                    >
-                      {'<' + commit.authorEmail + '>'}
-                    </a>
-                  </p>
-                )}
-                <p>
-                  Committed{' '}
-                  {commit.commitDate ? (
-                    <time dateTime={commit.commitDate}>
-                      {new Date(commit.commitDate).toLocaleString()}
-                    </time>
-                  ) : (
-                    'at an unknown date'
-                  )}
-                </p>
-                {labels.length > 0 && (
-                  <div
-                    className={styles.references}
-                    role="group"
-                    aria-label="Branches and tags at this commit"
+                  <a
+                    className={styles.email}
+                    href={'mailto:' + encodeURIComponent(commit.authorEmail)}
                   >
-                    {(['head', 'local', 'remote', 'tag'] as const).map(
-                      (kind) => {
-                        const names = labels
-                          .filter((label) => label.kind === kind)
-                          .map((label) => label.name);
+                    {'<' + commit.authorEmail + '>'}
+                  </a>
+                </p>
+              )}
+              <p>
+                Committed{' '}
+                {commit.commitDate ? (
+                  <time dateTime={commit.commitDate}>
+                    {new Date(commit.commitDate).toLocaleString()}
+                  </time>
+                ) : (
+                  'at an unknown date'
+                )}
+              </p>
+              {labels.length > 0 && (
+                <div
+                  className={styles.references}
+                  role="group"
+                  aria-label="Branches and tags at this commit"
+                >
+                  {(['head', 'local', 'remote', 'tag'] as const).map((kind) => {
+                    const names = labels
+                      .filter((label) => label.kind === kind)
+                      .map((label) => label.name);
 
-                        return names.length > 0 ? (
-                          <p
-                            key={kind}
-                            aria-label={
-                              descriptions[kind] + ': ' + names.join(', ')
-                            }
-                          >
-                            <span
-                              className={styles.referenceIcon}
-                              data-reference-kind={kind}
-                              title={descriptions[kind]}
-                            >
-                              <Icon name="tag" />
-                            </span>
-                            <span>{names.join(', ')}</span>
-                          </p>
-                        ) : null;
-                      },
-                    )}
-                  </div>
-                )}
-                {commit.parents.length > 1 && (
-                  <p>
-                    Parents:{' '}
-                    {commit.parents.map((sha) => sha.slice(0, 8)).join(', ')}
-                  </p>
-                )}
-              </div>
+                    return names.length > 0 ? (
+                      <p
+                        key={kind}
+                        aria-label={
+                          descriptions[kind] + ': ' + names.join(', ')
+                        }
+                      >
+                        <span
+                          className={styles.referenceIcon}
+                          data-reference-kind={kind}
+                          title={descriptions[kind]}
+                        >
+                          <Icon name="tag" />
+                        </span>
+                        <span>{names.join(', ')}</span>
+                      </p>
+                    ) : null;
+                  })}
+                </div>
+              )}
+              {commit.parents.length > 1 && (
+                <p>
+                  Parents:{' '}
+                  {commit.parents.map((sha) => sha.slice(0, 8)).join(', ')}
+                </p>
+              )}
             </div>
-          </section>
-        </>
-      ) : data.error ? null : (
-        <p className={styles.empty}>
-          {data.selectedSha
-            ? 'Loading commit…'
-            : 'Select a commit to see its details and changed files.'}
-        </p>
+          </div>
+        </section>
       )}
     </aside>
   );

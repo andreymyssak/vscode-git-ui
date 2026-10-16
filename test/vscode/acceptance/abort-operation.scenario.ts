@@ -13,7 +13,10 @@ import {
   sourceControlCommandId,
 } from '../../../src/shared/extension-identity';
 import { captureNativeActionFailure } from '../../fixtures/native-action-diagnostic';
-import { activateNativeButton } from '../../fixtures/native-menu';
+import {
+  activateNativeButton,
+  readNativeMenuContext,
+} from '../../fixtures/native-menu';
 import { selectNativeRepository } from '../../fixtures/native-panel';
 import { createFixture } from '../../fixtures/repository';
 import { sourceControlFrame } from '../../fixtures/source-control-view';
@@ -85,14 +88,13 @@ export async function run(): Promise<string[]> {
 
         await rows.first().click();
         await rows.last().click({ modifiers: ['Shift'] });
-        const context = await rows.last().getAttribute('data-vscode-context');
+        const context = await readNativeMenuContext(rows.last());
 
-        assert.ok(context);
         await vscode.commands.executeCommand(
           commandId(
             kind === 'selected-revert' ? 'revert-files' : 'cherry-pick-files',
           ),
-          JSON.parse(context),
+          context,
         );
         if (kind === 'legacy')
           await unlink(

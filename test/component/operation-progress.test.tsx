@@ -92,29 +92,43 @@ function loadedApp() {
   return { ...rendered, deliver };
 }
 
-test('Fetch shows activity on its toolbar button without starting history activity', () => {
-  const { container, deliver } = loadedApp();
-
-  deliver({
-    kind: 'operation-progress',
-    operation: {
+for (const phase of ['waiting', 'queued', 'running'] as const)
+  test(`Fetch keeps its toolbar loading indicator while ${phase} without starting history activity`, () => {
+    const { container, deliver } = loadedApp();
+    const fetch = {
       label: 'Fetching remotes…',
       refIds: [],
-      section: 'branches',
-      phase: 'running',
-    },
+      section: 'branches' as const,
+    };
+
+    deliver({
+      kind: 'operation-progress',
+      operation:
+        phase === 'queued'
+          ? {
+              label: 'Updating main…',
+              refIds: ['refs/heads/main'],
+              phase: 'running',
+              queued: [fetch],
+            }
+          : { ...fetch, phase },
+    });
+    expect(
+      screen.getByRole('button', { name: 'Fetch All Remotes' }),
+    ).toHaveAttribute('aria-busy', 'true');
+    expect(
+      container.querySelector('#fetch .codicon-loading'),
+    ).toBeInTheDocument();
+    expect(container.querySelector('#history-pane')).toHaveAttribute(
+      'aria-busy',
+      'false',
+    );
+    deliver({ kind: 'operation-progress', operation: null });
+    expect(
+      screen.getByRole('button', { name: 'Fetch All Remotes' }),
+    ).toHaveAttribute('aria-busy', 'false');
+    expect(container.querySelector('#fetch .codicon-loading')).toBeNull();
   });
-  expect(
-    screen.getByRole('button', { name: 'Fetch All Remotes' }),
-  ).toHaveAttribute('aria-busy', 'true');
-  expect(
-    container.querySelector('#fetch .codicon-loading'),
-  ).toBeInTheDocument();
-  expect(container.querySelector('#history-pane')).toHaveAttribute(
-    'aria-busy',
-    'false',
-  );
-});
 
 for (const phase of ['loading', 'settled'] as const)
   test(`interrupting ${phase} history keeps the displayed rows inactive without keeping its loader`, () => {
@@ -178,7 +192,7 @@ for (const phase of ['loading', 'settled'] as const)
     expect(container.querySelector('#status')).toHaveTextContent('No commits');
   });
 
-test('an update waiting for another Git operation shows a clock instead of a running spinner', () => {
+test('a waiting branch action keeps the loading indicator and its waiting description', () => {
   const { container, deliver } = loadedApp();
 
   deliver({
@@ -191,9 +205,9 @@ test('an update waiting for another Git operation shows a clock instead of a run
     },
   });
   expect(
-    container.querySelector('#branches .codicon-clock'),
+    container.querySelector('#branches .codicon-loading'),
   ).toBeInTheDocument();
-  expect(container.querySelector('#branches .codicon-loading')).toBeNull();
+  expect(container.querySelector('#branches .codicon-clock')).toBeNull();
   expect(screen.getByLabelText('Queued: Updating main…')).toBeInTheDocument();
 });
 
@@ -282,7 +296,7 @@ test('a running branch update spins its row while loaded history remains idle', 
   expect(container.querySelector('#status')).not.toBeVisible();
 });
 
-test('finishing the branch write stops its spinner before a history query starts', () => {
+test('finishing the branch write hides cached tracking before a history query starts', () => {
   const { container, deliver } = loadedApp();
 
   deliver({
@@ -294,7 +308,7 @@ test('finishing the branch write stops its spinner before a history query starts
     },
   });
   expect(container.querySelector('#branches .codicon-loading')).toBeNull();
-  expect(container.querySelector('[data-incoming]')).toHaveTextContent('3');
+  expect(container.querySelector('[data-incoming]')).toBeNull();
   expect(container.querySelector('#history-pane')).toHaveAttribute(
     'aria-busy',
     'false',
@@ -317,6 +331,7 @@ test('finishing the branch write stops its spinner before a history query starts
   ).toBeInTheDocument();
   expect(screen.getByRole('status')).toHaveTextContent('Refreshing history…');
   expect(container.querySelector('#branches .codicon-loading')).toBeNull();
+  expect(container.querySelector('[data-incoming]')).toBeNull();
 
   deliver(history);
   expect(container.querySelector('#history-pane')).toHaveAttribute(
@@ -325,6 +340,65 @@ test('finishing the branch write stops its spinner before a history query starts
   );
   expect(container.querySelector('#status')).not.toBeVisible();
 });
+
+for (const outcome of ['updated', 'unchanged', 'unavailable'] as const)
+  test(`Fetch hides old incoming and outgoing counts until ${outcome} references settle`, () => {
+    const { container, deliver } = loadedApp();
+    const refs = (history.page.refs ?? []).map((ref) => ({
+      ...ref,
+      tracking: {
+        upstream: 'refs/remotes/origin/main',
+        ahead: 2,
+        behind: 3,
+      },
+    }));
+
+    deliver({ kind: 'references', references: refs });
+    expect(container.querySelector('[data-incoming]')).toHaveTextContent('3');
+    expect(container.querySelector('[data-outgoing]')).toHaveTextContent('2');
+    deliver({
+      kind: 'operation-progress',
+      operation: {
+        label: 'Fetching remotes…',
+        refIds: [],
+        section: 'branches',
+        phase: 'refreshing',
+      },
+    });
+    expect(container.querySelector('#fetch .codicon-loading')).toBeNull();
+    expect(container.querySelector('[data-incoming]')).toBeNull();
+    expect(container.querySelector('[data-outgoing]')).toBeNull();
+
+    if (outcome === 'unavailable') {
+      deliver({ kind: 'error', message: 'References unavailable' });
+      deliver({ kind: 'operation-progress', operation: null });
+      expect(container.querySelector('[data-incoming]')).toBeNull();
+      expect(container.querySelector('[data-outgoing]')).toBeNull();
+    }
+
+    deliver({
+      kind: 'references',
+      references:
+        outcome === 'updated'
+          ? refs.map((ref) => ({
+              ...ref,
+              tracking: { ...ref.tracking, ahead: 1, behind: 0 },
+            }))
+          : refs,
+    });
+    deliver({ kind: 'operation-progress', operation: null });
+    if (outcome === 'updated')
+      expect(container.querySelector('[data-incoming]')).toBeNull();
+    else
+      expect(container.querySelector('[data-incoming]')).toHaveTextContent('3');
+    expect(container.querySelector('[data-outgoing]')).toHaveTextContent(
+      outcome === 'updated' ? '1' : '2',
+    );
+    expect(container.querySelector('#history-pane')).toHaveAttribute(
+      'aria-busy',
+      'false',
+    );
+  });
 
 test('a branch action leaves Worktrees idle after switching views', () => {
   const { container, deliver } = loadedApp();

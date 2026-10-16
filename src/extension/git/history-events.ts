@@ -9,6 +9,8 @@ type HistoryRepository = Pick<GitRepository, 'getRefs'> & {
 export function historyChangeFilter(
   repository: HistoryRepository,
   changed: () => void,
+  shallow: (signal: AbortSignal) => Promise<string | null> = () =>
+    Promise.resolve('complete'),
 ): { check(): Promise<void>; settled(): Promise<void>; dispose(): void } {
   const owner = new AbortController();
   const ref = (value: GitRef | undefined) =>
@@ -27,18 +29,24 @@ export function historyChangeFilter(
     };
 
     // state.refs is deprecated and returns an empty array in the supported VS Code.
-    return backgroundRead(() => repository.getRefs({}), owner.signal).then(
-      (refs) =>
-        JSON.stringify({
-          ...metadata,
-          refs: refs
-            .map(ref)
-            .sort((left, right) =>
-              JSON.stringify(left).localeCompare(JSON.stringify(right)),
-            ),
-        }),
-      () => null,
-    );
+    return backgroundRead(async (signal) => {
+      const [refs, ancestry] = await Promise.all([
+        repository.getRefs({}),
+        shallow(signal),
+      ]);
+
+      if (ancestry === null) return null;
+
+      return JSON.stringify({
+        ...metadata,
+        shallow: ancestry,
+        refs: refs
+          .map(ref)
+          .sort((left, right) =>
+            JSON.stringify(left).localeCompare(JSON.stringify(right)),
+          ),
+      });
+    }, owner.signal).catch(() => null);
   };
 
   let previous: string | null | undefined;

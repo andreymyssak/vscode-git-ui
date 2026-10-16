@@ -126,6 +126,8 @@ export async function runPanelAction(
       owner: OperationProgress,
       owns: () => boolean,
     ) => {
+      // Retire prewrite snapshots before acknowledging Git completion in the UI.
+      if (current() && owns()) session.abort.abort();
       await owner.refreshing();
       if (!current() || !owns()) return;
       do {

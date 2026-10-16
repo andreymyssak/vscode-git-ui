@@ -62,6 +62,12 @@ export interface HistoryAnnotations {
   user: AuthorIdentity | null;
   currentBranch: string[];
 }
+export interface HistoryEnrichment {
+  scopeId: string;
+  shas: string[];
+  refs: Reference[];
+  annotations: HistoryAnnotations;
+}
 export interface HistoryPresentation {
   showAuthor: boolean;
   showDate: boolean;

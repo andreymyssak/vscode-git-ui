@@ -1,5 +1,109 @@
 import { expect, test } from '@playwright/test';
 
+import type { SourceControlResponse } from '../../src/shared/source-control';
+import { parseSourceControlResponse } from '../../src/shared/source-control-protocol';
+
+test('commit destination stays inside the full-width button and only long branch names truncate', async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.addEventListener(
+      'message',
+      (event: MessageEvent<SourceControlResponse>) => {
+        if (event.data.kind === 'source-control-state')
+          Reflect.set(window, 'commitButtonState', event.data);
+      },
+    );
+  });
+  await page.goto('/source-control.html');
+  await expect(
+    page.getByRole('textbox', { name: 'Commit message' }),
+  ).toBeVisible();
+  const received: unknown = await page.evaluate(() =>
+    Reflect.get(window, 'commitButtonState'),
+  );
+  const response = parseSourceControlResponse(received);
+
+  if (response?.kind !== 'source-control-state')
+    throw new Error('Changes did not load.');
+  const repo = response.state.repositories[0];
+
+  if (!repo || !repo.info.headSha)
+    throw new Error('The fixture needs a commit.');
+  const branch = 'feature/local-experiment-with-a-long-descriptive-branch-name';
+
+  for (const amending of [false, true]) {
+    await page.evaluate(
+      (state) => {
+        window.dispatchEvent(
+          new MessageEvent('message', {
+            data: { kind: 'source-control-state', state },
+          }),
+        );
+      },
+      {
+        ...response.state,
+        hoverDelay: 0,
+        repositories: [
+          {
+            ...repo,
+            info: { ...repo.info, branch },
+            draft: 'Review this change',
+            checked: ['src/nested/example.ts'],
+            commitMode: amending
+              ? { kind: 'amend', headSha: repo.info.headSha }
+              : { kind: 'new' },
+          },
+        ],
+      },
+    );
+    const prefix = amending ? 'Amend Commit on' : 'Commit to';
+    const button = page.getByRole('button', {
+      name: `${prefix} ${branch}`,
+      exact: true,
+    });
+
+    await expect(button).toBeEnabled();
+    for (const width of [220, 320]) {
+      await page.setViewportSize({ width, height: 620 });
+      const bounds = await button.boundingBox();
+      const editor = await page
+        .getByRole('textbox', { name: 'Commit message' })
+        .boundingBox();
+      const action = await button
+        .getByText(prefix, { exact: true })
+        .boundingBox();
+
+      if (!bounds || !editor || !action)
+        throw new Error('Commit controls must be visible.');
+      expect(bounds.x).toBeCloseTo(editor.x, 0);
+      expect(bounds.width).toBeCloseTo(editor.width, 0);
+      expect(action.x).toBeGreaterThanOrEqual(bounds.x);
+      expect(action.x + action.width).toBeLessThanOrEqual(
+        bounds.x + bounds.width,
+      );
+      expect(
+        await button
+          .getByText(branch, { exact: true })
+          .evaluate((element) => element.scrollWidth > element.clientWidth),
+      ).toBe(true);
+      expect(
+        await page.evaluate(() => document.documentElement.scrollWidth),
+      ).toBeLessThanOrEqual(width);
+      await button.hover();
+      await expect(page.getByRole('tooltip')).toContainText(
+        `${prefix} ${branch}`,
+      );
+      await page.keyboard.press('Escape');
+      await page.mouse.move(0, 0);
+    }
+
+    await button.screenshot({
+      path: `.artifacts/commit-button-${amending ? 'amend' : 'new'}.png`,
+    });
+  }
+});
+
 test('commit message tools stay above the message and fit a narrow sidebar', async ({
   page,
 }) => {
@@ -368,7 +472,7 @@ test('Changes toolbar groups files and reveals the opened file without changing 
 
   expect(icon.width).toBe(16);
   expect(name.x - icon.x - icon.width).toBe(6);
-  const guide = root.locator('[role="group"]').first();
+  const guide = root.locator('[data-tree-guide]').first();
 
   expect(
     await guide.evaluate(
@@ -554,7 +658,9 @@ test('Commit and Stash controls fit a narrow themed sidebar and keep an editable
   expect(requests).not.toEqual(
     expect.arrayContaining([{ kind: 'commit', repositoryId: 'repo' }]),
   );
-  await root.getByRole('button', { name: 'Commit', exact: true }).click();
+  await root
+    .getByRole('button', { name: /^Commit(?: to |$)/, exact: true })
+    .click();
   expect(
     await page.evaluate(() => Reflect.get(window, 'sourceControlRequests')),
   ).toEqual(expect.arrayContaining([{ kind: 'commit', repositoryId: 'repo' }]));

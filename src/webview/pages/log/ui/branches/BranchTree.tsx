@@ -381,12 +381,10 @@ export function BranchTree({
         </span>
         {ref &&
         (progress ||
-          (ref.tracking && (ref.tracking.behind || ref.tracking.ahead))) ? (
-          <BranchTracking
-            tracking={ref.tracking}
-            progress={progress}
-            queued={!!waiting && !running}
-          />
+          (referencesReady &&
+            ref.tracking &&
+            (ref.tracking.behind || ref.tracking.ahead))) ? (
+          <BranchTracking tracking={ref.tracking} progress={progress} />
         ) : null}
         {node.children.map(draw)}
       </vscode-tree-item>

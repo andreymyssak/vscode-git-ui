@@ -14,6 +14,10 @@ export class SourceControlRefreshes {
     Map<RefreshSection, AbortController>
   >();
 
+  get pending(): boolean {
+    return this.all || this.dirty.size > 0;
+  }
+
   queue(
     id?: string,
     sections: readonly RefreshSection[] = refreshSections,

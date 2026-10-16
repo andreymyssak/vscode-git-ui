@@ -190,6 +190,17 @@
         }
       ]
     },
+    "configuration": {
+      "title": "Git UI",
+      "properties": {
+        "gitUI.history.optimizeRepository": {
+          "type": "boolean",
+          "default": true,
+          "scope": "resource",
+          "markdownDescription": "Allow Git UI to maintain Git's local commit-graph cache in the background after loading history. Requires Git 2.24 or later and a trusted workspace. Skips shallow and partial clones and repositories with `core.commitGraph=false`. Disable to prevent Git UI from writing this cache."
+        }
+      }
+    },
     "commands": [
       {
         "command": "gitUI.show-output",

@@ -328,7 +328,7 @@ test('a replacement folder and deleted file have independent highlights and cont
     />,
   );
   const folder = container.querySelector(
-    '[data-folder="sample.txt"] > summary',
+    '[data-folder="sample.txt"][role="treeitem"]',
   );
   const file = container.querySelector('[data-file="sample.txt"]');
 

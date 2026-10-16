@@ -87,6 +87,7 @@ export class SourceControlViews
       (state) => this.publish(state),
       undefined,
       (ack) => this.deliver(ack),
+      false,
     );
     this.subscriptions.push(
       this.service,
@@ -141,6 +142,7 @@ export class SourceControlViews
     );
 
     webview.html = `<!doctype html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src ${webview.cspSource}; font-src ${webview.cspSource}; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';"><link rel="stylesheet" href="${style}"></head><body data-view="source-control"><main id="app"><p role="status">Connecting to Git…</p></main><script nonce="${nonce}" src="${script}"></script></body></html>`;
+    void this.service.setVisible(view.visible);
     this.viewSubscriptions.push(
       fileIcons,
       webview.onDidReceiveMessage((value: unknown) => {
@@ -151,7 +153,7 @@ export class SourceControlViews
         void this.service.handle(request);
       }),
       view.onDidChangeVisibility(() => {
-        if (view.visible) void this.service.refresh();
+        void this.service.setVisible(view.visible);
       }),
       view.onDidDispose(() => {
         if (this.view === view) {
@@ -164,6 +166,7 @@ export class SourceControlViews
   }
 
   private disposeView(): void {
+    void this.service.setVisible(false);
     this.view = null;
     const subscriptions = this.viewSubscriptions;
 
@@ -300,6 +303,7 @@ export class SourceControlViews
 
   private async showChanges(args: unknown[]): Promise<void> {
     if (this.service.model.busy) return;
+    await vscode.commands.executeCommand(`${CHANGES_VIEW_ID}.focus`);
     await this.service.refresh();
     if (this.service.model.busy) return;
     const uris: vscode.Uri[] = [];
@@ -349,7 +353,6 @@ export class SourceControlViews
         repositoryId: firstRepositoryId,
       });
     await this.service.handle({ kind: 'tab', tab: 'commit' });
-    await vscode.commands.executeCommand(`${CHANGES_VIEW_ID}.focus`);
   }
 }
 

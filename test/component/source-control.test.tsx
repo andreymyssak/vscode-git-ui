@@ -199,7 +199,7 @@ test('separates merge, index and working changes while linking whole-file checkb
   expect(
     screen.getByRole('status', { name: 'Checked files summary' }),
   ).toHaveTextContent('M 2');
-  await user.click(screen.getByRole('button', { name: 'Commit' }));
+  await user.click(screen.getByRole('button', { name: /^Commit(?: to |$)/ }));
   expect(app.requests.at(-1)).toEqual({ kind: 'commit', repositoryId: 'root' });
   await user.click(staged.getByRole('treeitem', { name: 'src/nested/a.ts' }));
   expect(app.requests.at(-1)).toEqual({
@@ -242,12 +242,14 @@ test('Stage and Unstage actions use their section without changing commit inclus
     paths: ['src/nested/a.ts'],
   });
   expect(app.state().repositories[0]!.checked).toEqual(['src/b.ts']);
+  fireEvent.contextMenu(workingRow);
   expect(
     JSON.parse(workingRow.getAttribute('data-vscode-context')!),
   ).toMatchObject({
     changeCanStage: true,
     changeCanUnstage: false,
   });
+  fireEvent.contextMenu(stagedRow);
   expect(
     JSON.parse(stagedRow.getAttribute('data-vscode-context')!),
   ).toMatchObject({
@@ -544,7 +546,9 @@ test.each(['loading', 'error'] as const)(
         },
       ],
     });
-    expect(screen.getByRole('button', { name: 'Amend Commit' })).toBeDisabled();
+    expect(
+      screen.getByRole('button', { name: /^Amend Commit(?: on |$)/ }),
+    ).toBeDisabled();
   },
 );
 
@@ -760,6 +764,7 @@ test('expanded folders check descendants independently of Git staging and file r
     path: 'staged.txt',
     index: true,
   });
+  fireEvent.contextMenu(file);
   expect(
     JSON.parse(file.getAttribute('data-vscode-context') ?? '{}'),
   ).toMatchObject({
@@ -775,7 +780,7 @@ test('inline message gates committing while checked files enable silent stashing
   const user = userEvent.setup();
   const app = session();
   const message = screen.getByRole('textbox', { name: 'Commit message' });
-  const commit = screen.getByRole('button', { name: 'Commit' });
+  const commit = screen.getByRole('button', { name: /^Commit(?: to |$)/ });
   const stash = screen.getByRole('button', { name: 'Stash Silently' });
   const generate = screen.getByRole('button', {
     name: 'Generate Commit Message',
@@ -850,7 +855,9 @@ test('multiple repositories require an explicit target and preserve repository d
     ],
   });
 
-  expect(screen.getByRole('button', { name: 'Commit' })).toBeDisabled();
+  expect(
+    screen.getByRole('button', { name: /^Commit(?: to |$)/ }),
+  ).toBeDisabled();
   expect(screen.getByRole('textbox', { name: 'Commit message' })).toHaveValue(
     '',
   );
@@ -865,7 +872,7 @@ test('multiple repositories require an explicit target and preserve repository d
   expect(screen.getByRole('textbox', { name: 'Commit message' })).toHaveValue(
     'Other draft',
   );
-  await user.click(screen.getByRole('button', { name: 'Commit' }));
+  await user.click(screen.getByRole('button', { name: /^Commit(?: to |$)/ }));
   expect(app.requests.at(-1)).toEqual({
     kind: 'commit',
     repositoryId: 'other',
@@ -1145,7 +1152,9 @@ test('loading, errors and no repository stay usable and busy files cannot issue 
   });
 
   expect(screen.getByText('No Git repositories found.')).toBeVisible();
-  expect(screen.getByRole('button', { name: 'Commit' })).toBeDisabled();
+  expect(
+    screen.getByRole('button', { name: /^Commit(?: to |$)/ }),
+  ).toBeDisabled();
   app.emit({
     ...initialState(),
     repositories: [{ ...repository, changes: { kind: 'loading' } }],
@@ -1499,7 +1508,7 @@ test('a busy host retries its dropped pending edit before enabling actions', asy
     false,
   );
   const message = screen.getByRole('textbox', { name: 'Commit message' });
-  const commit = screen.getByRole('button', { name: 'Commit' });
+  const commit = screen.getByRole('button', { name: /^Commit(?: to |$)/ });
   const stash = screen.getByRole('button', { name: 'Stash Silently' });
   const generate = screen.getByRole('button', {
     name: 'Generate Commit Message',
@@ -1680,7 +1689,9 @@ test('lightweight draft ACKs enable actions and ignore old ACKs after the newest
   expect(message).toHaveValue('Latest');
   acknowledge(latest);
   expect(message).toHaveValue('Latest');
-  expect(screen.getByRole('button', { name: 'Commit' })).toBeEnabled();
+  expect(
+    screen.getByRole('button', { name: /^Commit(?: to |$)/ }),
+  ).toBeEnabled();
   acknowledge(oldest);
   expect(message).toHaveValue('Latest');
 });

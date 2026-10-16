@@ -58,6 +58,11 @@ const timer = setInterval(() => {
     const branch = frame.locator('[data-ref="refs/heads/topic"]');
     const rows = frame.locator('[data-commit-row]');
     const before = await rows.count();
+
+    await expect(branch).toHaveAttribute(
+      'data-vscode-context',
+      /"refCanUpdate":true/,
+    );
     const context: unknown = JSON.parse(
       (await branch.getAttribute('data-vscode-context')) ?? 'null',
     );
@@ -83,6 +88,11 @@ const timer = setInterval(() => {
       0,
     );
     const second = frame.locator('[data-ref="refs/heads/second"]');
+
+    await expect(second).toHaveAttribute(
+      'data-vscode-context',
+      /"refCanUpdate":true/,
+    );
     const secondContext: unknown = JSON.parse(
       (await second.getAttribute('data-vscode-context'))!,
     );
@@ -91,7 +101,7 @@ const timer = setInterval(() => {
       vscode.commands.executeCommand(commandId('update-branch'), secondContext),
     );
     await expect(second.getByLabel('Queued: Updating second…')).toBeVisible();
-    await expect(second.locator('.codicon-clock')).toBeVisible();
+    await expect(second.locator('.codicon-loading')).toBeVisible();
     // Neither a second native request nor another branch starts a concurrent fetch.
     await vscode.commands.executeCommand(
       commandId('update-branch'),

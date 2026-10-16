@@ -4,7 +4,11 @@ import type { GitApiAccess } from './api';
 import { decodeBlamePorcelain, utf8BlameCodec } from './blame-bytes';
 import type { BlameQuery, BlameResult, BlameTextCodec } from './blame-model';
 import { parseBlamePorcelain } from './blame-porcelain';
+import { type GitCapabilityCli, readGitCapabilities } from './capabilities';
 import type { GitCli } from './cli';
+
+const sourceEncodingRequirement =
+  'Annotating non-UTF-8 historical files requires Git 2.40 or newer to check source encoding attributes.';
 
 function validateSource(query: BlameQuery): void {
   const { source } = query;
@@ -39,7 +43,7 @@ function unborn(error: unknown): boolean {
 
 async function checkSourceEncoding(
   query: BlameQuery,
-  cli: Pick<GitCli, 'run'>,
+  cli: GitCapabilityCli,
   signal?: AbortSignal,
 ): Promise<void> {
   const revision = query.source.kind === 'revision';
@@ -49,6 +53,12 @@ async function checkSourceEncoding(
     ['utf8', 'utf8bom', 'utf-8'].includes(query.encoding ?? 'utf8')
   )
     return;
+  if (
+    revision &&
+    !(await readGitCapabilities(cli, query.repositoryId, signal))
+      .checkAttributeSource
+  )
+    throw new Error(sourceEncodingRequirement);
   let attributes: string;
 
   try {
@@ -74,10 +84,7 @@ async function checkSourceEncoding(
       typeof error.stderr === 'string' &&
       /(?:unknown|unrecognized) (?:option|switch).*source/i.test(error.stderr)
     )
-      throw new Error(
-        'Annotating non-UTF-8 historical files requires Git 2.40 or newer to check source encoding attributes.',
-        { cause: error },
-      );
+      throw new Error(sourceEncodingRequirement, { cause: error });
     throw error;
   }
 
@@ -99,7 +106,7 @@ async function checkSourceEncoding(
 
 export function createBlameQueries(
   access: GitApiAccess,
-  cli: Pick<GitCli, 'run' | 'runBytes' | 'runBytesWithInput'>,
+  cli: GitCapabilityCli & Pick<GitCli, 'runBytes' | 'runBytesWithInput'>,
   codec: BlameTextCodec = utf8BlameCodec,
 ): (query: BlameQuery, signal?: AbortSignal) => Promise<BlameResult> {
   return async (query, signal) => {

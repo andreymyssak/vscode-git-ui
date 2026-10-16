@@ -25,6 +25,11 @@ it('a blocked Update stops while its error notification remains open and checkou
     const branch = frame.locator(
       '[data-ref="refs/heads/feature/local-experiment"]',
     );
+
+    await expect(branch).toHaveAttribute(
+      'data-vscode-context',
+      /"refCanUpdate":true/,
+    );
     const context: unknown = JSON.parse(
       (await branch.getAttribute('data-vscode-context'))!,
     );
@@ -93,6 +98,11 @@ it('a current divergent Update ends before an optional Merge starts', async func
 
     await refreshNativeHistory(frame, f.id);
     const branch = frame.locator('[data-ref="refs/heads/main"]');
+
+    await expect(branch).toHaveAttribute(
+      'data-vscode-context',
+      /"refCanUpdate":true/,
+    );
     const context: unknown = JSON.parse(
       (await branch.getAttribute('data-vscode-context'))!,
     );

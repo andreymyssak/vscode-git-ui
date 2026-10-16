@@ -6,11 +6,11 @@ import { extensionIdentity } from '../../shared/extension-identity';
 import type { GitAction } from '../../shared/model';
 import { readWithCancellation } from '../read-cancellation';
 import type { GitApiAccess } from './api';
-import type { GitCli } from './cli';
+import { type GitCapabilityCli, readGitCapabilities } from './capabilities';
 import type { CommitRewriteSnapshot } from './commit-rewrite';
 import { validateRewriteRange } from './commit-rewrite';
 import { attachedBranch, readCommit } from './commit-suffix';
-import { supportsSquashGit, validateSquashMessage } from './squash';
+import { validateSquashMessage } from './squash';
 import { createSquashEditors, probeSquashRuntime } from './squash-editor';
 import type { SquashServices } from './squash-operation';
 import {
@@ -20,7 +20,7 @@ import {
 
 export async function validateMessageEdit(
   access: GitApiAccess,
-  cli: Pick<GitCli, 'run'>,
+  cli: GitCapabilityCli,
   id: string,
   sha: string,
   expectedBranch: string,
@@ -29,7 +29,7 @@ export async function validateMessageEdit(
   if (!/^(?:[a-f\d]{40}|[a-f\d]{64})$/i.test(sha))
     throw new Error('Select a full commit identity.');
   if (sha !== expectedHeadSha) {
-    if (!supportsSquashGit(await cli.run(id, ['--version'])))
+    if (!(await readGitCapabilities(cli, id)).stableHistoryRewrite)
       throw new Error('Editing older messages requires Git 2.47 or newer.');
 
     return validateRewriteRange(
@@ -74,14 +74,17 @@ export async function validateMessageEdit(
 
 export async function editCommitMessage(
   access: GitApiAccess,
-  cli: Pick<GitCli, 'run'>,
+  cli: GitCapabilityCli,
   id: string,
   action: Extract<GitAction, { kind: 'edit-commit-message' }>,
   services: SquashServices | undefined,
   context?: AbortSignal,
 ): Promise<string> {
   validateSquashMessage(action.message);
-  const reads: Pick<GitCli, 'run'> = {
+  const reads: GitCapabilityCli = {
+    get executablePath() {
+      return cli.executablePath;
+    },
     run: (repositoryId, args) => cli.run(repositoryId, args, context),
   };
   const validate = () =>

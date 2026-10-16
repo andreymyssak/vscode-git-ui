@@ -5,6 +5,7 @@ interface CachedPage<T> {
   createdAt: number;
   snapshot: T;
   commits: CommitRecord[];
+  nextOffset: number | null;
 }
 
 /** A bounded in-memory cache; cursors are always owned by the history reader. */
@@ -35,6 +36,7 @@ export class HistoryPageCache<T> {
     offset: number,
     snapshot: T,
     commits: CommitRecord[],
+    nextOffset: number | null,
   ): void {
     const identity = JSON.stringify([repositoryId, key, offset]);
 
@@ -43,6 +45,7 @@ export class HistoryPageCache<T> {
       repositoryId,
       snapshot,
       commits: structuredClone(commits),
+      nextOffset,
       createdAt: this.clock(),
     });
     if (this.pages.size > 20)

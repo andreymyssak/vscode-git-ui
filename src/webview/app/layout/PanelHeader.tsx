@@ -93,7 +93,28 @@ export function PanelHeader({
 
   return (
     <header className={styles.header}>
-      <div role="tablist" aria-label="Git views">
+      <div
+        role="tablist"
+        aria-label="Git views"
+        onKeyDown={(event) => {
+          if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key))
+            return;
+          event.preventDefault();
+          const next =
+            event.key === 'Home'
+              ? 'log'
+              : event.key === 'End'
+                ? 'worktrees'
+                : state.activeView === 'log'
+                  ? 'worktrees'
+                  : 'log';
+
+          setActiveView(next);
+          event.currentTarget
+            .querySelector<HTMLElement>(`#${next}-tab`)
+            ?.focus();
+        }}
+      >
         {(['log', 'worktrees'] as const).map((view) => (
           <button
             key={view}
@@ -104,6 +125,8 @@ export function PanelHeader({
             title={view === 'log' ? logLabel : 'Worktrees'}
             aria-description={view === 'log' ? logLabel : undefined}
             aria-selected={state.activeView === view}
+            aria-controls={view + '-panel'}
+            tabIndex={state.activeView === view ? 0 : -1}
             onClick={() => setActiveView(view)}
           >
             {view === 'log' ? (

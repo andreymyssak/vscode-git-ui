@@ -20,11 +20,9 @@ import styles from './BranchTracking.module.css';
 export function BranchTracking({
   tracking,
   progress,
-  queued = false,
 }: {
   tracking: Reference['tracking'];
   progress: string | null;
-  queued?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const { refs, floatingStyles, context } = useFloating({
@@ -66,8 +64,8 @@ export function BranchTracking({
         title=""
       >
         {progress ? (
-          <span className={queued ? undefined : styles.spinner}>
-            <Icon name={queued ? 'clock' : 'loading'} />
+          <span className={styles.spinner}>
+            <Icon name="loading" />
           </span>
         ) : tracking?.behind ? (
           <span data-incoming="" className={styles.incoming}>

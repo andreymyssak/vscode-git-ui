@@ -9,6 +9,10 @@ import { getGitApi } from '../../src/extension/git/api';
 import { createSourceControlBackend } from '../../src/extension/git/source-control/index';
 import { sourceControlCommandId } from '../../src/shared/extension-identity';
 import { captureNativeActionFailure } from '../fixtures/native-action-diagnostic';
+import {
+  activateNativeMenu,
+  readNativeMenuContext,
+} from '../fixtures/native-menu';
 import { closeFixtureEditors } from '../fixtures/owned-editors';
 import { createFixture, type Fixture } from '../fixtures/repository';
 import { sourceControlFrame } from '../fixtures/source-control-view';
@@ -100,7 +104,7 @@ async function activateFileAction(frame: Frame, action: string) {
       .poll(() => page.evaluate(() => document.hasFocus()), { timeout: 500 })
       .toBe(true);
   }).toPass({ timeout: 10000 });
-  await item.press('Enter');
+  await activateNativeMenu(item);
 }
 
 describe('Native Changes conflict actions', () => {
@@ -230,13 +234,9 @@ describe('Native Changes conflict actions', () => {
         name: 'src/a.txt',
         exact: true,
       });
-      const encoded = await row.getAttribute('data-vscode-context');
+      const context = await readNativeMenuContext(row);
 
-      assert.ok(encoded);
-      await vscode.commands.executeCommand(
-        'gitUI.stage-files',
-        JSON.parse(encoded),
-      );
+      await vscode.commands.executeCommand('gitUI.stage-files', context);
       assert.ok(
         await fixture.runGit(['ls-files', '--unmerged', '--', 'src/a.txt']),
         'Unresolved custom-size conflicts must not be staged',
@@ -263,13 +263,9 @@ describe('Native Changes conflict actions', () => {
         name: 'src/a.txt',
         exact: true,
       });
-      const encoded = await row.getAttribute('data-vscode-context');
+      const context = await readNativeMenuContext(row);
 
-      assert.ok(encoded);
-      await vscode.commands.executeCommand(
-        'gitUI.accept-current',
-        JSON.parse(encoded),
-      );
+      await vscode.commands.executeCommand('gitUI.accept-current', context);
       const document = await vscode.workspace.openTextDocument(
         vscode.Uri.file(path),
       );
@@ -318,23 +314,16 @@ describe('Native Changes conflict actions', () => {
           Buffer.from(markers, 'utf16le'),
         ]),
       );
-      const encoded = await frame
-        .getByRole('treeitem', { name: 'src/a.txt', exact: true })
-        .getAttribute('data-vscode-context');
-
-      assert.ok(encoded);
-      await vscode.commands.executeCommand(
-        'gitUI.stage-files',
-        JSON.parse(encoded),
+      const context = await readNativeMenuContext(
+        frame.getByRole('treeitem', { name: 'src/a.txt', exact: true }),
       );
+
+      await vscode.commands.executeCommand('gitUI.stage-files', context);
       assert.ok(
         await fixture.runGit(['ls-files', '--unmerged', '--', 'src/a.txt']),
         'UTF-16 conflict markers must not be staged',
       );
-      await vscode.commands.executeCommand(
-        'gitUI.accept-current',
-        JSON.parse(encoded),
-      );
+      await vscode.commands.executeCommand('gitUI.accept-current', context);
       const document = await vscode.workspace.openTextDocument(
         vscode.Uri.file(path),
       );

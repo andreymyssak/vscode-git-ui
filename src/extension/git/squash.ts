@@ -1,27 +1,13 @@
 import type { CommitRangeTarget } from '../../shared/model';
 import type { GitApiAccess } from './api';
-import type { GitCli } from './cli';
+import { type GitCapabilityCli, readGitCapabilities } from './capabilities';
 import type { CommitRewriteSnapshot as SquashSnapshot } from './commit-rewrite';
 import { validateRewriteRange } from './commit-rewrite';
 import { attachedBranch, readCommit } from './commit-suffix';
 
 export type { CommitRewriteSnapshot as SquashSnapshot } from './commit-rewrite';
 
-type SquashCli = Pick<GitCli, 'run'>;
-
-export function supportsSquashGit(version: string): boolean {
-  const match =
-    /^(?:git version )?(\d+)\.(\d+)\.(\d+)(?:\.windows\.\d+)?(?: \([^\n]+\))?$/.exec(
-      version.trim(),
-    );
-
-  if (!match) return false;
-
-  const major = Number(match[1]);
-  const minor = Number(match[2]);
-
-  return major > 2 || (major === 2 && minor >= 47);
-}
+type SquashCli = GitCapabilityCli;
 
 export function validateSquashMessage(message: string): void {
   if (!message.trim()) throw new Error('The squash message must not be blank.');
@@ -39,7 +25,7 @@ export async function validateSquash(
   id: string,
   target: CommitRangeTarget,
 ): Promise<SquashSnapshot> {
-  if (!supportsSquashGit(await cli.run(id, ['--version'])))
+  if (!(await readGitCapabilities(cli, id)).stableHistoryRewrite)
     throw new Error(
       'Squashing requires Git 2.47 or newer. Existing browsing remains available.',
     );

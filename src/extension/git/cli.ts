@@ -4,8 +4,11 @@ import { tmpdir } from 'node:os';
 import { join, normalize } from 'node:path';
 
 import { diagnostics } from '../diagnostics';
+import { readCancellationError } from '../read-cancellation';
 import type { GitApiAccess } from './api';
 import { backgroundRead, backgroundReadTimeoutMs } from './background-read';
+import { executeStream } from './cli-stream';
+import { normalizeGitProcessFailure } from './process-failure';
 import type { SquashEditors } from './squash-editor';
 
 interface Execution {
@@ -58,7 +61,7 @@ function execute(
   options: { cwd: string; env: NodeJS.ProcessEnv; signal?: AbortSignal },
   input?: string | Buffer,
 ): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
+  return new Promise<Buffer>((resolve, reject) => {
     const child = execFile(
       command,
       [...args],
@@ -66,7 +69,7 @@ function execute(
       (error, stdout, stderr) => {
         if (error instanceof Error)
           reject(
-            Object.assign(error, {
+            normalizeGitProcessFailure(error, {
               stdout: stdout.toString('utf8'),
               stderr: stderr.toString('utf8'),
             }),
@@ -76,9 +79,11 @@ function execute(
     );
 
     child.stdin?.on('error', (error: NodeJS.ErrnoException) => {
-      if (error.code !== 'EPIPE') reject(error);
+      if (error.code !== 'EPIPE') reject(normalizeGitProcessFailure(error));
     });
     child.stdin?.end(input);
+  }).catch((error: unknown) => {
+    throw normalizeGitProcessFailure(error);
   });
 }
 
@@ -157,6 +162,64 @@ export class GitCli {
       input,
       ...(signal ? { signal } : {}),
     });
+  }
+
+  async stream(
+    repositoryId: string,
+    args: readonly string[],
+    consume: (chunk: Buffer) => boolean,
+    signal?: AbortSignal,
+    input?: string | Buffer,
+    beforeExecute?: () => void | Promise<void>,
+  ): Promise<void> {
+    const started = performance.now();
+    const inherited = this.readOwner?.signal;
+    const deadline = new AbortController();
+    const signals = [inherited, signal, deadline.signal].filter(
+      (value): value is AbortSignal => value !== undefined,
+    );
+    const owner = AbortSignal.any(signals);
+    const timer = this.readOwner
+      ? setTimeout(
+          () =>
+            deadline.abort(
+              new DOMException(
+                'Reading Git took too long. Refresh to try again.',
+                'TimeoutError',
+              ),
+            ),
+          this.readOwner.timeoutMs,
+        )
+      : undefined;
+
+    timer?.unref();
+    diagnostics.record('command.started', { repositoryId, command: args[0] });
+    try {
+      const options = await this.repositoryOptions(repositoryId, owner);
+
+      owner.throwIfAborted();
+      await beforeExecute?.();
+      owner.throwIfAborted();
+      await executeStream(this.executablePath, args, options, consume, input);
+      owner.throwIfAborted();
+      diagnostics.record('command.finished', {
+        repositoryId,
+        command: args[0],
+        outcome: 'success',
+        elapsedMs: performance.now() - started,
+      });
+    } catch (error) {
+      diagnostics.record('command.finished', {
+        repositoryId,
+        command: args[0],
+        outcome: owner.aborted ? 'cancelled' : 'error',
+        error,
+        elapsedMs: performance.now() - started,
+      });
+      throw owner.aborted ? readCancellationError(owner.reason) : error;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 
   async withTemporaryIndex<T>(
@@ -241,31 +304,11 @@ export class GitCli {
     args: readonly string[],
     execution: Execution,
   ): Promise<Buffer> {
-    execution.signal?.throwIfAborted();
-    const repository = this.access.repository(repositoryId);
-    const cwd = await realpath(repository.rootUri.fsPath);
-    const options = {
-      cwd,
-      env: environment(),
-      ...(execution.signal ? { signal: execution.signal } : {}),
-    };
-    const top = (
-      await execute(
-        this.access.api.git.path,
-        ['rev-parse', '--show-toplevel'],
-        options,
-      )
-    )
-      .toString('utf8')
-      .replace(process.platform === 'win32' ? /\r?\n$/ : /\n$/, '');
-    const canonical = (path: string) =>
-      process.platform === 'win32'
-        ? normalize(path).toLowerCase()
-        : normalize(path);
+    const options = await this.repositoryOptions(
+      repositoryId,
+      execution.signal,
+    );
 
-    if (canonical(await realpath(top)) !== canonical(cwd))
-      throw new Error('Repository root changed. Refresh before trying again.');
-    this.access.repository(repositoryId);
     await execution.beforeExecute?.();
     const result = await execute(
       this.access.api.git.path,
@@ -284,5 +327,35 @@ export class GitCli {
     execution.signal?.throwIfAborted();
 
     return result;
+  }
+
+  private async repositoryOptions(repositoryId: string, signal?: AbortSignal) {
+    signal?.throwIfAborted();
+    const repository = this.access.repository(repositoryId);
+    const cwd = await realpath(repository.rootUri.fsPath);
+    const options = {
+      cwd,
+      env: environment(),
+      ...(signal ? { signal } : {}),
+    };
+    const top = (
+      await execute(
+        this.access.api.git.path,
+        ['rev-parse', '--show-toplevel'],
+        options,
+      )
+    )
+      .toString('utf8')
+      .replace(process.platform === 'win32' ? /\r?\n$/ : /\n$/, '');
+    const canonical = (path: string) =>
+      process.platform === 'win32'
+        ? normalize(path).toLowerCase()
+        : normalize(path);
+
+    if (canonical(await realpath(top)) !== canonical(cwd))
+      throw new Error('Repository root changed. Refresh before trying again.');
+    this.access.repository(repositoryId);
+
+    return options;
   }
 }

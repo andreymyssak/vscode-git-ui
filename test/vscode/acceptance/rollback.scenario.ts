@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 
 import { getGitApi } from '../../../src/extension/git/api';
 import { sourceControlCommandId } from '../../../src/shared/extension-identity';
+import { readNativeMenuContext } from '../../fixtures/native-menu';
 import { createFixture } from '../../fixtures/repository';
 import { sourceControlFrame } from '../../fixtures/source-control-view';
 
@@ -39,10 +40,7 @@ export async function run(): Promise<string[]> {
     const folder = frame
       .getByRole('tree', { name: 'Changes', exact: true })
       .getByRole('treeitem', { name: 'src', exact: true });
-    const encoded = await folder.getAttribute('data-vscode-context');
-
-    assert.ok(encoded);
-    const context: unknown = JSON.parse(encoded);
+    const context = await readNativeMenuContext(folder);
     const cancel = vscode.commands.executeCommand(
       sourceControlCommandId('rollback-selected'),
       context,
@@ -80,12 +78,10 @@ export async function run(): Promise<string[]> {
     const stagedNew = frame
       .getByRole('tree', { name: 'Staged Changes', exact: true })
       .getByRole('treeitem', { name: 'src/new.txt', exact: true });
-    const stagedContext = await stagedNew.getAttribute('data-vscode-context');
-
-    assert.ok(stagedContext);
+    const stagedContext = await readNativeMenuContext(stagedNew);
     const unstageNew = vscode.commands.executeCommand(
       sourceControlCommandId('rollback-selected'),
-      JSON.parse(stagedContext),
+      stagedContext,
     );
 
     await page.getByRole('button', { name: 'Rollback', exact: true }).click();
@@ -99,17 +95,14 @@ export async function run(): Promise<string[]> {
       });
 
     await expect(added).toBeVisible();
+    const newContext = await readNativeMenuContext(added);
     const row = await added.evaluate((node) => ({
-      context: node.getAttribute('data-vscode-context'),
       snapshot: node.getAttribute('data-snapshot'),
       disabled: node.getAttribute('aria-disabled'),
     }));
-    const newContext = row.context;
-
-    assert.ok(newContext);
     const remove = vscode.commands.executeCommand(
       sourceControlCommandId('rollback-selected'),
-      JSON.parse(newContext),
+      newContext,
     );
     const outcome = { state: 'pending' };
 
@@ -140,7 +133,7 @@ export async function run(): Promise<string[]> {
         await writeFile(
           join(artifacts, 'rollback-new-file-failure.json'),
           JSON.stringify({
-            row,
+            row: { ...row, context: newContext },
             outcome: outcome.state,
             dialogs: await page.locator('.monaco-dialog-box').allTextContents(),
             notifications: await page

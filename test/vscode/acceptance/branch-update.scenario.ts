@@ -123,6 +123,11 @@ export async function run() {
       await refreshNativeHistory(frame, f.id);
       const branch = frame.locator(selector);
 
+      await expect(branch).toHaveAttribute(
+        'data-vscode-context',
+        /"refCanUpdate":true/,
+      );
+
       await expect(frame.locator('#history')).not.toHaveAttribute('inert', '');
       await branch.evaluate((node) => {
         node.addEventListener(

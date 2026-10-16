@@ -1,11 +1,12 @@
 import type { Disposable } from 'vscode';
-import { window } from 'vscode';
+import { window, workspace } from 'vscode';
 
 import type {
   AuthorIdentity,
   CommitRangeTarget,
   FileChange,
   GitAction,
+  HistoryEnrichment,
   HistoryInput,
   HistoryPage,
   OperationResult,
@@ -16,6 +17,7 @@ import type {
 } from '../../shared/model';
 import { nativeBlameCodec } from '../native/blame-encoding';
 import { operationDialogs } from '../native/dialogs';
+import { watchHistoryShallow } from '../native/history-shallow-watch';
 import { getGitApi } from './api';
 import { createBlameQueries } from './blame';
 import type { BlameQuery, BlameResult } from './blame-model';
@@ -23,7 +25,10 @@ import { createChangeQueries } from './changes';
 import { GitCli } from './cli';
 import type { CommitSuffixSnapshot } from './commit-suffix';
 import { validateCommitSuffix } from './commit-suffix';
+import type { HistoryReadOptions } from './history';
 import { createHistoryQueries } from './history';
+import { createHistoryMaintenance } from './history-maintenance';
+import { createHistoryShallow } from './history-shallow';
 import { validateMessageEdit } from './message-edit';
 import type { OperationDialogs } from './operations';
 import { createOperations } from './operations';
@@ -53,6 +58,8 @@ export interface GitAdapter {
     input: HistoryInput,
     signal?: AbortSignal,
     onReferences?: (references: Reference[]) => Promise<void>,
+    onEnrichment?: (pending: Promise<HistoryEnrichment>) => void,
+    options?: HistoryReadOptions,
   ): Promise<HistoryPage>;
   resolve(
     repositoryId: string,
@@ -100,7 +107,22 @@ export async function createGitAdapter(
 ): Promise<GitAdapter> {
   const access = await getGitApi(signal);
   const cli = new GitCli(access);
-  const history = createHistoryQueries(access, cli.readOnly());
+  const shallow = createHistoryShallow(access, cli.readOnly());
+  const history = createHistoryQueries(
+    access,
+    cli.readOnly(),
+    Date.now,
+    shallow,
+  );
+  const maintenance = createHistoryMaintenance({
+    access,
+    cli,
+    isEnabled: (id) =>
+      workspace
+        .getConfiguration('gitUI.history', access.repository(id).rootUri)
+        .get<boolean>('optimizeRepository', true),
+    isTrusted: () => workspace.isTrusted,
+  });
   const changes = createChangeQueries(access, cli.readOnly());
   const services = squash
     ? {
@@ -137,6 +159,8 @@ export async function createGitAdapter(
   signal?.throwIfAborted();
   const observations = createRepositoryObservations({
     access,
+    shallow,
+    watchShallow: (id, changed) => watchHistoryShallow(shallow, id, changed),
     invalidate: (id) => {
       history.invalidate(id);
       changes.invalidate(id);
@@ -146,6 +170,9 @@ export async function createGitAdapter(
     },
   });
   const operate = createOperations(access, cli, dialogs, services);
+  const maintenanceLifetime = observations.subscribeRepositories((event) => {
+    if (event) maintenance.invalidate(event.repositoryId);
+  });
 
   return {
     blame: (query, signal) =>
@@ -164,19 +191,32 @@ export async function createGitAdapter(
       queryRead('references', id, signal, (owner) =>
         readReferences(access, id, cli.readOnly(owner)),
       ),
-    history: (id, input, signal, onReferences) =>
+    history: (id, input, signal, onReferences, onEnrichment, options) =>
       queryRead('history', id, signal, async (owner) => {
         await observations.settled(id);
         owner.throwIfAborted();
 
-        return history.page(id, input, owner, onReferences);
+        const page = await history.page(
+          id,
+          input,
+          owner,
+          onReferences,
+          onEnrichment,
+          options,
+        );
+
+        maintenance.request(id);
+
+        return page;
       }),
     resolve: (id, input, signal) =>
       queryRead('resolve', id, signal, (owner) =>
         resolveCommit(access, cli.readOnly(owner), id, input),
       ),
     changes: (id, sha, parent, signal) =>
-      queryRead('changes', id, signal, () => changes(id, sha, parent)),
+      queryRead('changes', id, signal, (owner) =>
+        changes(id, sha, parent, owner),
+      ),
     worktrees: (id, signal) =>
       queryRead('worktrees', id, signal, (owner) =>
         readWorktrees(access, cli.readOnly(owner), id),
@@ -224,6 +264,10 @@ export async function createGitAdapter(
       if (disposed) return;
       disposed = true;
       recovery.dispose();
+      maintenanceLifetime.dispose();
+      maintenance.dispose();
+      history.dispose();
+      changes.dispose();
       observations.dispose();
     },
   };

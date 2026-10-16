@@ -5,6 +5,8 @@ import type {
   Reference,
 } from '../../shared/model';
 import type { GitAdapter } from '../git/adapter';
+import type { LazyHistoryEnrichment } from '../git/history';
+import type { PendingHistoryEnrichment } from './history';
 import type { NavigationDecision } from './navigation';
 import { planNavigation } from './navigation';
 import type { QuerySession } from './queries';
@@ -19,6 +21,7 @@ interface NavigationResult {
   page: HistoryPage | null;
   input: HistoryInput;
   replace: boolean;
+  enrichments: PendingHistoryEnrichment[];
 }
 
 /** Finds a revision without changing the active query until the user accepts it. */
@@ -76,33 +79,74 @@ export class PanelNavigator {
 
       const commit = target.commit;
       const signal = this.session.abort.signal;
-      const scan = async (input: HistoryInput): Promise<HistoryPage | null> => {
-        const commits: HistoryPage['commits'] = [];
-        let cursor: string | null = null;
+      const scan = async (
+        input: HistoryInput,
+      ): Promise<{
+        page: HistoryPage;
+        enrichments: PendingHistoryEnrichment[];
+      } | null> => {
+        const prefix = this.session.historyPrefix(input);
+        const commits: HistoryPage['commits'] = [...(prefix?.commits ?? [])];
+        const seen = new Set(commits.map((item) => item.sha));
+        const enrichments: PendingHistoryEnrichment[] = [];
+        let cursor: string | null = prefix?.nextCursor ?? null;
+        let scopeId = prefix?.scopeId;
+
+        if (prefix && !prefix.nextCursor) return null;
 
         do {
           signal.throwIfAborted();
           this.session.abort.signal.throwIfAborted();
           if (!current()) return null;
+          const pending: { read: LazyHistoryEnrichment | null } = {
+            read: null,
+          };
           const page = await this.adapter.history(
             id,
             { ...input, cursor },
             signal,
+            undefined,
+            undefined,
+            {
+              kind: 'lazy-enrichment',
+              receive: (read) => {
+                pending.read = read;
+              },
+            },
           );
 
-          commits.push(...page.commits);
+          if (!current()) return null;
+          if (scopeId !== undefined && scopeId !== page.scopeId)
+            throw new Error('History changed. Refresh to load a new snapshot.');
+          scopeId = page.scopeId;
+          for (const item of page.commits) {
+            if (seen.has(item.sha)) continue;
+            seen.add(item.sha);
+            commits.push(item);
+          }
+
+          if (pending.read) enrichments.push({ page, read: pending.read });
           if (page.commits.some((item) => item.sha === commit.sha))
-            return { ...page, commits };
+            return {
+              page: {
+                ...page,
+                commits,
+                ...(prefix?.annotations
+                  ? { annotations: prefix.annotations }
+                  : {}),
+              },
+              enrichments,
+            };
           cursor = page.nextCursor;
         } while (cursor);
 
         return null;
       };
 
-      let page = this.session.commits.has(commit.sha)
+      let result = this.session.commits.has(commit.sha)
         ? null
         : await scan(query);
-      const inQuery = this.session.commits.has(commit.sha) || page !== null;
+      const inQuery = this.session.commits.has(commit.sha) || result !== null;
       const allPage = inQuery
         ? null
         : await scan({ scope: { kind: 'all' }, text: '', cursor: null });
@@ -124,11 +168,20 @@ export class PanelNavigator {
         )
           return;
         nextInput = { scope: decision.scope, text: '', cursor: null };
-        page = allPage ?? (await scan(nextInput));
-        if (!page || !current()) return;
+        result = allPage ?? (await scan(nextInput));
+        if (!result || !current()) return;
       }
 
-      await apply({ commit, page, input: nextInput, replace }, isLatest);
+      await apply(
+        {
+          commit,
+          page: result?.page ?? null,
+          enrichments: result?.enrichments ?? [],
+          input: nextInput,
+          replace,
+        },
+        isLatest,
+      );
     } catch (error) {
       if (isLatest()) throw error;
     }

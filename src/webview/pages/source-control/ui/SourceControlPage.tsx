@@ -239,6 +239,11 @@ export function SourceControlPage({ bridge }: { bridge: SourceControlBridge }) {
             {state.repositories.map((item) => (
               <option key={item.info.id} value={item.info.id}>
                 {item.info.label}
+                {state.repositories.some(
+                  (other) =>
+                    other.info.id !== item.info.id &&
+                    other.info.label === item.info.label,
+                ) && ` · ${item.pathLabel.root}`}
               </option>
             ))}
           </select>

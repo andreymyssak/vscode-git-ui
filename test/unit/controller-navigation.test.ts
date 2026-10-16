@@ -75,6 +75,7 @@ test('a later navigation retains selection when an older history publication fin
   });
 
   t.onTestFinished(() => f.controller.dispose());
+  f.adapter.history = async () => ({ ...page([a, b]), nextCursor: 'older' });
   await f.controller.selectRepository('one');
   f.adapter.resolve = async (_id, input) => ({
     kind: 'commit',

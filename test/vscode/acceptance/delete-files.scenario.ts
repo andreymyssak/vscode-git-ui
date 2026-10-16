@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 
 import { getGitApi } from '../../../src/extension/git/api';
 import { sourceControlCommandId } from '../../../src/shared/extension-identity';
+import { readNativeMenuContext } from '../../fixtures/native-menu';
 import { createFixture } from '../../fixtures/repository';
 import { sourceControlFrame } from '../../fixtures/source-control-view';
 
@@ -37,10 +38,7 @@ export async function run(): Promise<string[]> {
     const frame = await sourceControlFrame();
     const page = frame.page();
     const folder = frame.getByRole('treeitem', { name: 'src', exact: true });
-    const encoded = await folder.getAttribute('data-vscode-context');
-
-    assert.ok(encoded);
-    const context: unknown = JSON.parse(encoded);
+    const context = await readNativeMenuContext(folder);
     const before = await fixture.runGit(['status', '--porcelain']);
     const index = await fixture.runGit(['ls-files', '--stage', '-z']);
     const cancel = vscode.commands.executeCommand(

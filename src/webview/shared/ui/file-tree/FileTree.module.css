@@ -237,3 +237,28 @@
   font-weight: normal;
   line-height: 19px;
 }
+
+.guide {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+.guide::before {
+  content: '';
+  position: absolute;
+  left: calc(16px + var(--tree-depth, 0) * 8px);
+  top: 0;
+  bottom: 0;
+  border-left: 1px solid var(--vscode-tree-inactiveIndentGuidesStroke, #404040);
+  opacity: 0;
+}
+.tree:hover .guide::before {
+  opacity: 1;
+}
+.guide[data-selected='true']::before,
+.tree:focus-within .guide[data-focused='true']::before {
+  border-color: var(--vscode-tree-indentGuidesStroke, #585858);
+  opacity: 1;
+}

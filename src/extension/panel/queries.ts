@@ -1,6 +1,10 @@
+import { normalizeHistoryFilters } from '../../shared/history-filters';
 import type {
   CommitRecord,
   FileChange,
+  HistoryEnrichment,
+  HistoryInput,
+  HistoryPage,
   Reference,
   RepositoryInfo,
   ScrollAnchor,
@@ -30,6 +34,13 @@ export class QuerySession {
   abort = new AbortController();
   readonly commits = new Map<string, CommitRecord>();
   historyShas: string[] = [];
+  private historyWindow: {
+    key: string;
+    scopeId: string;
+    nextCursor: string | null;
+    annotations: HistoryPage['annotations'];
+  } | null = null;
+
   readonly files = new Map<string, FileHandle>();
   readonly worktrees = new Map<string, WorktreeInfo>();
   begin(repositoryId: string, generation = this.generation + 1): void {
@@ -49,10 +60,87 @@ export class QuerySession {
     this.detailEpoch++;
     this.commits.clear();
     this.historyShas = [];
+    this.historyWindow = null;
     this.refs.clear();
     this.repositoryInfo = null;
     this.files.clear();
     this.worktrees.clear();
+  }
+
+  recordHistory(query: HistoryInput, page: HistoryPage, append: boolean): void {
+    const previous = append ? this.historyWindow?.annotations : undefined;
+
+    this.historyShas = [
+      ...new Set([
+        ...(append ? this.historyShas : []),
+        ...page.commits.map((commit) => commit.sha),
+      ]),
+    ];
+    this.refs.clear();
+    for (const ref of page.refs) this.refs.set(ref.id, ref);
+    for (const commit of page.commits) this.commits.set(commit.sha, commit);
+    this.historyWindow = {
+      key: historyKey(query),
+      scopeId: page.scopeId,
+      nextCursor: page.nextCursor,
+      annotations: {
+        user: page.annotations?.user ?? previous?.user ?? null,
+        currentBranch: [
+          ...new Set([
+            ...(previous?.currentBranch ?? []),
+            ...(page.annotations?.currentBranch ?? []),
+          ]),
+        ],
+      },
+    };
+  }
+
+  historyPrefix(query: HistoryInput): HistoryPage | null {
+    const window = this.historyWindow;
+
+    if (
+      !window ||
+      this.abort.signal.aborted ||
+      window.key !== historyKey(query)
+    )
+      return null;
+    const commits: CommitRecord[] = [];
+
+    for (const sha of this.historyShas) {
+      const commit = this.commits.get(sha);
+
+      if (!commit) return null;
+      commits.push(commit);
+    }
+
+    return {
+      commits,
+      refs: [...this.refs.values()],
+      scopeId: window.scopeId,
+      nextCursor: window.nextCursor,
+      ...(window.annotations ? { annotations: window.annotations } : {}),
+    };
+  }
+
+  enrichHistory(value: HistoryEnrichment): void {
+    const window = this.historyWindow;
+
+    if (!window || window.scopeId !== value.scopeId) return;
+    const page = new Set(value.shas);
+    const branch = new Set([
+      ...(window.annotations?.currentBranch ?? []).filter(
+        (sha) => !page.has(sha),
+      ),
+      ...value.annotations.currentBranch.filter((sha) => page.has(sha)),
+    ]);
+
+    this.historyWindow = {
+      ...window,
+      annotations: {
+        user: value.annotations.user,
+        currentBranch: this.historyShas.filter((sha) => branch.has(sha)),
+      },
+    };
   }
 
   select(sha: string): number {
@@ -108,7 +196,16 @@ export class QuerySession {
     this.refs.clear();
     this.repositoryInfo = null;
     this.worktrees.clear();
+    this.historyWindow = null;
   }
+}
+
+function historyKey(query: HistoryInput): string {
+  return JSON.stringify({
+    scope: query.scope,
+    text: query.text,
+    filters: normalizeHistoryFilters(query.filters),
+  });
 }
 
 export function getRepository(

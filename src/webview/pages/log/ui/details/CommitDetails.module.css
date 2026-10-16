@@ -1,4 +1,6 @@
 .changes-section {
+  position: relative;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   flex: 1;

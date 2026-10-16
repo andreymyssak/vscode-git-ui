@@ -98,7 +98,9 @@ test('Source Control announces the current action and clears it after completion
   expect(
     screen.getByRole('region', { name: 'Source Control' }),
   ).toHaveAttribute('aria-busy', 'true');
-  expect(screen.getByRole('button', { name: 'Commit' })).toBeDisabled();
+  expect(
+    screen.getByRole('button', { name: /^Commit(?: to |$)/ }),
+  ).toBeDisabled();
   emit(state);
   expect(
     screen.queryByRole('status', { name: 'Source Control activity' }),

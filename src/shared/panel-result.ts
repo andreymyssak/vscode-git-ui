@@ -1,12 +1,12 @@
 import type { FileIconTheme } from './file-icons';
 import { isHistoryFilters } from './history-filters';
-import type { PanelBody, Result } from './messages';
+import type { HistoryPageUpdate, PanelBody, Result } from './messages';
 import type {
   BranchRestoreHandle,
   BranchUpdateDecision,
   CommitRecord,
   FileChange,
-  HistoryPage,
+  HistoryAnnotations,
   OperationResult,
   Reference,
   RepositoryInfo,
@@ -99,24 +99,28 @@ function isReference(value: unknown): value is Reference {
   );
 }
 
-function isHistoryPage(value: unknown): value is HistoryPage {
+function isHistoryAnnotations(value: unknown): value is HistoryAnnotations {
+  return (
+    isRecord(value) &&
+    isStringArray(value.currentBranch) &&
+    (value.user === null ||
+      (isRecord(value.user) &&
+        isString(value.user.name) &&
+        isString(value.user.email)))
+  );
+}
+
+function isHistoryPage(value: unknown): value is HistoryPageUpdate {
   if (!isRecord(value)) return false;
-  const annotations = value.annotations;
 
   return (
     Array.isArray(value.commits) &&
     value.commits.every(isCommit) &&
-    Array.isArray(value.refs) &&
-    value.refs.every(isReference) &&
+    (value.refs === undefined ||
+      (Array.isArray(value.refs) && value.refs.every(isReference))) &&
     isNullableString(value.nextCursor) &&
     isString(value.scopeId) &&
-    (annotations === undefined ||
-      (isRecord(annotations) &&
-        isStringArray(annotations.currentBranch) &&
-        (annotations.user === null ||
-          (isRecord(annotations.user) &&
-            isString(annotations.user.name) &&
-            isString(annotations.user.email)))))
+    (value.annotations === undefined || isHistoryAnnotations(value.annotations))
   );
 }
 
@@ -326,6 +330,14 @@ const validators = {
     isOptionalFilters(body.filters) &&
     isOptionalBoolean(body.restoring),
   'history-settled': () => true,
+  'history-enrichment': (body) =>
+    isRecord(body.enrichment) &&
+    isString(body.enrichment.scopeId) &&
+    isStringArray(body.enrichment.shas) &&
+    (body.enrichment.refs === undefined ||
+      (Array.isArray(body.enrichment.refs) &&
+        body.enrichment.refs.every(isReference))) &&
+    isHistoryAnnotations(body.enrichment.annotations),
   'history-interrupted': () => true,
   'focus-log': () => true,
   details: (body) => isCommit(body.commit),

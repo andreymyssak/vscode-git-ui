@@ -183,16 +183,28 @@ describe('installed file icon themes', () => {
       );
       await file.evaluate((node) => (node as HTMLElement).click());
       await expect(file).toHaveAttribute('aria-selected', 'true');
-      await frame
-        .getByRole('treeitem', { name: 'src 1 file' })
-        .locator(':scope > span')
-        .first()
-        .evaluate((node) => (node as HTMLElement).click());
+      const folder = frame.getByRole('treeitem', { name: 'src 1 file' });
+      const disclosure = folder.locator('[data-tree-disclosure]');
+
+      await disclosure.evaluate((node) => {
+        if (node instanceof HTMLElement) node.click();
+      });
+      await expect(folder).toHaveAttribute('aria-expanded', 'false');
+      await expect(file).toHaveCount(0);
       await configuration.update(
         'iconTheme',
         'vs-minimal',
         vscode.ConfigurationTarget.Global,
       );
+      // The loaded theme must preserve collapse and the webview document while
+      // descendants are absent; the remounted file picks up its latest icon.
+      await expect(folder).toHaveAttribute('aria-expanded', 'false');
+      await expect(file).toHaveCount(0);
+      await disclosure.evaluate((node) => {
+        if (node instanceof HTMLElement) node.click();
+      });
+      await expect(folder).toHaveAttribute('aria-expanded', 'true');
+      await expect(file).toHaveAttribute('aria-selected', 'true');
       const image = icon.locator('img');
 
       await expect(image).toHaveAttribute('src', /document-dark\.svg/);
@@ -203,11 +215,6 @@ describe('installed file icon themes', () => {
           image.evaluate((node) => (node as HTMLImageElement).naturalWidth),
         )
         .toBeGreaterThan(0);
-      await expect(file).toHaveAttribute('aria-selected', 'true');
-      await expect(frame.locator('[data-folder="src"]')).not.toHaveAttribute(
-        'open',
-        '',
-      );
       assert.equal(
         await frame.evaluate(
           () =>
@@ -216,11 +223,17 @@ describe('installed file icon themes', () => {
         ),
         true,
       );
-      await frame
-        .getByRole('treeitem', { name: 'src 1 file' })
-        .locator(':scope > span')
-        .first()
-        .evaluate((node) => (node as HTMLElement).click());
+      await vscode.commands.executeCommand('workbench.scm.focus');
+      const nativeChanges = workbench.getByRole('button', {
+        name: 'Changes Section',
+        exact: true,
+      });
+
+      if ((await nativeChanges.getAttribute('aria-expanded')) === 'false') {
+        await nativeChanges.locator('.twisty-container').click();
+        await expect(nativeChanges).toHaveAttribute('aria-expanded', 'true');
+      }
+
       const nativeFolder = workbench
         .locator('.scm-view .monaco-icon-label.folder-icon')
         .filter({ hasText: 'src' })

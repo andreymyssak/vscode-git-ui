@@ -12,6 +12,7 @@ import { captureNativeActionFailure } from '../fixtures/native-action-diagnostic
 import {
   acceptNativeQuickPick,
   activateNativeMenu,
+  openNativeSubmenu,
 } from '../fixtures/native-menu';
 import { createFixture, type Fixture } from '../fixtures/repository';
 import { sourceControlFrame } from '../fixtures/source-control-view';
@@ -116,7 +117,9 @@ async function dispose(...fixtures: Fixture[]) {
 async function branchMenu(frame: Frame) {
   const page = await menu(frame);
 
-  await page.getByRole('menuitem', { name: 'Branch', exact: true }).hover();
+  await openNativeSubmenu(
+    page.getByRole('menuitem', { name: 'Branch', exact: true }),
+  );
   await expect(
     page.getByRole('menuitem', { name: 'New Branch', exact: true }),
   ).toBeVisible();
@@ -127,7 +130,9 @@ async function branchMenu(frame: Frame) {
 async function tagsMenu(frame: Frame) {
   const page = await menu(frame);
 
-  await page.getByRole('menuitem', { name: 'Tags', exact: true }).hover();
+  await openNativeSubmenu(
+    page.getByRole('menuitem', { name: 'Tags', exact: true }),
+  );
   await expect(
     page.getByRole('menuitem', { name: 'Create Tag', exact: true }),
   ).toBeVisible();
@@ -159,7 +164,9 @@ describe('Source Control repository actions', () => {
         await expect(
           page.getByRole('menuitem', { name, exact: true }),
         ).toBeEnabled();
-      await page.getByRole('menuitem', { name: 'Branch', exact: true }).hover();
+      await openNativeSubmenu(
+        page.getByRole('menuitem', { name: 'Branch', exact: true }),
+      );
       for (const name of [
         'Merge',
         'Rebase',

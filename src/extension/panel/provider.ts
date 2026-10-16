@@ -196,6 +196,7 @@ export class GitViewProvider implements vscode.WebviewViewProvider {
       const result = new PanelController({
         adapter,
         trusted: () => vscode.workspace.isTrusted,
+        visible: view.visible,
         askBranchName: (checkout = false) =>
           askBranchName(
             '',
@@ -434,6 +435,13 @@ export class GitViewProvider implements vscode.WebviewViewProvider {
       }
     });
     const visibility = view.onDidChangeVisibility(() => {
+      void controller
+        ?.setVisible(view.visible)
+        .catch((error: unknown) =>
+          showOperationError(
+            error instanceof Error ? error.message : String(error),
+          ),
+        );
       if (!view.visible) this.jumps.detach();
       else if (ready && controller) {
         const currentController = controller;

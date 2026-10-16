@@ -40,7 +40,7 @@ test('active icon changes update images while preserving the selected file and c
   );
 
   onTestFinished(() => bridge.dispose());
-  const { container } = render(
+  render(
     <FileIconThemeProvider bridge={bridge}>
       <FileTree
         context={{
@@ -81,9 +81,12 @@ test('active icon changes update images while preserving the selected file and c
         .getByRole('treeitem', { name: 'src 1 file' })
         .querySelector('[data-tree-disclosure]')!,
     );
-  const folder = container.querySelector('details')!;
+  const folder = screen.getByRole('treeitem', { name: 'src 1 file' });
 
-  expect(folder.open).toBe(false);
+  expect(folder).toHaveAttribute('aria-expanded', 'false');
+  expect(
+    screen.queryByRole('treeitem', { name: 'Modified · file.ts' }),
+  ).toBeNull();
   send(
     {
       ...theme,
@@ -94,16 +97,20 @@ test('active icon changes update images while preserving the selected file and c
     },
     'https://webview.test/next.css',
   );
-  expect(leaf.querySelector('img')).toBe(image);
   fireEvent.load(document.head.querySelector('link[data-file-icon-theme]')!);
-  expect(leaf.querySelector('[data-file-icon]')).toHaveClass(
+  expect(folder).toHaveAttribute('aria-expanded', 'false');
+  expect(
+    screen.queryByRole('treeitem', { name: 'Modified · file.ts' }),
+  ).toBeNull();
+  await userEvent
+    .setup()
+    .click(folder.querySelector('[data-tree-disclosure]')!);
+  const revealed = screen.getByRole('treeitem', { name: 'Modified · file.ts' });
+
+  expect(revealed.querySelector('[data-file-icon]')).toHaveClass(
     'git-file-theme-next-1',
   );
-  expect(
-    screen.getByRole('treeitem', { name: 'Modified · file.ts', hidden: true }),
-  ).toBe(leaf);
-  expect(leaf).toHaveAttribute('aria-selected', 'true');
-  expect(folder.open).toBe(false);
+  expect(revealed).toHaveAttribute('aria-selected', 'true');
 });
 
 test('obsolete stylesheet loads cannot replace the newest theme and unmount removes owned links', () => {

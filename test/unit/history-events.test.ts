@@ -111,3 +111,29 @@ test('events during an active read take a final fresh snapshot before settling',
   expect(reads).toBe(3);
   expect(changes).toBe(1);
 });
+
+test('shallow ancestry changes invalidate history even with identical reference tips', async () => {
+  let shallow = 'one-boundary';
+  let changes = 0;
+  const observation = historyChangeFilter(
+    {
+      state: { HEAD: undefined, worktrees: [], remotes: [] },
+      getRefs: async () => [],
+    },
+    () => {
+      changes++;
+    },
+    async () => shallow,
+  );
+
+  try {
+    await observation.settled();
+    shallow = 'complete';
+    await observation.check();
+    expect(changes).toBe(1);
+    await observation.check();
+    expect(changes).toBe(1);
+  } finally {
+    observation.dispose();
+  }
+});

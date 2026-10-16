@@ -23,6 +23,7 @@ function fixture() {
   let failure: Error | null = null;
   let attributes = 'unspecified';
   let attributeFailure: Error | null = null;
+  let version = 'git version 2.47.1';
   let afterRead = () => {};
 
   const read = createBlameQueries(
@@ -30,6 +31,7 @@ function fixture() {
     {
       run: async (_id, args) => {
         calls.push({ args, input: null });
+        if (args[0] === '--version') return version;
         if (args.includes('rev-parse')) {
           if (failure) throw failure;
 
@@ -84,6 +86,9 @@ function fixture() {
     },
     setAttributeFailure: (value: Error) => {
       attributeFailure = value;
+    },
+    setVersion: (value: string) => {
+      version = value;
     },
   };
 }
@@ -142,7 +147,7 @@ describe('blame reader boundaries', () => {
       encoding: 'iso88591',
       source: { kind: 'revision', path: 'sample.txt', sha: blameSha },
     });
-    expect(f.calls[0]).toEqual({
+    expect(f.calls.find(({ args }) => args[0] === 'check-attr')).toEqual({
       args: [
         'check-attr',
         '-z',
@@ -153,8 +158,25 @@ describe('blame reader boundaries', () => {
       ],
       input: null,
     });
-    expect(f.calls[1]?.args[0]).toBe('blame');
+    expect(f.calls.at(-1)?.args[0]).toBe('blame');
   });
+
+  it.each(['git version 2.39.9', 'git version 2.47.0-rc1', 'unknown'])(
+    'rejects historical encoding attributes on unverified Git %s before reading attributes or blame',
+    async (version) => {
+      const f = fixture();
+
+      f.setVersion(version);
+      await expect(
+        f.read({
+          ...contents,
+          encoding: 'iso88591',
+          source: { kind: 'revision', path: 'sample.txt', sha: blameSha },
+        }),
+      ).rejects.toThrow('Git 2.40 or newer');
+      expect(f.calls).toEqual([{ args: ['--version'], input: null }]);
+    },
+  );
 
   it('rejects transformed displayed contents before supplying any stdin', async () => {
     const f = fixture();

@@ -1,7 +1,7 @@
 import { expect, test } from '../fixtures/browser';
 
 for (const width of [620, 1280])
-  test(`Update keeps history visible and spins its branch only during the Git write at ${width}px`, async ({
+  test(`Update stops its spinner without flashing cached counts before fresh references at ${width}px`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height: 360 });
@@ -107,9 +107,52 @@ for (const width of [620, 1280])
       }),
     );
     await expect(current.locator('.codicon-loading')).toHaveCount(0);
-    await expect(current.locator('[data-incoming]')).toHaveText('3');
+    await expect(current.locator('[data-incoming]')).toHaveCount(0);
+    await expect(topic.locator('[data-incoming]')).toHaveCount(0);
     await expect(page.getByRole('status')).toBeHidden();
     await expect(history).toHaveAttribute('aria-busy', 'false');
+    await page.evaluate(() =>
+      window.__deliver({
+        requestId: 'refresh',
+        repositoryId: 'one',
+        generation: 1,
+        body: {
+          kind: 'references',
+          references: ['main', 'topic'].map((name) => ({
+            id: `refs/heads/${name}`,
+            name,
+            kind: 'local',
+            sha: '2'.padStart(40, '0'),
+            remote: null,
+            tracking: {
+              upstream: `refs/remotes/origin/${name}`,
+              ahead: name === 'main' ? 1 : 0,
+              behind: name === 'main' ? 0 : 3,
+            },
+          })),
+        },
+      }),
+    );
+    await expect(current.locator('[data-incoming]')).toHaveCount(0);
+    await expect(current.locator('[data-outgoing]')).toHaveText('1');
+    await expect(topic.locator('[data-incoming]')).toHaveText('3');
+    // Queue publications can repeat the same phase after fresh data arrives.
+    await page.evaluate(() =>
+      window.__deliver({
+        requestId: 'update-one',
+        repositoryId: 'one',
+        generation: 1,
+        body: {
+          kind: 'operation-progress',
+          operation: {
+            label: 'Updating main…',
+            refIds: ['refs/heads/main'],
+            phase: 'refreshing',
+          },
+        },
+      }),
+    );
+    await expect(current.locator('[data-outgoing]')).toHaveText('1');
     await page.evaluate(() =>
       window.__deliver({
         requestId: 'update-one',
@@ -122,7 +165,8 @@ for (const width of [620, 1280])
       }),
     );
     await expect(current.locator('.codicon-loading')).toHaveCount(0);
-    await expect(current.locator('[data-incoming]')).toHaveText('3');
+    await expect(current.locator('[data-incoming]')).toHaveCount(0);
+    await expect(current.locator('[data-outgoing]')).toHaveText('1');
     await expect(history).toHaveAttribute('aria-busy', 'false');
     await expect(page.getByRole('status')).toBeHidden();
     const context: { refCanUpdate: boolean } = JSON.parse(

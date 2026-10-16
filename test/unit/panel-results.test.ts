@@ -116,6 +116,15 @@ const bodies = {
     restoring: true,
   },
   'history-settled': { kind: 'history-settled' },
+  'history-enrichment': {
+    kind: 'history-enrichment',
+    enrichment: {
+      scopeId: 'head',
+      shas: [sha],
+      refs: [reference],
+      annotations: { user: null, currentBranch: [sha] },
+    },
+  },
   'history-interrupted': { kind: 'history-interrupted' },
   'worktrees-loading': { kind: 'worktrees-loading', loading: true },
   'worktrees-error': { kind: 'worktrees-error', message: 'Unavailable' },

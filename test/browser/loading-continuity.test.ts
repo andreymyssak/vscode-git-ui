@@ -119,6 +119,9 @@ test('commit switching retains its files and summary until both replacement resp
     .locator('[data-file]')
     .getAttribute('data-file');
 
+  await page.locator('[data-file]').click({ trial: true });
+  const originalBounds = await page.locator('[data-file]').boundingBox();
+
   await page.evaluate(() => {
     const deliver = window.__deliver;
 
@@ -150,6 +153,25 @@ test('commit switching retains its files and summary until both replacement resp
     };
   });
   await page.locator('[data-subject-message]').nth(1).click();
+  const changedFiles = page.getByRole('region', { name: 'Changed files' });
+  const progress = changedFiles.locator(':scope > [aria-hidden="true"]');
+
+  await expect(changedFiles).toHaveAttribute('aria-busy', 'true');
+  await expect(progress).toHaveCSS('height', '2px');
+  expect(await page.locator('[data-file]').boundingBox()).toEqual(
+    originalBounds,
+  );
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(progress).toHaveCSS('animation-name', 'none');
+  const sectionBounds = (await changedFiles.boundingBox())!;
+  const progressBounds = (await progress.boundingBox())!;
+
+  expect(progressBounds.y).toBe(sectionBounds.y);
+  expect(progressBounds.x).toBeGreaterThanOrEqual(sectionBounds.x);
+  expect(progressBounds.x + progressBounds.width).toBeLessThanOrEqual(
+    sectionBounds.x + sectionBounds.width,
+  );
+  await page.screenshot({ path: '.artifacts/changed-files-progress.png' });
   await expect(page.locator('#details')).toHaveAttribute('aria-busy', 'true');
   await expect(page.locator('[data-commit-info] pre')).toHaveText(
     originalMessage!,
@@ -164,6 +186,7 @@ test('commit switching retains its files and summary until both replacement resp
   await page.locator('[data-file]').dispatchEvent('dblclick');
   expect(await page.evaluate(() => window.__requests.length)).toBe(requests);
   await page.evaluate(() => window.dispatchEvent(new Event('finish-details')));
+  await expect(progress).toBeVisible();
   await expect(page.locator('[data-commit-info] pre')).toHaveText(
     originalMessage!,
   );
@@ -178,6 +201,8 @@ test('commit switching retains its files and summary until both replacement resp
     'next-file',
   );
   await expect(page.locator('#details')).toHaveAttribute('aria-busy', 'false');
+  await expect(changedFiles).toHaveAttribute('aria-busy', 'false');
+  await expect(progress).toHaveCount(0);
   await expect(page.locator('#details')).not.toHaveAttribute('inert', '');
 });
 

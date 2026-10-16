@@ -13,6 +13,7 @@ import {
   extensionIdentity,
   LOG_VIEW_ID,
 } from '../../src/shared/extension-identity';
+import { captureNativeActionFailure } from '../fixtures/native-action-diagnostic';
 import { nativeBrowser } from '../fixtures/native-panel';
 import { createFixture } from '../fixtures/repository';
 
@@ -253,7 +254,50 @@ describe('private package', () => {
         await row.locator('[data-references]').hover();
         const tooltip = frame.getByRole('tooltip');
 
-        await expect(tooltip).toBeVisible();
+        await expect(tooltip)
+          .toBeVisible()
+          .catch(async (error: unknown) => {
+            try {
+              await writeFile(
+                '.artifacts/installed-reference-target.json',
+                JSON.stringify(
+                  await row.locator('[data-references]').evaluate(
+                    (node) => {
+                      const bounds = node.getBoundingClientRect();
+
+                      return {
+                        html: node.outerHTML.slice(0, 4000),
+                        hovered: node.matches(':hover'),
+                        focused: document.hasFocus(),
+                        bounds: bounds.toJSON(),
+                        target: document
+                          .elementFromPoint(
+                            bounds.x + bounds.width / 2,
+                            bounds.y + bounds.height / 2,
+                          )
+                          ?.outerHTML.slice(0, 4000),
+                        hoveredElements: [
+                          ...document.querySelectorAll(':hover'),
+                        ]
+                          .slice(-5)
+                          .map((item) => item.outerHTML.slice(0, 1200)),
+                      };
+                    },
+                    undefined,
+                    { timeout: 1000 },
+                  ),
+                ),
+              );
+            } catch {
+              /* Diagnostics must preserve the original assertion failure. */
+            }
+
+            await captureNativeActionFailure({
+              frame: frame!,
+              name: 'installed-reference-hover',
+            });
+            throw error;
+          });
         await expect(tooltip).toContainText('HEAD');
         await expect(tooltip).toContainText('main');
         await expect(tooltip).toContainText('v1');

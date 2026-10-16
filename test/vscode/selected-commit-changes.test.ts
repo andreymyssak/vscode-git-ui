@@ -9,7 +9,10 @@ import * as vscode from 'vscode';
 import { getGitApi } from '../../src/extension/git/api';
 import { commandId, LOG_VIEW_ID } from '../../src/shared/extension-identity';
 import { captureNativeActionFailure } from '../fixtures/native-action-diagnostic';
-import { activateNativeMenu } from '../fixtures/native-menu';
+import {
+  activateNativeMenu,
+  readNativeMenuContext,
+} from '../fixtures/native-menu';
 import {
   refreshNativeHistory,
   selectNativeRepository,
@@ -271,9 +274,7 @@ describe('native selected commit changes', () => {
       name: 'Modified · a.txt',
       exact: true,
     });
-    const context: unknown = JSON.parse(
-      (await row.getAttribute('data-vscode-context'))!,
-    );
+    const context = await readNativeMenuContext(row);
 
     await vscode.commands.executeCommand(commandId('revert-files'), context);
     const repository = (await getGitApi()).repository(id);
@@ -310,9 +311,7 @@ describe('native selected commit changes', () => {
       name: 'Modified · a.txt',
       exact: true,
     });
-    const context: unknown = JSON.parse(
-      (await row.getAttribute('data-vscode-context'))!,
-    );
+    const context = await readNativeMenuContext(row);
 
     await vscode.commands.executeCommand(
       commandId('cherry-pick-files'),
@@ -350,9 +349,7 @@ describe('native selected commit changes', () => {
     });
 
     await expect(row).toBeVisible();
-    const context: unknown = JSON.parse(
-      (await row.getAttribute('data-vscode-context'))!,
-    );
+    const context = await readNativeMenuContext(row);
 
     await vscode.commands.executeCommand(
       commandId('cherry-pick-files'),

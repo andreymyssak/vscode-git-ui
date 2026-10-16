@@ -81,7 +81,7 @@ test('a failed shared comparison can be retried without retaining its rejected p
   }
 });
 
-test('a replacement repository starts a fresh comparison and old results cannot repopulate its cache', async () => {
+test('repository invalidation cancels old comparisons and prevents late results from repopulating its cache', async () => {
   const f = await createSquashFixture();
   const old = deferred<void>();
   const entered = deferred<void>();
@@ -113,14 +113,16 @@ test('a replacement repository starts a fresh comparison and old results cannot 
     };
 
     const changes = createChangeQueries(f.access, new GitCli(f.access));
-    const previous = changes('fixture', f.c, f.b);
+    const previous = changes('fixture', f.c, f.b).catch(
+      (error: unknown) => error,
+    );
 
     await entered.promise;
     changes.invalidate('fixture');
+    expect(await previous).toMatchObject({ name: 'AbortError' });
     await changes('fixture', f.c, f.b);
     expect(reads).toBe(2);
     old.resolve();
-    await previous;
     expect(await changes('fixture', f.c, f.b)).toEqual([]);
     expect(reads).toBe(2);
   } finally {

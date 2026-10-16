@@ -68,7 +68,10 @@ test('waiting branches are labelled separately and unrelated menus stay availabl
           label: 'Updating main…',
           refIds: ['refs/heads/main'],
           phase: 'running',
-          queued: [{ label: 'Updating topic…', refIds: ['refs/heads/topic'] }],
+          queued: [
+            { label: 'Updating topic…', refIds: ['refs/heads/topic'] },
+            { label: 'Fetching remotes…', refIds: [], section: 'branches' },
+          ],
         },
       },
     }),
@@ -81,6 +84,20 @@ test('waiting branches are labelled separately and unrelated menus stay availabl
       .locator('[data-ref="refs/heads/topic"]')
       .getByLabel('Queued: Updating topic…'),
   ).toBeVisible();
+  const queuedSpinner = page.locator(
+    '[data-ref="refs/heads/topic"] .codicon-loading',
+  );
+
+  await expect(queuedSpinner).toBeVisible();
+  await expect
+    .poll(() =>
+      queuedSpinner.evaluate((element) => element.getAnimations().length),
+    )
+    .toBeGreaterThan(0);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(queuedSpinner).toHaveCSS('animation-name', 'none');
+  await expect(page.locator('#fetch')).toHaveAttribute('aria-busy', 'true');
+  await expect(page.locator('#fetch .codicon-loading')).toBeVisible();
   await expect(page.getByRole('status')).toBeHidden();
   await expect(page.locator('#history-pane')).toHaveAttribute(
     'aria-busy',
@@ -129,4 +146,6 @@ test('waiting branches are labelled separately and unrelated menus stay availabl
     'false',
   );
   await expect(page.getByRole('status')).toBeHidden();
+  await expect(page.locator('#branches .codicon-loading')).toHaveCount(0);
+  await expect(page.locator('#fetch')).toHaveAttribute('aria-busy', 'false');
 });

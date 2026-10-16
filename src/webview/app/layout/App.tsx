@@ -18,10 +18,22 @@ export function App({ bridge }: { bridge: BrowserBridge }) {
       <div className={styles.app}>
         <RenderMeasurement store={store} />
         <PanelHeader {...controller} />
-        <div className={styles.page} hidden={activeView !== 'log'}>
+        <div
+          id="log-panel"
+          role="tabpanel"
+          aria-labelledby="log-tab"
+          className={styles.page}
+          hidden={activeView !== 'log'}
+        >
           <LogPage source={store} onIntent={onLogIntent} />
         </div>
-        <div className={styles.page} hidden={activeView !== 'worktrees'}>
+        <div
+          id="worktrees-panel"
+          role="tabpanel"
+          aria-labelledby="worktrees-tab"
+          className={styles.page}
+          hidden={activeView !== 'worktrees'}
+        >
           <WorktreesPanel controller={controller} />
         </div>
       </div>

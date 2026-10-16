@@ -16,7 +16,9 @@ export function queuedActionCurrent(
     const references = refIds.map((id) => {
       const ref = session.refs.get(id);
 
-      return ref ? [ref.id, ref.sha, ref.tracking?.upstream] : null;
+      // Optional counts/upstreams can arrive after the displayed target is usable.
+      // Update captures and validates its upstream separately before queuing.
+      return ref ? [ref.id, ref.sha] : null;
     });
     const head = [
       session.repositoryInfo?.branch,

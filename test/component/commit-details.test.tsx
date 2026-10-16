@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { StrictMode } from 'react';
 import { expect, test, vi } from 'vitest';
@@ -415,9 +421,8 @@ test('restoring a nested file opens its merge parent but later updates preserve 
   rerender(<CommitDetails data={restored} onIntent={onIntent} />);
   expect(parentGroup.open).toBe(true);
   expect(
-    parentGroup.querySelector<HTMLDetailsElement>('[data-folder="src/nested"]')
-      ?.open,
-  ).toBe(true);
+    within(parentGroup).getByRole('treeitem', { name: 'src/nested 1 file' }),
+  ).toHaveAttribute('aria-expanded', 'true');
   expect(
     screen.getByRole('treeitem', { name: 'Modified · file.ts' }),
   ).toHaveAttribute('aria-selected', 'true');

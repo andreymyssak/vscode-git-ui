@@ -471,3 +471,34 @@ test('a stash file read from a closed lifetime cannot overwrite replacement file
     items: [],
   });
 });
+
+test('hidden Changes coalesces native status bursts and refreshes current files once on reveal', async (t) => {
+  const { service, states } = await fixture();
+
+  t.onTestFinished(() => service.dispose());
+  const reads = host.workingChanges.mock.calls.length;
+
+  await service.setVisible(false);
+  host.workingChanges.mockResolvedValue([editedFile]);
+  for (let index = 0; index < 20; index++) host.fireStatus();
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(host.workingChanges).toHaveBeenCalledTimes(reads);
+  await service.setVisible(true);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(host.workingChanges).toHaveBeenCalledTimes(reads + 1);
+  expect(states.at(-1)?.repositories[0]?.changes).toEqual({
+    kind: 'ready',
+    items: [editedFile],
+  });
+});
+
+test('revealing Changes with no invalidations republishes cached state without Git reads', async (t) => {
+  const { service } = await fixture();
+
+  t.onTestFinished(() => service.dispose());
+  const reads = host.workingChanges.mock.calls.length;
+
+  await service.setVisible(false);
+  await service.setVisible(true);
+  expect(host.workingChanges).toHaveBeenCalledTimes(reads);
+});

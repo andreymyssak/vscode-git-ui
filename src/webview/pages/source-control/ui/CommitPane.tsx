@@ -1,11 +1,11 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 
 import type {
   SourceControlBridge,
   SourceControlRepository,
   SourceControlState,
 } from '@contracts/source-control';
-import { Icon, SplitHandle } from '@webview/shared/ui';
+import { Icon, PathHint, SplitHandle } from '@webview/shared/ui';
 
 import { changeGroups, revealSection } from '../model/change-groups';
 import { buildChangeTree, type ChangeNode } from '../model/file-tree';
@@ -45,6 +45,7 @@ export function CommitPane({
   onMessageHeightChange(this: void, height: number): void;
 }) {
   const root = useRef<HTMLDivElement>(null);
+  const helpId = useId();
   const [height, setHeight] = useState(620);
   const [sessionId] = useState(() => crypto.randomUUID());
   const editSequence = useRef(0);
@@ -129,13 +130,40 @@ export function CommitPane({
     repository?.operation.kind === 'ready'
       ? repository.operation.items[0]
       : null;
-  const canWrite =
-    !!repository &&
-    repository.changes.kind === 'ready' &&
-    !disabled &&
-    draft.pending === null &&
-    (count > 0 || repository.commitMode.kind === 'amend') &&
-    !!draft.value.trim();
+  const blocker = !repository
+    ? 'Select a repository.'
+    : busy
+      ? 'Wait for the current operation to finish.'
+      : generating
+        ? 'Wait for message generation to finish.'
+        : repository.changes.kind === 'loading'
+          ? 'Wait for changes to load.'
+          : repository.changes.kind === 'error'
+            ? 'Refresh changes before committing.'
+            : draft.pending !== null
+              ? 'Wait for the commit message to be saved.'
+              : count === 0 && repository.commitMode.kind !== 'amend'
+                ? 'Check at least one changed file.'
+                : !draft.value.trim()
+                  ? 'Enter a commit message.'
+                  : null;
+  const canWrite = blocker === null;
+  const amending = repository?.commitMode.kind === 'amend';
+  const destination =
+    repository?.info.branch ??
+    (repository?.info.headSha
+      ? `Detached HEAD · ${repository.info.headSha.slice(0, 8)}`
+      : 'Unborn HEAD');
+  const destinationLabel = `${amending ? 'Amend Commit on' : 'Commit to'} ${destination}`;
+  const shortcut = /Mac|iPhone|iPad|iPod/.test(navigator.platform)
+    ? '⌘Enter'
+    : 'Ctrl+Enter';
+  const help = `${repository ? destinationLabel + '. ' : ''}${shortcut} to commit.${blocker ? ' ' + blocker : ''}`;
+  const submit = () => {
+    if (canWrite && repository)
+      bridge.send({ kind: 'commit', repositoryId: repository.info.id });
+  };
+
   const canGenerate =
     !!repository && !disabled && draft.pending === null && count > 0;
   const expandAll = (expand: boolean) => {
@@ -260,12 +288,27 @@ export function CommitPane({
         />
         <textarea
           aria-label="Commit message"
-          placeholder="Commit message"
+          placeholder={`Commit message (${shortcut})`}
+          aria-keyshortcuts="Control+Enter Meta+Enter"
+          aria-describedby={helpId}
           className={styles.message}
           rows={3}
           value={draft.value}
           maxLength={65536}
           disabled={!repository || busy}
+          onKeyDown={(event) => {
+            if (
+              event.key !== 'Enter' ||
+              !(event.ctrlKey || event.metaKey) ||
+              event.altKey ||
+              event.shiftKey ||
+              event.nativeEvent.isComposing ||
+              event.nativeEvent.keyCode === 229
+            )
+              return;
+            event.preventDefault();
+            if (!event.repeat) submit();
+          }}
           onChange={(event) => {
             if (repository && !busy) {
               const value = event.currentTarget.value.slice(0, 65536);
@@ -286,23 +329,38 @@ export function CommitPane({
           }}
         />
         <div className={styles.commitActions}>
-          <button
-            type="button"
-            className={styles.primary}
-            disabled={!canWrite}
-            onClick={() => {
-              if (canWrite)
-                bridge.send({
-                  kind: 'commit',
-                  repositoryId: repository.info.id,
-                });
-            }}
-          >
-            <Icon name="check" />
-            {repository?.commitMode.kind === 'amend'
-              ? 'Amend Commit'
-              : 'Commit'}
-          </button>
+          <div className={styles.commitSubmit}>
+            <PathHint text={help} delay={hoverDelay}>
+              <span
+                className={styles.commitButtonWrap}
+                role={!canWrite ? 'group' : undefined}
+                aria-label={!canWrite ? 'Commit unavailable' : undefined}
+                aria-describedby={helpId}
+                tabIndex={!canWrite ? 0 : undefined}
+              >
+                <button
+                  type="button"
+                  className={styles.primary}
+                  disabled={!canWrite}
+                  aria-label={repository ? destinationLabel : 'Commit'}
+                  aria-describedby={helpId}
+                  onClick={submit}
+                >
+                  <Icon name="check" />
+                  <span className={styles.commitLabel}>
+                    {amending ? 'Amend Commit' : 'Commit'}
+                    {repository && (amending ? ' on' : ' to')}
+                  </span>
+                  {repository && (
+                    <span className={styles.commitBranch}>{destination}</span>
+                  )}
+                </button>
+              </span>
+            </PathHint>
+          </div>
+          <span id={helpId} className={styles.srOnly}>
+            {help}
+          </span>
         </div>
         {generating && (
           <p role="status" className={styles.progress}>

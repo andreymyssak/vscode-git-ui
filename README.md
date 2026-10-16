@@ -30,7 +30,7 @@ Choose **Git UI: Annotate with Git Blame** from the editor's line-number menu to
 
 ![Review Merge Changes, Staged Changes and Changes, abort a conflicted merge, then commit two checked files with a loading line while leaving other files unchanged](assets/readme/changes.gif)
 
-See conflicts, staged edits and other changes in separate groups. Check the files you want to commit, and use the native editor to review changes or resolve conflicts. A loading line shows progress without moving the commit editor, and the file list follows changes made in VS Code or the terminal.
+See conflicts, staged edits and other changes in separate groups. Check the files you want to commit, and use the native editor to review changes or resolve conflicts. A loading line shows progress without moving the commit editor, and the file list follows changes made in VS Code or the terminal. The Commit button shows the destination branch. Use Cmd+Enter on macOS or Ctrl+Enter on Windows and Linux to commit the checked files.
 
 ### Stashes
 

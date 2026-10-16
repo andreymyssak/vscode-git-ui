@@ -2,7 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { relative, sep } from 'node:path';
 
 import type { FileChange } from '../../shared/model';
-import type { GitApiAccess, GitChange } from './api';
+import {
+  readCancellationError,
+  readWithCancellation,
+} from '../read-cancellation';
+import type { GitApiAccess, GitChange, GitRepository } from './api';
 import { backgroundRead } from './background-read';
 import type { GitCli } from './cli';
 import { readObjectParents } from './parents';
@@ -117,112 +121,222 @@ export function rootChanges(output: string): FileChange[] {
 }
 
 export interface ChangeQueries {
-  (id: string, sha: string, parent: string | null): Promise<FileChange[]>;
+  (
+    id: string,
+    sha: string,
+    parent: string | null,
+    signal?: AbortSignal,
+  ): Promise<FileChange[]>;
   invalidate(this: void, id: string): void;
+  dispose(this: void): void;
+}
+
+interface PendingComparison {
+  root: string;
+  abort: AbortController;
+  promise: Promise<FileChange[]>;
+  consumers: number;
 }
 
 export function createChangeQueries(
   access: GitApiAccess,
   cli: GitCli,
 ): ChangeQueries {
-  const cache = new ComparisonCache<FileChange[]>();
-  const pending = new Map<string, Promise<FileChange[]>>();
-  const revisions = new Map<string, symbol>();
+  const cache = new ComparisonCache<{
+    root: string;
+    files: FileChange[];
+  }>();
+  const pending = new Map<string, PendingComparison>();
+  let disposed = false;
   const keyFor = (id: string, sha: string, parent: string | null) =>
     `${JSON.stringify(id)}\0${sha}\0${parent ?? ''}`;
-  const revision = (id: string) => {
-    const current = revisions.get(id) ?? Symbol();
+  const closed = () =>
+    new DOMException('The comparison is no longer available.', 'AbortError');
+  const checkRepository = (id: string, root: string, signal: AbortSignal) => {
+    signal.throwIfAborted();
+    if (disposed || access.repository(id).rootUri.fsPath !== root)
+      throw closed();
+  };
 
-    revisions.set(id, current);
+  const cancel = (key: string, work: PendingComparison, reason: Error) => {
+    if (pending.get(key) === work) pending.delete(key);
+    work.abort.abort(reason);
+  };
 
-    return current;
+  const invalidate = (id: string) => {
+    const prefix = `${JSON.stringify(id)}\0`;
+
+    cache.deleteMatching(prefix);
+    for (const [key, work] of pending)
+      if (key.startsWith(prefix)) cancel(key, work, closed());
+  };
+
+  const consume = (
+    key: string,
+    work: PendingComparison,
+    signal?: AbortSignal,
+  ): Promise<FileChange[]> => {
+    work.consumers++;
+
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const release = (reason?: Error) => {
+        if (settled) return false;
+        settled = true;
+        signal?.removeEventListener('abort', cancelConsumer);
+        work.abort.signal.removeEventListener('abort', cancelProducer);
+        if (--work.consumers === 0 && pending.get(key) === work)
+          cancel(key, work, reason ?? closed());
+
+        return true;
+      };
+
+      const cancelConsumer = () => {
+        const error = readCancellationError(signal?.reason);
+
+        if (release(error)) reject(error);
+      };
+
+      const cancelProducer = () => {
+        if (release()) reject(readCancellationError(work.abort.signal.reason));
+      };
+
+      signal?.addEventListener('abort', cancelConsumer, { once: true });
+      work.abort.signal.addEventListener('abort', cancelProducer, {
+        once: true,
+      });
+      work.promise.then(
+        (files) => {
+          if (release()) resolve(structuredClone(files));
+        },
+        (error: unknown) => {
+          if (release())
+            reject(
+              error instanceof Error
+                ? error
+                : new Error('Reading the comparison failed.', { cause: error }),
+            );
+        },
+      );
+      if (signal?.aborted) cancelConsumer();
+      else if (work.abort.signal.aborted) cancelProducer();
+    });
   };
 
   const load = async (
     id: string,
     sha: string,
     parent: string | null,
-    owner: symbol,
+    repo: GitRepository,
+    signal: AbortSignal,
   ) => {
-    const repo = access.repository(id);
-    const key = keyFor(id, sha, parent);
-    const cached = cache.get(key);
+    const root = repo.rootUri.fsPath;
 
-    if (cached) return structuredClone(cached);
+    checkRepository(id, root, signal);
     let parents: string[];
 
     try {
-      parents = await readObjectParents(cli, id, sha);
+      parents = await readObjectParents(cli, id, sha, signal);
     } catch {
+      checkRepository(id, root, signal);
       throw new Error(
         'The commit or parent object is unavailable. Retry after making it available through Git. No fetch was started.',
       );
     }
 
+    checkRepository(id, root, signal);
     if (parent === null ? parents.length !== 0 : !parents.includes(parent))
       throw new Error('Select an actual parent comparison.');
     let files: FileChange[];
 
     if (parent === null)
       files = rootChanges(
-        await cli.run(id, [
-          'diff-tree',
-          '--root',
-          '--no-commit-id',
-          '--name-status',
-          '-r',
-          '-z',
-          '-M',
-          sha,
-          '--',
-        ]),
+        await cli.run(
+          id,
+          [
+            'diff-tree',
+            '--root',
+            '--no-commit-id',
+            '--name-status',
+            '-r',
+            '-z',
+            '-M',
+            sha,
+            '--',
+          ],
+          signal,
+        ),
       );
     else {
       try {
-        await repo.getCommit(parent);
+        await readWithCancellation(() => repo.getCommit(parent), signal);
       } catch {
+        checkRepository(id, root, signal);
         throw new Error(
           'The parent object is unavailable, possibly in a shallow repository. Retry after making it available through Git. No fetch was started.',
         );
       }
 
-      files = (await repo.diffBetween(parent, sha)).map((item) =>
-        fromApiChange(item, repo.rootUri.fsPath),
-      );
+      checkRepository(id, root, signal);
+      files = (
+        await readWithCancellation(() => repo.diffBetween(parent, sha), signal)
+      ).map((item) => fromApiChange(item, repo.rootUri.fsPath));
     }
 
-    if (revision(id) === owner) cache.set(key, structuredClone(files));
+    checkRepository(id, root, signal);
 
     return files;
   };
 
   const query: ChangeQueries = Object.assign(
-    async (id: string, sha: string, parent: string | null) => {
-      access.repository(id);
+    async (
+      id: string,
+      sha: string,
+      parent: string | null,
+      signal?: AbortSignal,
+    ) => {
+      if (signal?.aborted) throw readCancellationError(signal.reason);
+      if (disposed) throw closed();
+      const repository = access.repository(id);
+      const root = repository.rootUri.fsPath;
       const key = keyFor(id, sha, parent);
+      const cached = cache.get(key);
       let work = pending.get(key);
 
-      if (!work) {
-        const owner = revision(id);
+      if ((cached && cached.root !== root) || (work && work.root !== root)) {
+        invalidate(id);
+        work = undefined;
+      } else if (cached) return structuredClone(cached.files);
 
-        work = backgroundRead(() => load(id, sha, parent, owner));
+      if (!work) {
+        const abort = new AbortController();
+        const promise = backgroundRead(
+          (owner) => load(id, sha, parent, repository, owner),
+          abort.signal,
+        )
+          .then((files) => {
+            checkRepository(id, root, abort.signal);
+            if (pending.get(key)?.abort !== abort) throw closed();
+            cache.set(key, { root, files: structuredClone(files) });
+
+            return files;
+          })
+          .finally(() => {
+            if (pending.get(key)?.abort === abort) pending.delete(key);
+          });
+
+        work = { root, abort, promise, consumers: 0 };
         pending.set(key, work);
       }
 
-      try {
-        return structuredClone(await work);
-      } finally {
-        if (pending.get(key) === work) pending.delete(key);
-      }
+      return consume(key, work, signal);
     },
     {
-      invalidate(id: string) {
-        revisions.set(id, Symbol());
-        const prefix = `${JSON.stringify(id)}\0`;
-
-        cache.deleteMatching(prefix);
-        for (const key of pending.keys())
-          if (key.startsWith(prefix)) pending.delete(key);
+      invalidate,
+      dispose() {
+        disposed = true;
+        cache.deleteMatching('');
+        for (const [key, work] of pending) cancel(key, work, closed());
       },
     },
   );

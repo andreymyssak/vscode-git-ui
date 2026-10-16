@@ -2,6 +2,7 @@ import type { Disposable } from 'vscode';
 
 import type { GitApiAccess } from './api';
 import { historyChangeFilter } from './history-events';
+import type { HistoryShallow } from './history-shallow';
 import type { RepositoryEvent } from './repository-event';
 
 /** One native listener and coalesced metadata producer per observed repository. */
@@ -9,10 +10,14 @@ export function createRepositoryObservations({
   access,
   invalidate,
   onEvent,
+  shallow,
+  watchShallow,
 }: {
   access: GitApiAccess;
   invalidate: (id: string) => void;
   onEvent: () => void;
+  shallow?: HistoryShallow;
+  watchShallow?: (id: string, changed: () => void) => Disposable;
 }) {
   const repositories = new Map<
     string,
@@ -35,8 +40,8 @@ export function createRepositoryObservations({
   const lifecycle = (event: RepositoryEvent) => {
     if (closed) return;
     retire(event.repositoryId);
-    if (event.kind === 'opened') repositories.get(event.repositoryId)?.bind();
     invalidate(event.repositoryId);
+    if (event.kind === 'opened') repositories.get(event.repositoryId)?.bind();
     onEvent();
     for (const changed of repositoryConsumers) changed(event);
   };
@@ -67,9 +72,11 @@ export function createRepositoryObservations({
         let binding: {
           observation: ReturnType<typeof historyChangeFilter>;
           listener: Disposable;
+          shallow: Disposable | undefined;
         } | null = null;
         const dispose = () => {
           binding?.listener.dispose();
+          binding?.shallow?.dispose();
           binding?.observation.dispose();
           binding = null;
         };
@@ -81,17 +88,28 @@ export function createRepositoryObservations({
           bind() {
             dispose();
             const repository = access.repository(id);
-            const observation = historyChangeFilter(repository, () => {
-              invalidate(id);
-              for (const consumer of consumers) consumer.changed();
-            });
+            const observation = historyChangeFilter(
+              repository,
+              () => {
+                invalidate(id);
+                for (const consumer of consumers) consumer.changed();
+              },
+              shallow ? (signal) => shallow.identity(id, signal) : undefined,
+            );
             const listener = repository.state.onDidChange(() => {
               if (binding?.observation !== observation) return;
               onEvent();
               void observation.check();
             });
 
-            binding = { observation, listener };
+            binding = {
+              observation,
+              listener,
+              shallow: watchShallow?.(id, () => {
+                if (binding?.observation === observation)
+                  void observation.check();
+              }),
+            };
           },
         };
         owner.bind();

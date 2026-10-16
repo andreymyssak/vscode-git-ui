@@ -2,6 +2,7 @@ import type { FileIconThemeMessage } from './file-icons';
 import type {
   CommitRecord,
   FileChange,
+  HistoryEnrichment,
   HistoryFilters,
   HistoryPage,
   OperationResult,
@@ -114,6 +115,13 @@ export type RequestBody =
   | { kind: 'refresh' }
   | { kind: 'source-control' }
   | { kind: 'trust' };
+/** Omitted refs retain the authoritative snapshot in this repository generation. */
+export type HistoryPageUpdate = Omit<HistoryPage, 'refs'> & {
+  refs?: Reference[];
+};
+export type HistoryEnrichmentUpdate = Omit<HistoryEnrichment, 'refs'> & {
+  refs?: Reference[];
+};
 export type PanelBody =
   | FileIconThemeMessage
   | { kind: 'filters'; filters: HistoryFilters }
@@ -143,7 +151,7 @@ export type PanelBody =
     }
   | {
       kind: 'history';
-      page: HistoryPage;
+      page: HistoryPageUpdate;
       append: boolean;
       scope: Scope;
       text: string;
@@ -152,6 +160,7 @@ export type PanelBody =
       restoring?: boolean;
     }
   | { kind: 'history-settled' }
+  | { kind: 'history-enrichment'; enrichment: HistoryEnrichmentUpdate }
   | { kind: 'history-interrupted' }
   | { kind: 'details'; commit: CommitRecord }
   | {

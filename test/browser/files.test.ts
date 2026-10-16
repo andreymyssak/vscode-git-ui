@@ -97,6 +97,9 @@ test('a host file selection expands its folders and scrolls the selected row int
     exact: true,
   });
 
+  await page.locator('#files').evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+  });
   await folder.click();
   await expect(folder).toHaveAttribute('aria-expanded', 'false');
   await page.locator('#files').evaluate((element) => {
@@ -212,7 +215,7 @@ test('ancestor guides paint through an opaque nested file selection background',
     );
   });
   const file = page.locator('[data-file="lock-file"]');
-  const group = page.locator('[data-folder="common"] > [role="group"]');
+  const group = page.locator('[data-tree-guide="common"]');
 
   await file.click();
   await expect(file).toHaveAttribute('aria-selected', 'true');
@@ -265,9 +268,9 @@ test('guides follow selected and keyboard-focused parents while other guides sho
     );
   });
   const config = page.getByRole('treeitem', { name: 'config/rush 2 files' });
-  const group = page.locator('[data-folder="config/rush"] > [role="group"]');
-  const other = page.locator('[data-folder="@wk"] > [role="group"]');
-  const common = page.locator('[data-folder="common"] > [role="group"]');
+  const group = page.locator('[data-tree-guide="common/config/rush"]');
+  const other = page.locator('[data-tree-guide="common/changes/@wk"]');
+  const common = page.locator('[data-tree-guide="common"]');
   const appearance = (target: typeof group) =>
     target.evaluate((node) => {
       const style = getComputedStyle(node, '::before');

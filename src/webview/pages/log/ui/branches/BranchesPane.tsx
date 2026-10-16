@@ -299,16 +299,14 @@ export function BranchesPane({
           />
           <ActionButton
             icon={
-              fetching
+              fetching || fetchQueued
                 ? 'loading codicon-modifier-spin'
-                : fetchQueued
-                  ? 'clock'
-                  : 'cloud-download'
+                : 'cloud-download'
             }
             id="fetch"
             className={styles.icon}
             label="Fetch All Remotes"
-            aria-busy={fetching}
+            aria-busy={fetching || fetchQueued}
             tooltip={
               fetching
                 ? 'Fetching remotes…'

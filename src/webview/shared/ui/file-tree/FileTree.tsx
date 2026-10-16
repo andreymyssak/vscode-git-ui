@@ -1,6 +1,6 @@
 import clsx from 'clsx';
 import type { CSSProperties, KeyboardEvent, ReactNode } from 'react';
-import { useContext, useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 
 import { dispatchContextMenu, offsetPointerContextMenu } from '../context-menu';
 import { FileIcon } from '../file-icon/FileIcon';
@@ -15,8 +15,10 @@ import {
   type FileTreeNode,
   type FolderDecoration,
 } from './model';
+import { navigateFileTree } from './navigation';
 import { PathHint } from './PathHint';
 import { useRowSelection } from './use-row-selection';
+import { useTreeViewport } from './use-tree-viewport';
 
 interface Props<T> {
   files: readonly T[];
@@ -56,103 +58,7 @@ interface Props<T> {
   role?: 'tree' | 'group';
 }
 
-export function navigateFileTree(
-  event: KeyboardEvent<HTMLDivElement>,
-  tree: HTMLElement = event.currentTarget,
-) {
-  if (
-    event.defaultPrevented ||
-    ![
-      'ArrowUp',
-      'ArrowDown',
-      'ArrowLeft',
-      'ArrowRight',
-      'Home',
-      'End',
-    ].includes(event.key) ||
-    !(event.target instanceof HTMLElement)
-  )
-    return;
-  const target = event.target.closest<HTMLElement>('[role="treeitem"]');
-  const rows = [
-    ...tree.querySelectorAll<HTMLElement>('[role="treeitem"]'),
-  ].filter((row) => {
-    if (row.closest('[hidden]')) return false;
-    let parent = row.parentElement;
-
-    while (parent && parent !== tree) {
-      if (
-        parent instanceof HTMLDetailsElement &&
-        !parent.open &&
-        parent.querySelector(':scope > summary') !== row
-      )
-        return false;
-      parent = parent.parentElement;
-    }
-
-    return true;
-  });
-  const index = target ? rows.indexOf(target) : -1;
-
-  if (!target || index < 0) return;
-  event.preventDefault();
-  const folder = target.closest('details');
-
-  if (event.key === 'ArrowRight') {
-    if (target.hasAttribute('aria-expanded') && folder) {
-      if (!folder.open)
-        (
-          target.querySelector<HTMLElement>('[data-tree-disclosure]') ?? target
-        ).click();
-      else {
-        const next = rows[index + 1];
-
-        next?.focus();
-
-        return next;
-      }
-    }
-
-    return;
-  }
-
-  if (event.key === 'ArrowLeft') {
-    if (target.hasAttribute('aria-expanded') && folder?.open)
-      (
-        target.querySelector<HTMLElement>('[data-tree-disclosure]') ?? target
-      ).click();
-    else {
-      const parent = target.hasAttribute('aria-expanded')
-        ? folder?.parentElement?.closest('details')
-        : folder;
-
-      const next = parent?.querySelector<HTMLElement>(
-        ':scope > [role="treeitem"]',
-      );
-
-      next?.focus();
-
-      return next;
-    }
-
-    return;
-  }
-
-  const next =
-    event.key === 'Home'
-      ? 0
-      : event.key === 'End'
-        ? rows.length - 1
-        : event.key === 'ArrowDown'
-          ? Math.min(rows.length - 1, index + 1)
-          : Math.max(0, index - 1);
-
-  const row = rows[next];
-
-  row?.focus();
-
-  return row;
-}
+export { navigateFileTree } from './navigation';
 
 function fileIcon(path: string) {
   if (/\.(?:json|jsonc)$/i.test(path)) return 'json';
@@ -165,11 +71,15 @@ function fileIcon(path: string) {
 }
 
 export function FileTree<T>(props: Props<T>) {
-  const children = buildFileTree({
-    files: props.files,
-    pathOf: props.pathOf,
-    groupByDirectory: props.groupByDirectory ?? true,
-  });
+  const children = useMemo(
+    () =>
+      buildFileTree({
+        files: props.files,
+        pathOf: props.pathOf,
+        groupByDirectory: props.groupByDirectory ?? true,
+      }),
+    [props.files, props.pathOf, props.groupByDirectory],
+  );
   const nodes: FileTreeNode<T>[] = props.root
     ? [
         {
@@ -182,18 +92,23 @@ export function FileTree<T>(props: Props<T>) {
       ]
     : children;
   const treeRef = useRef<HTMLDivElement>(null);
-  const revealedSequence = useRef(0);
+  const revealed = useRef<{
+    path: string;
+    sequence: number | undefined;
+    files: readonly T[];
+  } | null>(null);
   const [active, setActive] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
-  const [previousPath, setPreviousPath] = useState(props.selectedPath);
+  const requestedPath = props.reveal?.path ?? props.selectedPath;
+  const [previousPath, setPreviousPath] = useState(requestedPath);
 
-  if (previousPath !== props.selectedPath) {
-    setPreviousPath(props.selectedPath);
-    if (props.selectedPath)
+  if (previousPath !== requestedPath) {
+    setPreviousPath(requestedPath);
+    if (requestedPath)
       setCollapsed(
         new Set(
           [...collapsed].filter(
-            (path) => !props.selectedPath?.startsWith(`${path}/`),
+            (path) => path !== '' && !requestedPath.startsWith(`${path}/`),
           ),
         ),
       );
@@ -216,22 +131,70 @@ export function FileTree<T>(props: Props<T>) {
       });
   };
 
+  const { files: inputFiles, fileKey } = props;
+  const fileKeys = useMemo(
+    () => new Map(inputFiles.map((file) => [file, fileKey(file)])),
+    [inputFiles, fileKey],
+  );
   const rowKey = (node: FileTreeNode<T>) =>
     JSON.stringify(
       node.kind === 'folder'
         ? ['folder', node.path]
-        : ['file', props.fileKey(node.file)],
+        : ['file', fileKeys.get(node.file)],
     );
-  const visible = new Map<string, FileTreeNode<T>>();
-  const visit = (items: FileTreeNode<T>[]) => {
-    for (const node of items) {
-      visible.set(rowKey(node), node);
-      if (node.kind === 'folder' && !isCollapsed(node.path))
-        visit(node.children);
-    }
+  const parents = new Map<string, string | null>();
+  const guides = new Map<
+    string,
+    { path: string; depth: number; start: number; end: number }
+  >();
+  const all = new Map<string, FileTreeNode<T>>();
+  const rows: {
+    key: string;
+    node: FileTreeNode<T>;
+    depth: number;
+    parent: string | null;
+    ancestors: string[];
+    position: number;
+    size: number;
+  }[] = [];
+  const visit = (
+    items: FileTreeNode<T>[],
+    depth: number,
+    ancestors: string[],
+    shown: boolean,
+  ) => {
+    items.forEach((node, index) => {
+      const key = rowKey(node);
+
+      all.set(key, node);
+      parents.set(key, ancestors.at(-1) ?? null);
+      if (shown)
+        rows.push({
+          key,
+          node,
+          depth,
+          parent: ancestors.at(-1) ?? null,
+          ancestors,
+          position: index + 1,
+          size: items.length,
+        });
+      if (node.kind === 'folder') {
+        const start = rows.length;
+
+        visit(
+          node.children,
+          depth + 1,
+          [...ancestors, key],
+          shown && !isCollapsed(node.path),
+        );
+        if (shown && rows.length > start)
+          guides.set(key, { path: node.path, depth, start, end: rows.length });
+      }
+    });
   };
 
-  visit(nodes);
+  visit(nodes, props.depth ?? 0, [], true);
+  const visible = new Map(rows.map((row, index) => [row.key, index]));
   const externalFile = props.multiSelect
     ? props.files.find((file) => props.pathOf(file) === props.selectedPath)
     : undefined;
@@ -244,16 +207,22 @@ export function FileTree<T>(props: Props<T>) {
     node: FileTreeNode<T>,
     selected = rowSelection.selected,
   ) => {
-    const targets = selected.has(rowKey(node))
-      ? [...visible.values()].filter((item) => selected.has(rowKey(item)))
-      : [node];
+    if (!selected.has(rowKey(node)))
+      return node.kind === 'folder' ? node.files : [node.file];
+    const targets = [...selected].flatMap((key) => {
+      const item = all.get(key);
+
+      return item ? [item] : [];
+    });
     const keys = new Set(
       targets.flatMap((item) =>
-        (item.kind === 'folder' ? item.files : [item.file]).map(props.fileKey),
+        (item.kind === 'folder' ? item.files : [item.file]).map((file) =>
+          fileKeys.get(file),
+        ),
       ),
     );
 
-    return props.files.filter((file) => keys.has(props.fileKey(file)));
+    return props.files.filter((file) => keys.has(fileKeys.get(file)));
   };
 
   const contextFor = (
@@ -283,6 +252,11 @@ export function FileTree<T>(props: Props<T>) {
     active !== null && visible.has(active)
       ? active
       : nodes[0] && rowKey(nodes[0]);
+  const viewport = useTreeViewport(
+    treeRef,
+    rows.map((row) => row.key),
+    current || undefined,
+  );
   const theme = useContext(FileIconThemeContext);
   const associations = theme?.associations;
   const hasFiles =
@@ -302,36 +276,46 @@ export function FileTree<T>(props: Props<T>) {
     );
 
   useEffect(() => {
-    if (!props.revealSelected || !props.selectedPath) return;
-    const row = [
-      ...(treeRef.current?.querySelectorAll<HTMLElement>('[data-path]') ?? []),
-    ].find((row) => row.dataset.path === props.selectedPath);
+    const path =
+      props.reveal?.path ?? (props.revealSelected ? props.selectedPath : null);
+    const sequence = props.reveal?.sequence;
 
-    row?.scrollIntoView?.({ block: 'nearest' });
-  }, [props.files, props.selectedPath, props.revealSelected]);
-
-  useEffect(() => {
-    if (!props.reveal || revealedSequence.current === props.reveal.sequence)
+    if (
+      !path ||
+      !viewport.ready ||
+      (revealed.current?.path === path &&
+        revealed.current.sequence === sequence &&
+        (!!props.reveal || revealed.current.files === props.files))
+    )
       return;
-    const row = [
-      ...(treeRef.current?.querySelectorAll<HTMLElement>('[data-path]') ?? []),
-    ].find((row) => row.dataset.path === props.reveal?.path);
+    const index = rows.findIndex(
+      (row) => row.node.kind === 'file' && row.node.path === path,
+    );
 
-    if (!row) return;
-    revealedSequence.current = props.reveal.sequence;
-    if (props.multiSelect && row.dataset.treeRowKey)
-      rowSelection.select(row.dataset.treeRowKey);
-    row.focus();
-    row.scrollIntoView?.({ block: 'nearest' });
-  }, [
-    props.reveal,
-    props.expansion,
-    props.groupByDirectory,
-    props.multiSelect,
-    rowSelection,
-  ]);
+    if (index < 0) return;
+    revealed.current = { path, sequence, files: props.files };
+    const key = rows[index]?.key;
 
-  const draw = (node: FileTreeNode<T>, depth: number): ReactNode => {
+    if (props.reveal && props.multiSelect && key) rowSelection.select(key);
+    viewport.reveal(index, !!props.reveal);
+  });
+
+  const selectedGuides = new Set(
+    [...rowSelection.selected].map((key) => parents.get(key)),
+  );
+  const focusedNode = active ? all.get(active) : undefined;
+  const focusedGuide =
+    focusedNode?.kind === 'folder' && !isCollapsed(focusedNode.path)
+      ? active
+      : active
+        ? parents.get(active)
+        : null;
+  const mountedGuides = new Set(
+    viewport.items.flatMap((item) => rows[item.index]?.ancestors ?? []),
+  );
+
+  const draw = (entry: (typeof rows)[number], start: number): ReactNode => {
+    const { node, depth } = entry;
     const key = rowKey(node);
     const root = node.kind === 'folder' && node.path === '';
     const files = node.kind === 'folder' ? node.files : [node.file];
@@ -383,6 +367,9 @@ export function FileTree<T>(props: Props<T>) {
             if (node.kind !== 'folder') return;
             event.preventDefault();
             event.stopPropagation();
+            event.currentTarget
+              .closest<HTMLElement>('[role="treeitem"]')
+              ?.focus();
             toggle(node.path);
           }}
         >
@@ -486,6 +473,8 @@ export function FileTree<T>(props: Props<T>) {
       'aria-description':
         decoration?.description ?? folderDecoration?.description,
       'aria-level': depth + 1,
+      'aria-posinset': entry.position,
+      'aria-setsize': entry.size,
       'aria-expanded':
         node.kind === 'folder' && files.length ? open : undefined,
       'aria-checked':
@@ -497,13 +486,18 @@ export function FileTree<T>(props: Props<T>) {
       'aria-disabled': props.selection ? disabled : undefined,
       'data-file': node.kind === 'file' ? props.fileKey(node.file) : undefined,
       'data-tree-path': node.path,
+      'data-folder': node.kind === 'folder' ? node.name : undefined,
       'data-tree-row-key': key,
       'data-path': node.kind === 'file' ? node.path : undefined,
       'data-root': root ? true : undefined,
       'data-snapshot': node.kind === 'file' ? props.snapshot : undefined,
       'data-status': decoration?.kind ?? folderDecoration?.kind,
-      'data-vscode-context': contextFor(node),
-      style: { '--tree-depth': depth } satisfies CSSProperties,
+      style: {
+        '--tree-depth': depth,
+        ...(viewport.natural
+          ? {}
+          : { position: 'absolute', top: start - viewport.margin }),
+      } satisfies CSSProperties,
       onFocus: () => setActive(key),
       onClick: (event: React.MouseEvent<HTMLElement>) => {
         event.preventDefault();
@@ -525,7 +519,7 @@ export function FileTree<T>(props: Props<T>) {
           if (event.key === ' ' && props.selection) check();
           else activate(false);
         } else if (
-          contextFor(node) &&
+          (node.kind === 'file' ? props.context : props.folderContext) &&
           (event.key === 'ContextMenu' ||
             (event.shiftKey && event.key === 'F10'))
         ) {
@@ -537,25 +531,14 @@ export function FileTree<T>(props: Props<T>) {
         }
       },
       onContextMenu: (event: React.MouseEvent<HTMLElement>) => {
-        if (!contextFor(node)) return;
+        if (!(node.kind === 'file' ? props.context : props.folderContext))
+          return;
         prepareContext(node, event.currentTarget);
         offsetPointerContextMenu(event.nativeEvent, event.currentTarget);
       },
     };
 
-    return node.kind === 'folder' ? (
-      <details
-        key={key}
-        data-folder={node.name}
-        open={open}
-        style={{ '--tree-depth': depth } satisfies CSSProperties}
-      >
-        <summary {...rowProps}>{row}</summary>
-        <div role="group" className={styles.children} hidden={!open}>
-          {node.children.map((child) => draw(child, depth + 1))}
-        </div>
-      </details>
-    ) : (
+    return (
       <div key={key} {...rowProps}>
         {row}
       </div>
@@ -575,32 +558,111 @@ export function FileTree<T>(props: Props<T>) {
         hasFiles && !hasFolders && styles.alignFileIcons,
         !!props.selection && styles.checkable,
       )}
-      onKeyDown={
-        props.role === 'group' && !props.multiSelect
-          ? undefined
-          : (event) => {
-              const tree =
-                props.role === 'group'
-                  ? (event.currentTarget.closest<HTMLElement>(
-                      '[role="tree"]',
-                    ) ?? event.currentTarget)
-                  : event.currentTarget;
-              const next = navigateFileTree(event, tree);
+      style={{ position: 'relative', height: viewport.height }}
+      onKeyDown={(event) => {
+        if (event.defaultPrevented || !(event.target instanceof HTMLElement))
+          return;
+        const target = event.target.closest<HTMLElement>('[data-tree-row-key]');
+        const index = target?.dataset.treeRowKey
+          ? visible.get(target.dataset.treeRowKey)
+          : undefined;
+        const entry = index === undefined ? undefined : rows[index];
 
-              if (event.defaultPrevented) event.stopPropagation();
-              const key = next?.dataset.treeRowKey;
+        if (index === undefined || !entry) return;
+        if (
+          props.role === 'group' &&
+          (event.key === 'Home' || event.key === 'End')
+        ) {
+          const outer =
+            event.currentTarget.parentElement?.closest<HTMLElement>(
+              '[role="tree"]',
+            );
 
-              if (
-                props.multiSelect &&
-                key !== undefined &&
-                visible.has(key) &&
-                (event.shiftKey || !(event.metaKey || event.ctrlKey))
-              )
-                rowSelection.select(key, event);
-            }
-      }
+          if (outer) {
+            const next = navigateFileTree(event, outer, (row) => {
+              const key = row.dataset.treeRowKey;
+              const index = key ? visible.get(key) : undefined;
+
+              if (index === undefined) row.focus();
+              else viewport.reveal(index, true);
+            });
+            const key = next?.dataset.treeRowKey;
+
+            if (
+              props.multiSelect &&
+              key &&
+              visible.has(key) &&
+              (event.shiftKey || !(event.metaKey || event.ctrlKey))
+            )
+              rowSelection.select(key, event);
+            if (event.defaultPrevented) event.stopPropagation();
+
+            return;
+          }
+        }
+
+        let next = index;
+
+        if (event.key === 'ArrowRight') {
+          if (entry.node.kind !== 'folder') return;
+          if (isCollapsed(entry.node.path)) toggle(entry.node.path);
+          else next = Math.min(index + 1, rows.length - 1);
+        } else if (event.key === 'ArrowLeft') {
+          if (entry.node.kind === 'folder' && !isCollapsed(entry.node.path))
+            toggle(entry.node.path);
+          else if (entry.parent) next = visible.get(entry.parent) ?? index;
+          else return;
+        } else if (event.key === 'Home') next = 0;
+        else if (event.key === 'End') next = rows.length - 1;
+        else if (event.key === 'ArrowDown') {
+          if (index === rows.length - 1 && props.role === 'group') return;
+          next = Math.min(index + 1, rows.length - 1);
+        } else if (event.key === 'ArrowUp') {
+          if (index === 0 && props.role === 'group') return;
+          next = Math.max(0, index - 1);
+        } else return;
+        event.preventDefault();
+        event.stopPropagation();
+        const key = rows[next]?.key;
+
+        if (key) {
+          setActive(key);
+          if (
+            props.multiSelect &&
+            next !== index &&
+            (event.shiftKey || !(event.metaKey || event.ctrlKey))
+          )
+            rowSelection.select(key, event);
+          viewport.reveal(next, true);
+        }
+      }}
     >
-      {nodes.map((node) => draw(node, props.depth ?? 0))}
+      {viewport.items.map((item) => {
+        const entry = rows[item.index];
+
+        return entry ? draw(entry, item.start) : null;
+      })}
+      {[...mountedGuides].map((key) => {
+        const guide = guides.get(key);
+
+        return guide ? (
+          <div
+            key={key}
+            aria-hidden="true"
+            data-tree-guide={guide.path}
+            data-selected={selectedGuides.has(key)}
+            data-focused={focusedGuide === key}
+            className={styles.guide}
+            style={
+              {
+                '--tree-depth': guide.depth,
+                top: guide.start * 22,
+                height: (guide.end - guide.start) * 22,
+              } satisfies CSSProperties
+            }
+          />
+        ) : null;
+      })}
     </div>
   );
 }

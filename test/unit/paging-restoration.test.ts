@@ -181,10 +181,7 @@ test('partial restoration retains the next unread cursor and releases paging aft
   h.publications.length = 0;
   await h.restore(350);
   expect(h.reads).toStrictEqual([0, 200]);
-  expect(h.publications).toStrictEqual([
-    { count: 200, loading: true },
-    { count: 400, loading: true },
-  ]);
+  expect(h.publications).toStrictEqual([{ count: 400, loading: true }]);
   expect(h.cursors.get(h.state.nextCursor!)).toBe(400);
   expect(h.state.loading).toBe(false);
   expect(h.state.selectedSha).toBe(shas[350]);
@@ -206,40 +203,49 @@ test('restoring a missing commit stops at the terminal page and clears stale sel
   expect(h.state.selectedSha).toBe(null);
   expect(h.state.anchor).toBe(null);
 });
-test('a newer click wins over restoration and releases the remaining cursor', async () => {
-  const h = harness();
-  const entered = deferred();
-  const gate = deferred();
+test.each(['resolves', 'rejects'])(
+  'a newer navigation retains its own cursor when the old restoration page %s',
+  async (outcome) => {
+    const h = harness();
+    const entered = deferred();
+    const gate = deferred();
 
-  await h.controller.selectRepository('one');
-  h.reads.length = 0;
-  h.beforeRead(async (_input, offset) => {
-    if (offset === 200) {
-      entered.resolve();
-      await gate.promise;
-    }
-  });
-  const restore = h.restore(500);
+    await h.controller.selectRepository('one');
+    h.reads.length = 0;
+    h.beforeRead(async (_input, offset) => {
+      if (offset === 200) {
+        entered.resolve();
+        await gate.promise;
+        if (outcome === 'rejects')
+          throw new Error('Old restoration page failed');
+      }
+    });
+    const restore = h.restore(500);
 
-  await entered.promise;
-  const busy = h.state.loading;
-  const sha = shas[2]!;
+    await entered.promise;
+    const busy = h.state.loading;
+    const sha = shas[2]!;
 
-  h.select(sha);
-  await h.request({ kind: 'select-commits', shas: [sha], activeSha: sha });
-  const details = h.state.details;
-  const files = h.state.files;
+    h.adapter.resolve = async () => ({
+      kind: 'commit',
+      commit: page([sha]).commits[0]!,
+    });
+    await h.request({ kind: 'go-to', input: sha });
+    const details = h.state.details;
+    const files = h.state.files;
 
-  gate.resolve();
-  await restore;
-  expect(busy).toBe(true);
-  expect(h.reads).toStrictEqual([0, 200]);
-  expect(h.state.selectedSha).toBe(sha);
-  expect(h.state.details).toBe(details);
-  expect(h.state.files).toBe(files);
-  expect(h.cursors.get(h.state.nextCursor!)).toBe(400);
-  expect(h.state.loading).toBe(false);
-});
+    gate.resolve();
+    await restore;
+    expect(h.state.error).toBe(null);
+    expect(busy).toBe(true);
+    expect(h.reads).toStrictEqual([0, 200, 0]);
+    expect(h.state.selectedSha).toBe(sha);
+    expect(h.state.details).toBe(details);
+    expect(h.state.files).toBe(files);
+    expect(h.cursors.get(h.state.nextCursor!)).toBe(200);
+    expect(h.state.loading).toBe(false);
+  },
+);
 test('a restoration read error leaves the published cursor available for a later client read', async () => {
   const h = harness();
   let fail = true;

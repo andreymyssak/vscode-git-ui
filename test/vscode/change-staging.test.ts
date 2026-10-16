@@ -46,6 +46,60 @@ async function finish(fixture: Fixture) {
 }
 
 describe('Changes staging and whole-file inclusion', () => {
+  it('Show Changes includes newly edited files while the Changes view is hidden', async () => {
+    const fixture = await createFixture({ prefix: 'git-ui-hidden-selection-' });
+
+    try {
+      await writeFile(join(fixture.root, 'sample.txt'), 'working\n');
+      const frame = await open(fixture);
+      const id = vscode.Uri.file(fixture.root).toString();
+      const picker = frame.getByRole('combobox', { name: 'Repository' });
+
+      if (await picker.count()) await picker.selectOption(id);
+      await expect(
+        frame.getByRole('checkbox', {
+          name: 'Include sample.txt',
+          exact: true,
+        }),
+      ).not.toBeChecked();
+      await vscode.commands.executeCommand('workbench.view.explorer');
+      await expect(
+        frame.page().getByRole('button', {
+          name: 'Git UI Changes Section',
+          exact: true,
+        }),
+      ).not.toBeVisible();
+      const selected = vscode.Uri.file(join(fixture.root, 'new-hidden.txt'));
+
+      await writeFile(selected.fsPath, 'new while hidden\n');
+      await (await getGitApi()).repository(id).status();
+      await vscode.commands.executeCommand(
+        sourceControlCommandId('show-changes'),
+        selected,
+      );
+      const revealed = await sourceControlFrame();
+
+      await expect(
+        revealed.getByRole('checkbox', {
+          name: 'Include new-hidden.txt',
+          exact: true,
+        }),
+      ).toBeChecked();
+      await expect(
+        revealed.getByRole('checkbox', {
+          name: 'Include sample.txt',
+          exact: true,
+        }),
+      ).not.toBeChecked();
+      assert.equal(
+        await fixture.runGit(['diff', '--cached', '--name-only']),
+        '',
+      );
+    } finally {
+      await finish(fixture);
+    }
+  });
+
   it('protects unsaved files opened through folder aliases before Stage or Delete', async () => {
     const fixture = await createFixture({ prefix: 'git-ui-action-alias-' });
     const backend = await createSourceControlBackend();
@@ -142,7 +196,7 @@ describe('Changes staging and whole-file inclusion', () => {
     }
   });
 
-  it('links partial-file checkboxes without touching the index and commits the checked working contents', async () => {
+  it('links partial-file checkboxes without touching the index and commits checked contents with Cmd/Ctrl+Enter', async () => {
     const fixture = await createFixture({ prefix: 'git-ui-group-commit-' });
 
     try {
@@ -174,7 +228,12 @@ describe('Changes staging and whole-file inclusion', () => {
       await frame
         .getByRole('textbox', { name: 'Commit message' })
         .fill('Checked whole file');
-      await frame.getByRole('button', { name: 'Commit', exact: true }).click();
+      await expect(
+        frame.getByRole('button', { name: /^Commit(?: to |$)/, exact: true }),
+      ).toBeEnabled();
+      await frame
+        .getByRole('textbox', { name: 'Commit message' })
+        .press('ControlOrMeta+Enter');
       await expect
         .poll(() => fixture.runGit(['show', 'HEAD:sample.txt']), {
           timeout: 30000,

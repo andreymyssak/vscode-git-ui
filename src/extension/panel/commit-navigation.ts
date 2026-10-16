@@ -52,7 +52,10 @@ export class CommitNavigation {
       id,
       input,
       this.ports.getInput(),
-      async ({ commit, page, input: nextInput, replace }, isLatest) => {
+      async (
+        { commit, page, input: nextInput, replace, enrichments },
+        isLatest,
+      ) => {
         let generation = this.ports.session.generation;
 
         if (replace) {
@@ -79,6 +82,8 @@ export class CommitNavigation {
             this.ports.getInput(),
             request.requestId,
             !replace,
+            false,
+            enrichments,
           );
         }
 

@@ -150,14 +150,38 @@
   align-items: center;
   gap: 5px;
   margin-top: 6px;
-  flex-wrap: wrap;
+  min-width: 0;
+}
+.commitSubmit {
+  flex: 1;
+  min-width: 0;
+}
+.commitSubmit > span,
+.commitButtonWrap {
+  display: block;
+  overflow: visible;
+}
+.commitButtonWrap:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 2px;
+}
+.commitLabel,
+.primary > :global(.codicon) {
+  flex-shrink: 0;
+}
+.commitBranch {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .primary {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 5px;
+  white-space: nowrap;
   min-height: 26px;
+  width: 100%;
   padding: 3px 8px;
   border: 1px solid var(--vscode-button-border, transparent);
   border-radius: 2px;

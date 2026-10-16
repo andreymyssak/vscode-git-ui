@@ -71,6 +71,34 @@ async function folderBadge(label: Locator, native: boolean) {
   }, native);
 }
 
+async function revealCustomRow(tree: Locator, target: Locator): Promise<void> {
+  const root = tree.locator('[data-root]');
+  const focused = tree.locator('[role="treeitem"]:focus');
+
+  // Enter through the mounted root; offscreen folders may not exist in the DOM.
+  await root.focus();
+  await root.press('Home');
+  await expect(focused).toHaveCount(1);
+  while (
+    !(await target.count()) ||
+    !(await target.evaluate((element) => element === document.activeElement))
+  ) {
+    if ((await focused.getAttribute('aria-expanded')) === 'false') {
+      await focused.press('ArrowRight');
+      await expect(focused).toHaveAttribute('aria-expanded', 'true');
+    } else {
+      const key = await focused.getAttribute('data-tree-row-key');
+
+      assert.ok(key);
+      await focused.press('ArrowDown');
+      await expect(focused).toHaveCount(1);
+      await expect(focused).not.toHaveAttribute('data-tree-row-key', key);
+    }
+  }
+
+  await expect(target).toBeInViewport();
+}
+
 async function revealNativeLabel(page: Page, label: Locator): Promise<void> {
   const list = page.locator('.scm-view .monaco-list').first();
   const focusedRow = list.locator('.monaco-list-row.focused');
@@ -122,6 +150,7 @@ describe('Source Control appearance', () => {
     let page: Page | undefined;
     let viewportSession: CDPSession | undefined;
     let hoverTarget: string | undefined;
+    let phase: 'setup' | 'custom' | 'native' = 'setup';
     let panelWasVisible = false;
 
     try {
@@ -217,6 +246,7 @@ describe('Source Control appearance', () => {
         { name: 'Default Light Modern', bodyClass: 'vscode-light' },
       ];
 
+      phase = 'custom';
       for (const theme of themes) {
         await workbench.update(
           'colorTheme',
@@ -227,6 +257,7 @@ describe('Source Control appearance', () => {
           new RegExp(theme.bodyClass),
         );
         for (const { path, name } of cases) {
+          hoverTarget = path;
           const section = [
             'renamed/new-name.txt',
             'staged/only.txt',
@@ -236,18 +267,21 @@ describe('Source Control appearance', () => {
             : path.startsWith('conflicted')
               ? 'Merge Changes'
               : 'Changes';
-          const customRow = frame
-            .getByRole('tree', { name: section, exact: true })
-            .getByRole('treeitem', {
-              name: path,
-              exact: true,
-            });
+          const customTree = frame.getByRole('tree', {
+            name: section,
+            exact: true,
+          });
+          const customRow = customTree.getByRole('treeitem', {
+            name: path,
+            exact: true,
+          });
           const customLabel = customRow
             .locator(':scope > span')
             .filter({ hasText: name })
             .first();
 
           await page.mouse.move(0, 0);
+          await revealCustomRow(customTree, customRow);
           await customLabel.hover({ timeout: 5000 });
           const customHover = frame.getByRole('tooltip');
 
@@ -293,6 +327,7 @@ describe('Source Control appearance', () => {
       const native = [];
       let nativeTheme: string | undefined;
 
+      phase = 'native';
       for (const comparison of comparisons) {
         hoverTarget = comparison.path;
         if (nativeTheme !== comparison.theme) {
@@ -367,6 +402,7 @@ describe('Source Control appearance', () => {
           'source-control-appearance-diagnostic.json',
         ),
         JSON.stringify({
+          phase,
           hoverTarget,
           theme: vscode.workspace
             .getConfiguration('workbench')

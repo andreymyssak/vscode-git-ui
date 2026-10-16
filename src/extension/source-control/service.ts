@@ -21,6 +21,7 @@ import { abortOperation } from './abort';
 import { publishSourceControlContexts } from './context';
 import { discardWorking } from './discard';
 import { inspectWorkingFiles, writeWorkingFiles } from './file-actions';
+import { loadStash } from './load-stash';
 import { toggleAmend } from './message-tools';
 import { SourceControlModel } from './model';
 import { SourceControlNotifications } from './notifications';
@@ -39,7 +40,7 @@ import {
 } from './repository-action';
 import { rollbackChanges } from './rollback';
 import { savedWriteDescription, writeSaved } from './saved-writes';
-import { errorMessage, loaded, publicationState } from './state';
+import { errorMessage, publicationState } from './state';
 import { runSourceControlWrite } from './write-lifecycle';
 import { requireLiveRepository, writeChanges } from './writes';
 
@@ -71,6 +72,7 @@ export class SourceControlService implements vscode.Disposable {
     private readonly onState: (state: SourceControlState) => void,
     private readonly generateMessage: typeof generateCommitMessage = generateCommitMessage,
     private readonly onDraft: (ack: SourceControlDraftAck) => void = () => {},
+    private visible = true,
   ) {
     this.model = new SourceControlModel(storage);
     this.readProgress = new SourceControlReadProgress(this.model, () =>
@@ -400,7 +402,15 @@ export class SourceControlService implements vscode.Disposable {
 
           return;
         case 'load-stash':
-          await this.loadStash(request.repositoryId, request.sha);
+          await loadStash({
+            runtime: await this.initialize(),
+            model: this.model,
+            id: request.repositoryId,
+            sha: request.sha,
+            closed: () => this.disposed,
+            publish: () => this.publish(),
+            notifications: this.notifications,
+          });
 
           return;
         case 'open-stash-file':
@@ -441,11 +451,25 @@ export class SourceControlService implements vscode.Disposable {
     }
   }
 
+  async setVisible(visible: boolean): Promise<void> {
+    this.visible = visible;
+    if (this.disposed) return;
+    if (!visible) this.refreshCompletion.dispose();
+    else if (this.refreshes.pending && !this.model.busy)
+      await this.refreshCompletion.run(() => this.refreshChanges());
+    else this.publish();
+  }
+
   refresh(
     id?: string,
     sections: readonly RefreshSection[] = refreshSections,
   ): Promise<void> {
     this.refreshes.queue(id, sections);
+    if (!this.visible) {
+      this.readProgress.finish();
+
+      return Promise.resolve();
+    }
 
     return this.refreshCompletion.run(() =>
       this.refreshChanges({ id, sections }),
@@ -483,10 +507,7 @@ export class SourceControlService implements vscode.Disposable {
       if (request) this.refreshes.queue(request.id, request.sections);
       const infos = runtime.repositories();
       const ids = new Set(infos.map((info) => info.id));
-      const targets = this.refreshes.take(
-        infos,
-        new Set(this.model.repositories.keys()),
-      );
+      const known = new Set(this.model.repositories.keys());
 
       this.notifications.connection(null);
       this.notifications.retainRepositories(ids);
@@ -505,6 +526,15 @@ export class SourceControlService implements vscode.Disposable {
           );
       this.model.updateRepositories(infos);
       this.readProgress.retain(ids);
+      if (!this.visible) {
+        this.readProgress.finish();
+        this.publish();
+
+        return;
+      }
+
+      const targets = this.refreshes.take(infos, known);
+
       this.readProgress.begin(targets);
       if (this.preferredRepositoryId && ids.has(this.preferredRepositoryId))
         this.model.repositoryId = this.preferredRepositoryId;
@@ -534,7 +564,7 @@ export class SourceControlService implements vscode.Disposable {
   private scheduleRefresh(id?: string): void {
     if (this.disposed) return;
     this.refreshes.queue(id);
-    if (this.model.busy) return;
+    if (this.model.busy || !this.visible) return;
     this.refreshCompletion.schedule(() => this.refreshChanges());
   }
 
@@ -693,37 +723,6 @@ export class SourceControlService implements vscode.Disposable {
         this.model.generating = false;
         this.publish();
       }
-    }
-  }
-
-  private async loadStash(id: string, sha: string): Promise<void> {
-    const runtime = await this.initialize();
-
-    const owner = requireLiveRepository(runtime, this.model, id);
-    const stash = this.model.requireStash(id, sha);
-
-    if (stash.files?.kind === 'ready' || stash.files?.kind === 'loading')
-      return;
-    stash.files = { kind: 'loading' };
-    this.publish();
-    const files = await loaded(runtime.stashFiles(id, stash));
-
-    if (this.disposed || this.model.repositories.get(id) !== owner) return;
-    const current = this.model.repositories.get(id);
-    const target =
-      current?.stashes.kind === 'ready'
-        ? current.stashes.items.find((item) => item.sha === sha)
-        : undefined;
-
-    if (target) {
-      target.files = files;
-      this.notifications.load(
-        id,
-        `stash:${sha}`,
-        `Stash ${stash.message || stash.selector}`,
-        files,
-      );
-      this.publish();
     }
   }
 

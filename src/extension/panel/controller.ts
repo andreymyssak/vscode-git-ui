@@ -18,6 +18,7 @@ import type { CommitJump } from './commit-jump';
 import { CommitNavigation, unavailableNavigation } from './commit-navigation';
 import { PanelDetails } from './details';
 import { PanelHistory } from './history';
+import { restoreHistorySelection } from './history-restore';
 import type { NavigationPrompts } from './navigate';
 import { PanelNavigator } from './navigate';
 import { comparisonSource, PanelNotifications } from './notifications';
@@ -31,9 +32,9 @@ import {
   waitForQuery,
 } from './queries';
 import { queuedActionCurrent } from './queued-action';
+import { ReferencePublications } from './reference-publications';
 import { createRepositoryList } from './repository-list';
 import { DeferredRepositoryRefresh } from './repository-refresh';
-import { reconcileSelection } from './selection';
 import {
   openSelectedWorktree,
   PanelWorktrees,
@@ -56,11 +57,13 @@ export interface ControllerOptions
   pickAuthors?: AuthorPicker;
   initialRepositoryId: string | null;
   setupError?: string | null;
+  visible?: boolean;
   nativeAction?: (action: 'trust' | 'source-control') => Promise<void>;
 }
 export type PanelRequest = Request<RequestBody>;
 export class PanelController {
   private readonly session = new QuerySession();
+  private readonly references = new ReferencePublications();
   private readonly actions: PanelActions | null;
   private readonly navigator: PanelNavigator | null;
   private readonly historyQuery: PanelHistory | null;
@@ -75,6 +78,8 @@ export class PanelController {
 
   private subscription: Disposable | null = null;
   private closed = false;
+  private visible = true;
+  private presentationDirty = false;
   private repositoryEpoch = 0;
   private readonly commitNavigation: CommitNavigation | null;
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -99,6 +104,7 @@ export class PanelController {
 
   private readonly repositorySubscription: Disposable | null;
   constructor(private readonly options: ControllerOptions) {
+    this.visible = options.visible ?? true;
     this.notifications = new PanelNotifications({
       report: options.reportActionError,
       session: this.session,
@@ -210,12 +216,15 @@ export class PanelController {
       this.notifications.succeeded(id, body);
       if (body.kind === 'notice')
         await this.options.reportActionInfo?.(body.message);
+      const publication = this.references.prepare(body, id, generation);
+
       await this.options.send({
         requestId,
         repositoryId: id,
         generation,
-        body,
+        body: publication.body,
       });
+      publication.commit();
       if (body.kind === 'loading') await this.operations.publish(id);
     }
   }
@@ -522,6 +531,12 @@ export class PanelController {
 
       // Invalidate immediately; a slow read must not publish during the debounce.
       this.session.abort.abort();
+      if (!this.visible) {
+        this.presentationDirty = true;
+
+        return;
+      }
+
       if (this.refreshTimer) clearTimeout(this.refreshTimer);
       this.refreshTimer = setTimeout(() => {
         this.refreshTimer = null;
@@ -534,6 +549,12 @@ export class PanelController {
     };
 
     this.subscription = this.options.adapter!.subscribe(id, changed);
+    if (!this.visible) {
+      this.presentationDirty = true;
+
+      return;
+    }
+
     await this.historyQuery!.load(
       this.input,
       'select-repository',
@@ -601,121 +622,45 @@ export class PanelController {
     });
   }
 
-  private async reload(
+  private reload(
     desired: Selection | null,
     anchor: ScrollAnchor | null,
     requestId: string,
   ): Promise<void> {
-    const id = this.session.repositoryId;
-    const generation = this.session.generation;
-    const current = () => this.session.current(id, generation);
-    const selectionEpoch = this.session.detailEpoch;
+    return restoreHistorySelection({
+      session: this.session,
+      query: this.input,
+      history: this.historyQuery!,
+      adapter: this.options.adapter!,
+      details: this.details!,
+      desired,
+      anchor,
+      requestId,
+      send: (body, request, id, generation) =>
+        this.send(body, request, id, generation),
+      onScopeChange: (query) => {
+        this.input = query;
+      },
+    });
+  }
 
-    try {
-      await this.historyQuery!.start(this.input, requestId, true);
-      if (!current()) return;
-      if (this.input.scope.kind === 'ref') {
-        const refId = this.input.scope.refId;
-        const refs = await this.options.adapter!.references(id);
+  async setVisible(visible: boolean): Promise<void> {
+    this.visible = visible;
+    if (this.closed) return;
+    if (!visible && this.refreshTimer) {
+      clearTimeout(this.refreshTimer);
+      this.refreshTimer = null;
+      this.presentationDirty = true;
+    }
 
-        if (!current()) return;
-        if (!refs.some((ref) => ref.id === refId)) {
-          this.input = { ...this.input, scope: { kind: 'head' } };
-          await this.send(
-            {
-              kind: 'notice',
-              message: 'The selected reference disappeared. Showing HEAD.',
-            },
-            requestId,
-          );
-        }
-      }
-
-      let page = await this.historyQuery!.load(
-        this.input,
-        requestId,
-        null,
-        true,
-      );
-
-      while (
-        page?.nextCursor &&
-        current() &&
-        this.session.detailEpoch === selectionEpoch &&
-        ((desired && !this.session.commits.has(desired.sha)) ||
-          (anchor && !this.session.commits.has(anchor.sha)))
-      )
-        page = await this.historyQuery!.load(
-          this.input,
-          requestId,
-          page.nextCursor,
-          true,
-        );
-      if (!current() || this.session.detailEpoch !== selectionEpoch) return;
-      const retainedAnchor =
-        anchor && this.session.commits.has(anchor.sha) ? anchor : null;
-      const commit = desired ? this.session.commits.get(desired.sha) : null;
-
-      if (!desired || !commit) {
-        this.session.selection = null;
-        this.session.selectedSha = null;
-        this.session.anchor = retainedAnchor;
-        await this.send(
-          {
-            kind: 'selection',
-            sha: null,
-            parentSha: null,
-            filePath: null,
-            anchor: retainedAnchor,
-          },
-          requestId,
-        );
-
-        return;
-      }
-
-      const valid = reconcileSelection(desired, {
-        inQuery: true,
-        parents: commit.parents,
-        files: desired.filePath ? [desired.filePath] : [],
-      })!;
-      const epoch = this.session.select(valid.sha);
-
-      this.session.selection = valid;
-      this.session.anchor = retainedAnchor;
-      await this.send(
-        { kind: 'selection', ...valid, anchor: retainedAnchor },
-        requestId,
-      );
-      await this.send({ kind: 'details', commit }, requestId);
-      await this.details!.files(valid.sha, valid.parentSha, epoch, requestId);
+    if (visible && this.presentationDirty) {
       if (
-        !current() ||
-        this.session.selectedSha !== valid.sha ||
-        this.session.detailEpoch !== epoch
+        this.repositoryRefresh.defer(this.session.repositoryId, () => {
+          void this.refresh();
+        })
       )
         return;
-      const paths = [...this.session.files.values()]
-        .filter((handle) => handle.parentSha === valid.parentSha)
-        .flatMap((handle) =>
-          [handle.file.newPath, handle.file.oldPath].filter(
-            (path): path is string => path !== null,
-          ),
-        );
-      const selection = reconcileSelection(valid, {
-        inQuery: true,
-        parents: commit.parents,
-        files: paths,
-      })!;
-
-      this.session.selection = selection;
-      await this.send(
-        { kind: 'selection', ...selection, anchor: retainedAnchor },
-        requestId,
-      );
-    } finally {
-      if (current())
-        await this.send({ kind: 'history-settled' }, requestId, id, generation);
+      await this.refresh();
     }
   }
 
@@ -730,6 +675,15 @@ export class PanelController {
 
     if (!id) return;
     this.repositoryRefresh.clear(id);
+    if (!this.visible) {
+      this.options.adapter!.invalidateHistory(id);
+      this.session.abort.abort();
+      this.presentationDirty = true;
+
+      return;
+    }
+
+    this.presentationDirty = false;
     const pending =
       this.refreshRestore?.repositoryId === id ? this.refreshRestore : null;
     const desired = this.session.selection ?? pending?.selection ?? null;

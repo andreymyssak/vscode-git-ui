@@ -10,7 +10,10 @@ test('the top divider resizes the commit section and its editor together', async
   });
   const message = page.getByRole('textbox', { name: 'Commit message' });
   const toolbar = page.getByRole('toolbar', { name: 'Commit message actions' });
-  const commit = page.getByRole('button', { name: 'Commit', exact: true });
+  const commit = page.getByRole('button', {
+    name: /^Commit(?: to |$)/,
+    exact: true,
+  });
 
   await expect(divider).toHaveAttribute('aria-orientation', 'horizontal');
   await expect(message).toHaveCSS('resize', 'none');
@@ -64,7 +67,10 @@ test('a shorter sidebar preserves the preferred commit height and cancelled drag
 
   await page.setViewportSize({ width: 220, height: 280 });
   await expect(message).toBeVisible();
-  const button = page.getByRole('button', { name: 'Commit', exact: true });
+  const button = page.getByRole('button', {
+    name: /^Commit(?: to |$)/,
+    exact: true,
+  });
 
   await expect
     .poll(async () => {

@@ -82,7 +82,7 @@ function file(frame: Frame, path: string, section = 'Changes') {
     .getByRole('treeitem', { name: path, exact: true });
 }
 
-async function activate(frame: Frame, name: string): Promise<void> {
+async function activate(frame: Frame, name: string | RegExp): Promise<void> {
   const button = frame.getByRole('button', { name, exact: true });
 
   await expect(button).toBeEnabled();
@@ -131,7 +131,10 @@ describe('combined Commit and Stash view', () => {
       await amend.press('Space');
       await mutation(message).toHaveValue('Initial');
       await expect(
-        frame.getByRole('button', { name: 'Amend Commit', exact: true }),
+        frame.getByRole('button', {
+          name: /^Amend Commit(?: on |$)/,
+          exact: true,
+        }),
       ).toBeEnabled();
       await amend.press('Space');
       await mutation(message).toHaveValue('New draft');
@@ -141,7 +144,7 @@ describe('combined Commit and Stash view', () => {
       const revised = 'Revised subject\n\nFull body\nSecond body line';
 
       await message.fill(revised);
-      await activate(frame, 'Amend Commit');
+      await activate(frame, /^Amend Commit(?: on |$)/);
       await mutation
         .poll(() => fixture.runGit(['show', '-s', '--format=%B', 'HEAD']))
         .toBe(`${revised}\n\n`);
@@ -257,8 +260,7 @@ describe('combined Commit and Stash view', () => {
       assert.equal(fileCheck.x - folderCheck.x, 8);
       assert.equal(
         await frame
-          .locator('[role="group"]')
-          .first()
+          .locator('[data-tree-guide="nested/deeper"]')
           .evaluate(
             (group) => getComputedStyle(group, '::before').borderLeftWidth,
           ),
@@ -350,7 +352,7 @@ describe('combined Commit and Stash view', () => {
         await frame
           .getByRole('textbox', { name: 'Commit message' })
           .fill('Commit link targets');
-        await activate(frame, 'Commit');
+        await activate(frame, /^Commit(?: to |$)/);
         await mutation
           .poll(async () =>
             (await fixture.runGit(['log', '-1', '--format=%s'])).trim(),
@@ -444,7 +446,7 @@ describe('combined Commit and Stash view', () => {
       await expect(message).toHaveValue(
         'Commit checked folders\n\nKeep unchecked staging.',
       );
-      await activate(frame, 'Commit');
+      await activate(frame, /^Commit(?: to |$)/);
       await mutation
         .poll(async () =>
           (await fixture.runGit(['log', '-1', '--format=%s'])).trim(),
@@ -622,13 +624,13 @@ describe('combined Commit and Stash view', () => {
 
       edit.insert(uri, new vscode.Position(0, 0), 'unsaved buffer\n');
       assert.equal(await vscode.workspace.applyEdit(edit), true);
-      await activate(frame, 'Commit');
+      await activate(frame, /^Commit(?: to |$)/);
       await frame
         .page()
         .getByRole('button', { name: 'Cancel', exact: true })
         .click();
       await expect(
-        frame.getByRole('button', { name: 'Commit', exact: true }),
+        frame.getByRole('button', { name: /^Commit(?: to |$)/, exact: true }),
       ).toBeEnabled();
       assert.equal((await fixture.runGit(['rev-parse', 'HEAD'])).trim(), head);
       assert.equal(await fixture.runGit(['show', ':sample.txt']), index);
@@ -641,7 +643,7 @@ describe('combined Commit and Stash view', () => {
         'workbench.action.revertAndCloseActiveEditor',
       );
       await writeFile(join(fixture.root, '.git', 'MERGE_HEAD'), head + '\n');
-      await activate(frame, 'Commit');
+      await activate(frame, /^Commit(?: to |$)/);
       await expect(frame.getByRole('alert')).toHaveCount(0);
       await expect(
         frame
@@ -685,7 +687,7 @@ describe('combined Commit and Stash view', () => {
       await frame
         .getByRole('textbox', { name: 'Commit message' })
         .fill('Commit first repository');
-      await activate(frame, 'Commit');
+      await activate(frame, /^Commit(?: to |$)/);
       await mutation
         .poll(async () =>
           (await first.runGit(['log', '-1', '--format=%s'])).trim(),

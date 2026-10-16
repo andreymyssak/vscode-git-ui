@@ -30,6 +30,7 @@ export interface ViewState {
   worktreesLoading: boolean;
   worktreesError: string | null;
   commits: CommitRecord[];
+  historyScopeId: string | null;
   scope: Scope;
   selectedRefId: string | null;
   selectedSha: string | null;
@@ -88,6 +89,7 @@ export function initialView(): ViewState {
     worktreesLoading: false,
     worktreesError: null,
     commits: [],
+    historyScopeId: null,
     scope: { kind: 'head' },
     selectedRefId: null,
     selectedSha: null,
@@ -218,9 +220,16 @@ export function reduceView(state: ViewState, event: ViewEvent): ViewState {
           return state.operation?.requestId === event.message.requestId
             ? { ...state, operation: null }
             : state;
+        // Completion ends Git activity before the replacement metadata arrives.
+        // Replayed progress must not invalidate an already refreshed snapshot.
+        const writeFinished =
+          body.operation.phase === 'refreshing' &&
+          (state.operation?.requestId !== event.message.requestId ||
+            state.operation.phase !== 'refreshing');
 
         return {
           ...state,
+          referencesReady: state.referencesReady && !writeFinished,
           operation: {
             requestId: event.message.requestId,
             ...body.operation,
@@ -271,6 +280,7 @@ export function reduceView(state: ViewState, event: ViewEvent): ViewState {
             retainHistory: false,
             error: null,
             commits: [],
+            historyScopeId: null,
             selectedSha: preserveSelection ? state.selectedSha : null,
             commitRange: singleCommitRange(null),
             selectedParentSha: preserveSelection
@@ -286,6 +296,14 @@ export function reduceView(state: ViewState, event: ViewEvent): ViewState {
         }
 
         case 'history': {
+          if (
+            body.page.refs === undefined &&
+            (!state.referencesReady ||
+              generation !== state.generation ||
+              body.repository.id !== state.repository?.id)
+          )
+            return state;
+          const refs = body.page.refs ?? state.refs;
           const append =
             body.append &&
             body.repository.id === state.repository?.id &&
@@ -310,22 +328,25 @@ export function reduceView(state: ViewState, event: ViewEvent): ViewState {
             ...state,
             setup: 'ready',
             repository: body.repository,
-            refs: body.page.refs,
+            refs,
             referencesReady: true,
             selectedRefId:
               state.selectedRefId &&
-              body.page.refs.some((ref) => ref.id === state.selectedRefId)
+              refs.some((ref) => ref.id === state.selectedRefId)
                 ? state.selectedRefId
                 : !state.refs.length
-                  ? (body.page.refs.find(
+                  ? (refs.find(
                       (ref) =>
                         ref.kind === 'local' &&
                         ref.name === body.repository.branch,
                     )?.id ?? null)
                   : null,
             commits,
+            historyScopeId: body.page.scopeId,
             annotations: {
-              user: body.page.annotations?.user ?? null,
+              user:
+                body.page.annotations?.user ??
+                (append ? state.annotations.user : null),
               currentBranch: [
                 ...(append ? state.annotations.currentBranch : []),
                 ...(body.page.annotations?.currentBranch ?? []),
@@ -351,6 +372,37 @@ export function reduceView(state: ViewState, event: ViewEvent): ViewState {
             restoring: body.restoring === true,
             retainHistory: false,
             error: null,
+          };
+        }
+
+        case 'history-enrichment': {
+          const { enrichment } = body;
+          const loaded = new Set(state.commits.map((commit) => commit.sha));
+
+          if (
+            generation !== state.generation ||
+            !state.referencesReady ||
+            state.historyScopeId !== enrichment.scopeId ||
+            !enrichment.shas.every((sha) => loaded.has(sha))
+          )
+            return state;
+          const page = new Set(enrichment.shas);
+          const current = new Set([
+            ...state.annotations.currentBranch.filter((sha) => !page.has(sha)),
+            ...enrichment.annotations.currentBranch.filter((sha) =>
+              page.has(sha),
+            ),
+          ]);
+
+          return {
+            ...state,
+            refs: enrichment.refs ?? state.refs,
+            annotations: {
+              user: enrichment.annotations.user,
+              currentBranch: state.commits
+                .map((commit) => commit.sha)
+                .filter((sha) => current.has(sha)),
+            },
           };
         }
 

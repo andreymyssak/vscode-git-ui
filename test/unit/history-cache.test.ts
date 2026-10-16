@@ -9,6 +9,7 @@ import type { GitCli } from '../../src/extension/git/cli';
 import { createHistoryQueries } from '../../src/extension/git/history';
 import type { HistoryInput } from '../../src/shared/model';
 import { fixture as panelFixture } from '../fixtures/controller';
+import { completeHistoryShallow } from '../fixtures/history-shallow';
 
 const sha = (index: number) => index.toString(16).padStart(40, '0');
 const input = (refId = 'refs/heads/main', text = ''): HistoryInput => ({
@@ -67,6 +68,7 @@ function fixture(tracking = false) {
           : '',
     } as unknown as GitCli,
     () => now,
+    completeHistoryShallow,
   );
 
   return {
