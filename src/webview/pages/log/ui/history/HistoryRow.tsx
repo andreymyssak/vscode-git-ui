@@ -212,6 +212,7 @@ export function HistoryRow({
           refs={rowReferences}
           repository={data.repository}
           sha={commit.sha}
+          generation={data.generation}
         />
       </span>
       {data.presentation.showAuthor && (

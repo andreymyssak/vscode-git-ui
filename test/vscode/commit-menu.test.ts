@@ -74,10 +74,14 @@ describe('native squash menu workflow', () => {
       await references.hover();
       await expect(frame.locator('[data-reference-tooltip]')).toBeVisible();
       await references.focus();
+      await expect
+        .poll(() => frame.evaluate(() => document.hasFocus()))
+        .toBe(true);
       await vscode.window.showTextDocument(sampleUri);
       await expect
         .poll(() => frame.evaluate(() => document.hasFocus()))
         .toBe(false);
+      await expect(frame.locator('[data-reference-tooltip]')).toHaveCount(0);
       await refreshNativeHistory(frame, id);
       await expect(frame.locator('[data-reference-tooltip]')).toHaveCount(0);
       const singleActions = [

@@ -1,98 +1,110 @@
+import type { Frame } from '@playwright/test';
+
 import { expect, type Page, test } from '../fixtures/browser';
 
 test.use({ locale: 'en-US', timezoneId: 'UTC' });
 
 async function showHistory(
-  page: Page,
+  page: Page | Frame,
   subject = 'A long commit subject '.repeat(25),
+  generation = 1,
 ) {
-  await page.evaluate((subject) => {
-    const request = window.__requests.at(-1)!;
-    const sha = '1'.padStart(40, '0');
+  await page.evaluate(
+    ({ subject, generation }) => {
+      const request = window.__requests.at(-1)!;
+      const sha = '1'.padStart(40, '0');
 
-    window.__deliver({
-      ...request,
-      generation: 1,
-      body: {
-        kind: 'history',
-        append: false,
-        scope: { kind: 'head' },
-        text: '',
-        repository: {
-          id: 'one',
-          label: 'Example repository',
-          rootUri: 'file:///example',
-          headSha: sha,
-          branch: 'main',
-        },
-        page: {
-          commits: [1, 2].map((value) => ({
-            sha: String(value).padStart(40, '0'),
-            parents: [String(value + 1).padStart(40, '0')],
-            message: subject,
-            authorName: 'Author with a long name',
-            authorEmail: null,
-            authorDate: null,
-            commitDate: '2026-10-05T00:00:00Z',
-          })),
-          refs: [
-            {
-              id: 'refs/tags/v10',
-              name: 'v10',
-              kind: 'tag',
-              sha,
-              remote: null,
-            },
-            { id: 'refs/tags/v2', name: 'v2', kind: 'tag', sha, remote: null },
-            {
-              id: 'refs/remotes/origin/main',
-              name: 'origin/main',
-              kind: 'remote',
-              sha,
-              remote: 'origin',
-            },
-            {
-              id: 'refs/heads/topic',
-              name: 'topic',
-              kind: 'local',
-              sha,
-              remote: null,
-            },
-            {
-              id: 'refs/heads/main',
-              name: 'main',
-              kind: 'local',
-              sha,
-              remote: null,
-            },
-            ...Array.from({ length: 50 }, (_, index) => ({
-              id: `refs/tags/release/${index}`,
-              name: `release/${index}`,
-              kind: 'tag' as const,
-              sha,
-              remote: null,
+      window.__deliver({
+        ...request,
+        generation,
+        body: {
+          kind: 'history',
+          append: false,
+          scope: { kind: 'head' },
+          text: '',
+          repository: {
+            id: 'one',
+            label: 'Example repository',
+            rootUri: 'file:///example',
+            headSha: sha,
+            branch: 'main',
+          },
+          page: {
+            commits: [1, 2].map((value) => ({
+              sha: String(value).padStart(40, '0'),
+              parents: [String(value + 1).padStart(40, '0')],
+              message: subject,
+              authorName: 'Author with a long name',
+              authorEmail: null,
+              authorDate: null,
+              commitDate: '2026-10-05T00:00:00Z',
             })),
-            {
-              id: 'refs/tags/v10-old',
-              name: 'v10',
-              kind: 'tag',
-              sha: '2'.padStart(40, '0'),
-              remote: null,
-            },
-            {
-              id: 'refs/tags/v2-old',
-              name: 'v2',
-              kind: 'tag',
-              sha: '2'.padStart(40, '0'),
-              remote: null,
-            },
-          ],
-          nextCursor: null,
-          scopeId: 'fixture',
+            refs: [
+              {
+                id: 'refs/tags/v10',
+                name: 'v10',
+                kind: 'tag',
+                sha,
+                remote: null,
+              },
+              {
+                id: 'refs/tags/v2',
+                name: 'v2',
+                kind: 'tag',
+                sha,
+                remote: null,
+              },
+              {
+                id: 'refs/remotes/origin/main',
+                name: 'origin/main',
+                kind: 'remote',
+                sha,
+                remote: 'origin',
+              },
+              {
+                id: 'refs/heads/topic',
+                name: 'topic',
+                kind: 'local',
+                sha,
+                remote: null,
+              },
+              {
+                id: 'refs/heads/main',
+                name: 'main',
+                kind: 'local',
+                sha,
+                remote: null,
+              },
+              ...Array.from({ length: 50 }, (_, index) => ({
+                id: `refs/tags/release/${index}`,
+                name: `release/${index}`,
+                kind: 'tag' as const,
+                sha,
+                remote: null,
+              })),
+              {
+                id: 'refs/tags/v10-old',
+                name: 'v10',
+                kind: 'tag',
+                sha: '2'.padStart(40, '0'),
+                remote: null,
+              },
+              {
+                id: 'refs/tags/v2-old',
+                name: 'v2',
+                kind: 'tag',
+                sha: '2'.padStart(40, '0'),
+                remote: null,
+              },
+            ],
+            nextCursor: null,
+            scopeId: 'fixture',
+          },
         },
-      },
-    });
-  }, subject);
+      });
+    },
+    { subject, generation },
+  );
 }
 
 test.beforeEach(async ({ page }) => {
@@ -204,6 +216,87 @@ test('keyboard focus exposes reference names and Escape dismisses them', async (
   await page.keyboard.press('Escape');
   await expect(page.getByRole('tooltip')).toHaveCount(0);
   await expect(references).toBeFocused();
+});
+
+test('a replaced history snapshot retires reference popups for retained commits', async ({
+  page,
+}) => {
+  const references = page
+    .locator('[data-commit-row]')
+    .first()
+    .locator('[data-references]');
+
+  await references.focus();
+  const tooltip = page.locator('[data-reference-tooltip]');
+
+  await expect(tooltip).toBeVisible();
+  await showHistory(page, undefined, 2);
+  await expect(tooltip).toHaveCount(0);
+  await expect(references).toBeFocused();
+  await references.hover();
+  await expect(tooltip).toBeVisible();
+  await expect(tooltip).toContainText('origin/main');
+});
+
+async function embeddedHistory(page: Page) {
+  const url = page.url();
+
+  await page.setContent(
+    `<button>Editor</button><iframe title="Git UI" src="${url}" style="width:100%;height:600px"></iframe>`,
+  );
+  await expect.poll(() => page.frames().length).toBe(2);
+  const frame = page.frames().find((candidate) => candidate.parentFrame());
+
+  if (!frame) throw new Error('Git UI webview frame is missing.');
+  await frame.waitForFunction(() => window.__requests?.length > 0);
+  await showHistory(frame);
+
+  return frame;
+}
+
+test('reference popups close when the webview loses window focus', async ({
+  page,
+}) => {
+  const frame = await embeddedHistory(page);
+  const references = frame
+    .locator('[data-commit-row]')
+    .first()
+    .locator('[data-references]');
+
+  await references.focus();
+  const tooltip = frame.locator('[data-reference-tooltip]');
+
+  await expect.poll(() => frame.evaluate(() => document.hasFocus())).toBe(true);
+  await expect(tooltip).toBeVisible();
+  await page.getByRole('button', { name: 'Editor', exact: true }).focus();
+  await expect
+    .poll(() => frame.evaluate(() => document.hasFocus()))
+    .toBe(false);
+  await expect(tooltip).toHaveCount(0);
+  await frame.getByRole('button', { name: 'Refresh', exact: true }).focus();
+  await expect(tooltip).toHaveCount(0);
+});
+
+test('a delayed reference hover cannot open after the webview loses focus', async ({
+  page,
+}) => {
+  const frame = await embeddedHistory(page);
+
+  await frame.getByRole('button', { name: 'Refresh', exact: true }).focus();
+  await expect.poll(() => frame.evaluate(() => document.hasFocus())).toBe(true);
+  await page.clock.install();
+  await frame
+    .locator('[data-commit-row]')
+    .first()
+    .locator('[data-references]')
+    .hover();
+  await page.clock.runFor(100);
+  await page.getByRole('button', { name: 'Editor', exact: true }).focus();
+  await expect
+    .poll(() => frame.evaluate(() => document.hasFocus()))
+    .toBe(false);
+  await page.clock.runFor(400);
+  await expect(frame.locator('[data-reference-tooltip]')).toHaveCount(0);
 });
 
 test('a focused reference list follows a smaller viewport without clipping', async ({

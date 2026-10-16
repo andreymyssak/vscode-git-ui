@@ -12,7 +12,7 @@ import {
   useInteractions,
 } from '@floating-ui/react';
 import clsx from 'clsx';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import type { Reference, RepositoryInfo } from '@contracts/model';
 import { Icon } from '@webview/shared/ui';
@@ -50,7 +50,14 @@ function ReferenceHover({
   accessibleLabel,
   current,
   id,
-}: ReturnType<typeof buildReferenceLabels> & { current: boolean; id: string }) {
+  generation,
+  repositoryId,
+}: ReturnType<typeof buildReferenceLabels> & {
+  current: boolean;
+  id: string;
+  generation: number;
+  repositoryId: string | undefined;
+}) {
   const [open, setOpen] = useState(false);
   const {
     refs: elements,
@@ -79,6 +86,28 @@ function ReferenceHover({
     focus,
     dismiss,
   ]);
+  const { onOpenChange } = context;
+  const reference = context.elements.domReference;
+
+  useEffect(() => {
+    const document = reference?.ownerDocument;
+
+    if (!document) return;
+    // Retire the popup and pending hover timers without replacing its focus target.
+    onOpenChange(false);
+    const close = (event: Event) => onOpenChange(false, event, 'focus');
+    const hide = (event: Event) => {
+      if (document.hidden) close(event);
+    };
+
+    document.defaultView?.addEventListener('blur', close);
+    document.addEventListener('visibilitychange', hide);
+
+    return () => {
+      document.defaultView?.removeEventListener('blur', close);
+      document.removeEventListener('visibilitychange', hide);
+    };
+  }, [reference, onOpenChange, generation, repositoryId]);
 
   return (
     <span
@@ -148,10 +177,12 @@ export function ReferenceLabels({
   refs,
   repository,
   sha,
+  generation,
 }: {
   refs: readonly Reference[];
   repository: RepositoryInfo | null;
   sha: string;
+  generation: number;
 }) {
   const labels = buildReferenceLabels(refs, repository, sha);
 
@@ -160,6 +191,8 @@ export function ReferenceLabels({
       {...labels}
       current={sha === repository?.headSha}
       id={'history-refs-' + sha}
+      generation={generation}
+      repositoryId={repository?.id}
     />
   ) : null;
 }
