@@ -33,6 +33,15 @@ describe('native selected commit changes', () => {
   let head: string;
   let previousMenu: string | undefined;
 
+  async function selectSourceCommit() {
+    const row = frame
+      .locator('[data-commit-row]')
+      .filter({ hasText: 'Selected files source' });
+
+    await row.locator('[data-subject-message]').click();
+    await expect(row).toHaveAttribute('aria-selected', 'true');
+  }
+
   async function waitForPreview(path: string) {
     const access = await getGitApi();
     const sha = (await fixture.runGit(['rev-parse', 'source'])).trim();
@@ -87,10 +96,7 @@ describe('native selected commit changes', () => {
     await frame
       .getByRole('treeitem', { name: 'All branches', exact: true })
       .dblclick();
-    await frame
-      .locator('[data-commit-row]')
-      .filter({ hasText: 'Selected files source' })
-      .click();
+    await selectSourceCommit();
     await expect(frame.locator('#files [data-file]')).toHaveCount(3);
   });
 
@@ -114,10 +120,7 @@ describe('native selected commit changes', () => {
     await fixture.runGit(['add', 'unrelated.txt']);
     await (await getGitApi()).repository(id).status();
     await refreshNativeHistory(frame, id);
-    await frame
-      .locator('[data-commit-row]')
-      .filter({ hasText: 'Selected files source' })
-      .click();
+    await selectSourceCommit();
     await expect(frame.locator('#details')).toHaveAttribute(
       'aria-busy',
       'false',
@@ -194,10 +197,7 @@ describe('native selected commit changes', () => {
 
     await (await getGitApi()).repository(id).status();
     await refreshNativeHistory(frame, id);
-    await frame
-      .locator('[data-commit-row]')
-      .filter({ hasText: 'Selected files source' })
-      .click();
+    await selectSourceCommit();
     await expect(frame.locator('#details')).toHaveAttribute(
       'aria-busy',
       'false',
@@ -262,10 +262,7 @@ describe('native selected commit changes', () => {
     head = (await fixture.runGit(['rev-parse', 'HEAD'])).trim();
     await (await getGitApi()).repository(id).status();
     await refreshNativeHistory(frame, id);
-    await frame
-      .locator('[data-commit-row]')
-      .filter({ hasText: 'Selected files source' })
-      .click();
+    await selectSourceCommit();
     await expect(frame.locator('#details')).toHaveAttribute(
       'aria-busy',
       'false',
@@ -335,10 +332,7 @@ describe('native selected commit changes', () => {
     await (await getGitApi()).repository(id).status();
     // Reload after HEAD changes so the menu captures the current target.
     await refreshNativeHistory(frame, id);
-    await frame
-      .locator('[data-commit-row]')
-      .filter({ hasText: 'Selected files source' })
-      .click();
+    await selectSourceCommit();
     await expect(frame.locator('#details')).toHaveAttribute(
       'aria-busy',
       'false',
