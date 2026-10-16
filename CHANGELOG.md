@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.5.0](https://github.com/andreymyssak/vscode-git-ui/compare/v0.4.2...v0.5.0) (2026-10-16)
+
+### Features
+
+- load large histories and file lists incrementally with optional Git cache optimization ([078ae84](https://github.com/andreymyssak/vscode-git-ui/commit/078ae8448cfda348df5a6c01d560ceee5be24d55))
+
 ## [0.4.2](https://github.com/andreymyssak/vscode-git-ui/compare/v0.4.1...v0.4.2) (2026-10-15)
 
 ### Bug Fixes
