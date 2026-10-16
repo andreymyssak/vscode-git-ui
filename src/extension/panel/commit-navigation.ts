@@ -18,6 +18,7 @@ interface CommitNavigationPorts {
   repository(id: string): RepositoryInfo;
   send(body: PanelBody, requestId: string): Promise<void>;
   setup(): Promise<boolean>;
+  refreshPending(repositoryId: string): boolean;
   selectRepository(id: string, current: () => boolean): Promise<void>;
   closed(): boolean;
 }
@@ -174,6 +175,7 @@ export class CommitNavigation {
     const jump: HostJump = { epoch: 0, refresh: null };
 
     this.hostJump = jump;
+    if (this.ports.refreshPending(target.repositoryId)) this.pauseForRefresh();
     const latest = () =>
       !this.ports.closed() &&
       revision === this.navigationRevision &&
@@ -193,6 +195,7 @@ export class CommitNavigation {
           // The normal refresh owns failure reporting, including native notices.
           if (result.kind === 'failed')
             throw new DOMException('History refresh failed.', 'AbortError');
+          initialize = false;
         }
 
         const epoch = jump.epoch;

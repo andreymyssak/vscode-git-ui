@@ -80,6 +80,7 @@ export class PanelController {
   private closed = false;
   private visible = true;
   private presentationDirty = false;
+  private observationRefresh: AbortSignal | null = null;
   private repositoryEpoch = 0;
   private readonly commitNavigation: CommitNavigation | null;
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -163,6 +164,12 @@ export class PanelController {
             repository: (id) => this.repository(id),
             send: (body, requestId) => this.send(body, requestId),
             setup: () => this.setup(),
+            refreshPending: (id) =>
+              this.session.repositoryId === id &&
+              this.session.abort.signal.aborted &&
+              (this.observationRefresh === this.session.abort.signal ||
+                this.presentationDirty ||
+                this.operations.isRefreshing(id)),
             selectRepository: (id, current) =>
               this.selectRepository(id, false, current),
             closed: () => this.closed,
@@ -526,6 +533,7 @@ export class PanelController {
       if (this.closed || this.session.repositoryId !== id) return;
       if (this.repositoryRefresh.defer(id, changed)) {
         if (this.operations.isRefreshing(id)) {
+          this.observationRefresh = this.session.abort.signal;
           this.commitNavigation?.pauseForRefresh();
           this.session.abort.abort();
         }
@@ -534,6 +542,7 @@ export class PanelController {
       }
 
       // Invalidate immediately; a slow read must not publish during the debounce.
+      this.observationRefresh = this.session.abort.signal;
       this.commitNavigation?.pauseForRefresh();
       this.session.abort.abort();
       if (!this.visible) {
@@ -698,6 +707,8 @@ export class PanelController {
     this.options.adapter!.invalidateHistory(id);
     this.session.begin(id);
     const generation = this.session.generation;
+
+    this.observationRefresh = null;
     const signal = this.session.abort.signal;
 
     this.refreshRestore = { repositoryId: id, selection: desired, anchor };
@@ -732,6 +743,7 @@ export class PanelController {
 
   dispose(): void {
     this.closed = true;
+    this.observationRefresh = null;
     this.commitNavigation?.cancel();
     if (this.refreshTimer) clearTimeout(this.refreshTimer);
     this.subscription?.dispose();
